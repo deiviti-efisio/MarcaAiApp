@@ -191,7 +191,8 @@ function isManualDbMetadata(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return false;
   }
-  return (metadata as JsonRecord).source === "manual_db";
+  const source = String((metadata as JsonRecord).source ?? "");
+  return source === "manual_db" || source.startsWith("manual_db");
 }
 
 /**
@@ -354,16 +355,16 @@ async function expireIosNonManualForAppleReplace(userId: string): Promise<void> 
       .update({ status: "expired" })
       .eq("id", row.id);
   }
-  const { data: manualRows } = await supabase!
+  const { data: courtesyRows } = await supabase!
     .from("user_subscriptions")
-    .select("id")
+    .select("id, metadata")
     .eq("user_id", userId)
     .eq("platform", "ios")
-    .eq("metadata->>source", "manual_db")
     .in("status", ["active", "grace_period"])
     .order("updated_at", { ascending: false })
-    .limit(1);
-  const manualId = manualRows?.[0]?.id as string | undefined;
+    .limit(20);
+  const manualId = (courtesyRows ?? []).find((row) => isManualDbMetadata(row.metadata))
+    ?.id as string | undefined;
   if (manualId) {
     await supabase!
       .from("user_subscriptions")

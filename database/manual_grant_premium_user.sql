@@ -1,28 +1,28 @@
 -- =====================================================
--- Liberar Premium manualmente no banco (testes / equipe)
+-- Liberar Premium manualmente (cortesia / testes / equipe)
 -- =====================================================
--- No bloco DECLARE abaixo, use UMA das opções:
+-- O app NÃO usa só users.plan_is_active. O que vale é:
+--   user_subscriptions.status IN ('active', 'grace_period')
+--   AND (expires_at IS NULL OR expires_at > now())
+-- Depois o script também marca users.plan_is_active = true.
 --
---   A) Defina v_user com o UUID (copie de Authentication → Users no Supabase,
---      ou rode: SELECT id, email FROM auth.users ORDER BY created_at DESC LIMIT 20;)
+-- metadata.source DEVE começar com 'manual_db' (ex.: manual_db).
+-- Assim o reconcile Apple/Google NÃO expira essa linha.
 --
---   B) OU defina v_lookup_email com o e-mail da conta e deixe v_user = NULL.
---
+-- No DECLARE: use UUID OU e-mail (não os dois vazios).
 -- Depois execute só o bloco DO $$ ... END $$;
---
--- O script expira assinaturas active/grace antigas, insere user_subscriptions active
--- e atualiza users.plan_is_active = true.
---
--- Aviso: o app pode expirar isso no reconcile se não houver compra na loja.
 -- =====================================================
 
 DO $$
 DECLARE
-  -- Opção A: UUID do usuário (substitua NULL pelo id, ex.: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid)
+  -- Opção A: UUID (Authentication → Users, ou SELECT id, email FROM auth.users ...)
   v_user uuid := NULL;
 
-  -- Opção B: e-mail do usuário em auth.users (se usar isto, mantenha v_user = NULL)
+  -- Opção B: e-mail em auth.users (se usar, deixe v_user = NULL)
   v_lookup_email text := NULL;
+
+  -- Duração da cortesia
+  v_duration interval := interval '1 year';
 
   v_suffix text := replace(gen_random_uuid()::text, '-', '');
   v_orig text;
@@ -36,14 +36,14 @@ BEGIN
     LIMIT 1;
     IF v_user IS NULL THEN
       RAISE EXCEPTION
-        'E-mail não encontrado em auth.users: "%". Confira o cadastro em Authentication → Users.',
+        'E-mail não encontrado em auth.users: "%". Confira Authentication → Users.',
         btrim(v_lookup_email);
     END IF;
   END IF;
 
   IF v_user IS NULL THEN
     RAISE EXCEPTION
-      'Configure o script: no DECLARE, defina v_user := ''SEU-UUID''::uuid OU v_lookup_email := ''email@exemplo.com''. Não deixe os dois vazios.';
+      'Defina v_user := ''SEU-UUID''::uuid OU v_lookup_email := ''email@exemplo.com''.';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = v_user) THEN
@@ -58,7 +58,7 @@ BEGIN
     status = 'expired',
     updated_at = now()
   WHERE user_id = v_user
-    AND status IN ('active', 'grace_period');
+    AND status IN ('active', 'grace_period', 'pending');
 
   INSERT INTO public.user_subscriptions (
     user_id,
@@ -80,14 +80,15 @@ BEGIN
     'ios',
     'active',
     now(),
-    now() + interval '1 year',
+    now() + v_duration,
     NULL,
     v_orig,
     v_tx,
-    true,
+    false,
     jsonb_build_object(
-      'source', 'manual_db_grant',
-      'granted_at', now()
+      'source', 'manual_db',
+      'granted_at', now(),
+      'apple_store_confirmed', true
     )
   );
 
@@ -98,6 +99,35 @@ BEGIN
   WHERE id = v_user;
 END $$;
 
--- Conferir (ajuste o filtro)
+-- Conferir
 -- SELECT id, email FROM auth.users WHERE email ilike '%parte%';
--- SELECT * FROM public.user_subscriptions WHERE user_id = 'UUID-AQUI' ORDER BY updated_at DESC LIMIT 3;
+-- SELECT user_id, status, expires_at, metadata, platform
+-- FROM public.user_subscriptions
+-- WHERE user_id = 'UUID-AQUI'
+-- ORDER BY updated_at DESC LIMIT 5;
+
+-- =====================================================
+-- Já existe linha? Só reativar (mesmo usuário)
+-- Troque o UUID. Mantém a linha, não cria outra.
+-- =====================================================
+-- UPDATE public.user_subscriptions
+-- SET
+--   status = 'active',
+--   expires_at = now() + interval '1 year',
+--   cancelled_at = NULL,
+--   metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+--     'source', 'manual_db',
+--     'granted_at', now(),
+--     'apple_store_confirmed', true
+--   ),
+--   updated_at = now()
+-- WHERE id = (
+--   SELECT id FROM public.user_subscriptions
+--   WHERE user_id = 'UUID-AQUI'::uuid
+--   ORDER BY updated_at DESC
+--   LIMIT 1
+-- );
+--
+-- UPDATE public.users
+-- SET plan_is_active = true, updated_at = now()
+-- WHERE id = 'UUID-AQUI'::uuid;

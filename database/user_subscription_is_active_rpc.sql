@@ -104,7 +104,7 @@ BEGIN
       AND s.expires_at IS NOT NULL
       AND s.expires_at <= clock_timestamp()
       AND COALESCE((s.metadata->>'apple_store_confirmed')::boolean, false) = false
-      AND COALESCE(s.metadata->>'source', '') <> 'manual_db'
+      AND COALESCE(s.metadata->>'source', '') NOT LIKE 'manual_db%'
     RETURNING s.id
   )
   SELECT count(*)::int INTO n FROM upd;

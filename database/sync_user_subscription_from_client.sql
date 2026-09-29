@@ -49,13 +49,13 @@ BEGIN
   END IF;
 
   -- Reconcile sem loja: expira apenas linhas “da loja”. Linhas manuais
-  -- (metadata.source = 'manual_db') permanecem active para cortesias / testes.
+  -- (metadata.source começando com 'manual_db') permanecem active.
   IF p_reconcile_clear THEN
     UPDATE public.user_subscriptions
     SET status = 'expired'
     WHERE user_id = uid
       AND status IN ('active', 'grace_period', 'pending')
-      AND COALESCE(metadata->>'source', '') <> 'manual_db';
+      AND COALESCE(metadata->>'source', '') NOT LIKE 'manual_db%';
 
     UPDATE public.users u
     SET plan_is_active = public.user_subscription_is_active(u.id)
@@ -375,7 +375,7 @@ BEGIN
     SET status = 'expired'
     WHERE user_id = uid
       AND status = 'pending'
-      AND COALESCE(metadata->>'source', '') <> 'manual_db';
+      AND COALESCE(metadata->>'source', '') NOT LIKE 'manual_db%';
   END IF;
 
   -- Não-expired: usa data da loja quando existir; senão janela curta (+1 dia) até confirmação.
