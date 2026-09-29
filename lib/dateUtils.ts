@@ -91,3 +91,15 @@ export function formatDateBrazil(dateString: string): string {
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${pad(d)}/${pad(m)}/${y} ${pad(h)}:${pad(min)}`;
 }
+
+/** True se a data do evento (calendário local) já passou (a partir do dia seguinte). */
+export function isEventDateAlreadyPast(eventDateIso: string | null | undefined): boolean {
+  if (!eventDateIso) return false;
+  const part = String(eventDateIso).trim().split('T')[0];
+  const [y, m, d] = part.split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const eventDate = new Date(y, m - 1, d);
+  const today = new Date();
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return todayOnly > eventDate;
+}

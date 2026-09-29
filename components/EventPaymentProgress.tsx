@@ -58,6 +58,8 @@ export default function EventPaymentProgress({
   const progress = getEventPaymentProgress(eventValue, paidAmount);
   if (!progress) return null;
 
+  const rest = Math.round((progress.total - progress.paid) * 100) / 100;
+
   return (
     <View style={[styles.wrap, compact && styles.wrapCompact]}>
       <View style={[styles.track, { backgroundColor: trackColor }]}>
@@ -74,6 +76,11 @@ export default function EventPaymentProgress({
       <Text style={[styles.label, { color: textColor }]}>
         Você já recebeu {progress.percent}% - {formatBRL(progress.paid)}
       </Text>
+      {rest > 0 ? (
+        <Text style={[styles.remainder, { color: textColor }]}>
+          Restante a receber: {formatBRL(rest)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -101,5 +108,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
+  },
+  remainder: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

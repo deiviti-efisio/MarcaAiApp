@@ -23,11 +23,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import OptimizedImage from "../components/OptimizedImage";
 import PermissionModal from "../components/PermissionModal";
-import EventPaymentProgress from "../components/EventPaymentProgress";
+import EventPaymentProgress, {
+    getUnpaidRemainder,
+} from "../components/EventPaymentProgress";
 import TransientToast from "../components/TransientToast";
 import { useTheme } from "../contexts/ThemeContext";
 import { formatBrazilStateChoice } from "../lib/brazilGeo";
-import { formatCalendarDate } from "../lib/dateUtils";
+import { formatCalendarDate, isEventDateAlreadyPast } from "../lib/dateUtils";
 import { consumePendingEventUpdatedToast } from "../lib/pendingEventUpdatedToast";
 import { supabase } from "../lib/supabase";
 import { sharePressKitItems } from "../services/pressKitShareService";
@@ -327,6 +329,7 @@ export default function DetalhesEventoScreen() {
   const [eventUpdatedToastMessage, setEventUpdatedToastMessage] = useState<
     string | null
   >(null);
+  const [isMarkingRemainingPaid, setIsMarkingRemainingPaid] = useState(false);
   const [participationRatingsByInviteId, setParticipationRatingsByInviteId] =
     useState<Record<string, AvaliacaoParticipacaoEventoRow>>({});
   const [showRateParticipantModal, setShowRateParticipantModal] =
@@ -845,6 +848,42 @@ export default function DetalhesEventoScreen() {
       !!currentUserId &&
       event?.created_by === currentUserId);
   const canManageOwnEventExpenses = canManageOwnEvent;
+
+  const unpaidRemainder = event
+    ? getUnpaidRemainder(event.value, event.paid_amount)
+    : null;
+  const showRemainingPaidPrompt =
+    !!event &&
+    canManageOwnEvent &&
+    unpaidRemainder != null &&
+    isEventDateAlreadyPast(event.event_date);
+
+  const handleMarkRemainingPaid = async () => {
+    if (!event || !currentUserId || event.value == null) return;
+    if (event.convite_participacao_id) {
+      Alert.alert(
+        "Não foi possível atualizar",
+        "Este evento veio de um convite e não pode ser alterado.",
+      );
+      return;
+    }
+    setIsMarkingRemainingPaid(true);
+    try {
+      const result = await updateEvent(
+        event.id,
+        { paid_amount: Number(event.value) },
+        currentUserId,
+      );
+      if (result.success) {
+        await loadEventData(false);
+        setEventUpdatedToastMessage("Valor marcado como recebido por completo.");
+      } else {
+        Alert.alert("Erro", result.error || "Não foi possível atualizar o valor pago.");
+      }
+    } finally {
+      setIsMarkingRemainingPaid(false);
+    }
+  };
 
   const openRemoveParticipationModal = (c: ConviteParticipacaoEventoRow) => {
     if (!handleRestrictedAction("remover participação")) return;
@@ -1946,6 +1985,30 @@ export default function DetalhesEventoScreen() {
                   </Text>
                 </View>
               </View>
+              {unpaidRemainder != null ? (
+                <View
+                  style={[
+                    styles.financialItemCard,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <View style={styles.financialRow}>
+                    <Text
+                      style={[
+                        styles.financialLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Restante a receber:
+                    </Text>
+                    <Text
+                      style={[styles.financialValue, { color: colors.warning }]}
+                    >
+                      {formatCurrency(unpaidRemainder)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               <EventPaymentProgress
                 eventValue={event.value}
                 paidAmount={event.paid_amount}
@@ -1953,6 +2016,30 @@ export default function DetalhesEventoScreen() {
                 trackColor={colors.border}
                 textColor={colors.textSecondary}
               />
+              {showRemainingPaidPrompt ? (
+                <View
+                  style={[
+                    styles.remainingPaidCard,
+                    { borderColor: `${colors.warning}66`, backgroundColor: `${colors.warning}14` },
+                  ]}
+                >
+                  <Text style={[styles.remainingPaidText, { color: colors.text }]}>
+                    O show já passou. Ainda falta receber {formatCurrency(unpaidRemainder ?? 0)}.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.remainingPaidButton, { backgroundColor: colors.success }]}
+                    onPress={handleMarkRemainingPaid}
+                    disabled={isMarkingRemainingPaid}
+                    activeOpacity={0.85}
+                  >
+                    {isMarkingRemainingPaid ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.remainingPaidButtonText}>Recebi o restante</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
               <View
                 style={[
@@ -2022,6 +2109,27 @@ export default function DetalhesEventoScreen() {
                   </Text>
                 </View>
               </View>
+              {unpaidRemainder != null ? (
+                <View
+                  style={[styles.financialItemCard, { borderColor: colors.border }]}
+                >
+                  <View style={styles.financialRow}>
+                    <Text
+                      style={[
+                        styles.financialLabel,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Restante a receber:
+                    </Text>
+                    <Text
+                      style={[styles.financialValue, { color: colors.warning }]}
+                    >
+                      {formatCurrency(unpaidRemainder)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               <EventPaymentProgress
                 eventValue={event.value}
                 paidAmount={event.paid_amount}
@@ -2029,6 +2137,30 @@ export default function DetalhesEventoScreen() {
                 trackColor={colors.border}
                 textColor={colors.textSecondary}
               />
+              {showRemainingPaidPrompt ? (
+                <View
+                  style={[
+                    styles.remainingPaidCard,
+                    { borderColor: `${colors.warning}66`, backgroundColor: `${colors.warning}14` },
+                  ]}
+                >
+                  <Text style={[styles.remainingPaidText, { color: colors.text }]}>
+                    O show já passou. Ainda falta receber {formatCurrency(unpaidRemainder ?? 0)}.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.remainingPaidButton, { backgroundColor: colors.success }]}
+                    onPress={handleMarkRemainingPaid}
+                    disabled={isMarkingRemainingPaid}
+                    activeOpacity={0.85}
+                  >
+                    {isMarkingRemainingPaid ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.remainingPaidButtonText}>Recebi o restante</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </>
           ) : (
             <View style={styles.lockedFinancialContainer}>
@@ -3195,6 +3327,31 @@ const styles = StyleSheet.create({
   },
   financialTotalCard: {
     marginTop: 2,
+  },
+  remainingPaidCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  remainingPaidText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  remainingPaidButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  remainingPaidButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
   participantLine: {
     fontSize: 14,

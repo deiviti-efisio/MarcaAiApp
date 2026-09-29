@@ -28,7 +28,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import OptimizedImage from "../../components/OptimizedImage";
-import EventPaymentProgress from "../../components/EventPaymentProgress";
+import EventPaymentProgress, {
+  getUnpaidRemainder,
+} from "../../components/EventPaymentProgress";
 import PermissionModal from "../../components/PermissionModal";
 import TransientToast from "../../components/TransientToast";
 import { useActiveArtistContext } from "../../contexts/ActiveArtistContext";
@@ -46,6 +48,7 @@ import {
   getEventById,
   getEventsByMonthWithRole,
   rememberAgendaEventsForSuggestions,
+  updateEvent,
 } from "../../services/supabase/eventService";
 import {
   accountNameForArtist,
@@ -516,6 +519,9 @@ export default function AgendaScreen() {
   /** Evita múltiplos toques no FAB / dia vazio abrindo várias telas de novo evento. */
   const isOpeningAddEventRef = useRef(false);
   const [isOpeningAddEventScreen, setIsOpeningAddEventScreen] = useState(false);
+  const [markingRemainingEventId, setMarkingRemainingEventId] = useState<
+    string | null
+  >(null);
 
   const openAddEventScreen = useCallback(
     async (navParams: {
@@ -1168,6 +1174,47 @@ export default function AgendaScreen() {
     });
   };
 
+  const handleMarkRemainingPaidFromAgenda = async (item: {
+    id: string;
+    value?: number | null;
+    paid_amount?: number | null;
+    convite_participacao_id?: string | null;
+  }) => {
+    if (!currentUserId) return;
+    if (item.convite_participacao_id) {
+      Alert.alert(
+        "Não foi possível atualizar",
+        "Este evento veio de um convite e não pode ser alterado.",
+      );
+      return;
+    }
+    const total = Number(item.value);
+    if (!Number.isFinite(total) || total <= 0) return;
+    setMarkingRemainingEventId(item.id);
+    try {
+      const result = await updateEvent(
+        item.id,
+        { paid_amount: total },
+        currentUserId,
+      );
+      if (!result.success) {
+        Alert.alert(
+          "Erro",
+          result.error || "Não foi possível marcar o restante como recebido.",
+        );
+        return;
+      }
+      cacheService.invalidateEventsCache(
+        activeArtist?.id || "",
+        currentYear,
+        currentMonth,
+      );
+      await loadEvents(true);
+    } finally {
+      setMarkingRemainingEventId(null);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([loadEvents(true), checkUserRole()]);
@@ -1633,6 +1680,7 @@ export default function AgendaScreen() {
     const conviteIdForCard =
       item.convite_participacao_id || conviteIdByEventId[item.id];
     const isInvitedEvent = !!conviteIdForCard;
+    const unpaidRemainder = getUnpaidRemainder(item.value, item.paid_amount);
     const fromParticipantMap = participantAvatarsByEventId[item.id] || [];
     const collabAvatars: {
       profile_url: string | null;
@@ -1758,6 +1806,34 @@ export default function AgendaScreen() {
                   {item.confirmed ? "Confirmado" : "A Confirmar"}
                 </Text>
               </View>
+              {canSeeEventValue(item) &&
+              showEventValues &&
+              unpaidRemainder != null ? (
+                <TouchableOpacity
+                  style={[
+                    styles.glLabelPill,
+                    {
+                      borderColor: `${colors.warning}88`,
+                      backgroundColor: `${colors.warning}22`,
+                    },
+                  ]}
+                  onPress={() => handleEditEventFromDay(item)}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                >
+                  <Ionicons
+                    name="alert-circle"
+                    size={13}
+                    color={colors.warning}
+                  />
+                  <Text
+                    style={[styles.glLabelText, { color: colors.warning }]}
+                    numberOfLines={1}
+                  >
+                    A receber
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {metaLine ? (
@@ -1850,14 +1926,35 @@ export default function AgendaScreen() {
               </View>
             </View>
             {canSeeEventValue(item) && showEventValues ? (
-              <EventPaymentProgress
-                eventValue={item.value}
-                paidAmount={item.paid_amount}
-                barColor={colors.success}
-                trackColor={colors.border}
-                textColor={colors.textSecondary}
-                compact
-              />
+              <>
+                <EventPaymentProgress
+                  eventValue={item.value}
+                  paidAmount={item.paid_amount}
+                  barColor={colors.success}
+                  trackColor={colors.border}
+                  textColor={colors.textSecondary}
+                  compact
+                />
+                {canEditEventFromDay(item) && unpaidRemainder != null ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.remainingPaidAgendaButton,
+                      { backgroundColor: colors.success },
+                    ]}
+                    onPress={() => handleMarkRemainingPaidFromAgenda(item)}
+                    disabled={markingRemainingEventId === item.id}
+                    activeOpacity={0.85}
+                  >
+                    {markingRemainingEventId === item.id ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.remainingPaidAgendaButtonText}>
+                        Recebi o restante ({formatEventValueBRL(unpaidRemainder)})
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+              </>
             ) : null}
           </View>
         </View>
@@ -3874,6 +3971,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: "center",
+  },
+  remainingPaidAgendaButton: {
+    marginTop: 10,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 40,
+  },
+  remainingPaidAgendaButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
   },
   lockedValueContainer: {
     flexDirection: "row",
