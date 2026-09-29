@@ -1583,6 +1583,12 @@ export default function AgendaScreen() {
       return null;
     }
 
+    const [year, month, day] = String(item.event_date || "").split("-").map(Number);
+    const eventDate = new Date(year, month - 1, day);
+    const dayOfWeek = eventDate.toLocaleDateString("pt-BR", {
+      weekday: "short",
+    });
+
     const conviteIdForCard =
       item.convite_participacao_id || conviteIdByEventId[item.id];
     const isInvitedEvent = !!conviteIdForCard;
@@ -1633,6 +1639,16 @@ export default function AgendaScreen() {
         activeOpacity={canSeeEventValue(item) ? 0.7 : 1}
       >
         <View style={styles.showContent}>
+          <View
+            style={[
+              styles.showDateSection,
+              { backgroundColor: colors.primary },
+            ]}
+          >
+            <Text style={styles.showDateNumber}>{day}</Text>
+            <Text style={styles.showDateText}>{dayOfWeek}</Text>
+          </View>
+
           <View style={styles.showInfoSection}>
             <View style={styles.eventNameContainer}>
               <Text
@@ -2267,21 +2283,11 @@ export default function AgendaScreen() {
 
             <View style={styles.showsSection}>
               {eventsGroupedByDay.length > 0 ? (
-                eventsGroupedByDay.map((group) => (
-                  <View key={group.dateString} style={styles.dayGroup}>
-                    <Text
-                      style={[
-                        styles.dayGroupTitle,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {group.title}
-                    </Text>
-                    {group.events.map((item) => (
-                      <View key={item.id}>{renderShow({ item })}</View>
-                    ))}
-                  </View>
-                ))
+                eventsGroupedByDay.flatMap((group) =>
+                  group.events.map((item) => (
+                    <View key={item.id}>{renderShow({ item })}</View>
+                  )),
+                )
               ) : (
                 <View style={styles.noShowsContainer}>
                   <Ionicons

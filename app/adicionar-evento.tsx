@@ -27,6 +27,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { persistViewedMonth } from '../contexts/SharedTabMonthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { getArtists } from '../services/supabase/artistService';
@@ -527,7 +528,11 @@ export default function AdicionarEventoScreen() {
       const result = await createEvent(eventData);
 
       if (result.success) {
-        router.replace({ pathname: '/(tabs)/agenda', params: { eventCreatedToast: '1' } });
+        persistViewedMonth(form.data);
+        router.replace({
+          pathname: '/(tabs)/agenda',
+          params: { eventCreatedToast: '1' },
+        });
       } else {
         const errMsg = result.error ?? '';
         if (!maybeShowConnectionError(null, errMsg)) {
@@ -621,11 +626,28 @@ export default function AdicionarEventoScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton} disabled={isLoading}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Adicionar Evento</Text>
-        <View style={styles.placeholder} />
+        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+          Adicionar Evento
+        </Text>
+        <TouchableOpacity
+          style={[
+            styles.headerSaveButton,
+            { backgroundColor: colors.primary },
+            isLoading && styles.saveButtonDisabled,
+          ]}
+          onPress={() => void handleSave()}
+          disabled={isLoading}
+          accessibilityLabel="Salvar evento"
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.headerSaveButtonText}>Salvar</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView 
@@ -1287,13 +1309,26 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    minWidth: 72,
   },
   title: {
+    flex: 1,
     fontSize: 18,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
-  placeholder: {
-    width: 40,
+  headerSaveButton: {
+    minWidth: 72,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSaveButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   content: {
     flex: 1,
