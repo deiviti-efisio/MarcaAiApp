@@ -117,7 +117,7 @@ export default function AgendaScreen() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
-  const [isCalendarVisible, setIsCalendarVisible] = useState(true);
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [showRemovedModal, setShowRemovedModal] = useState(false);
   const [showDeletedEventModal, setShowDeletedEventModal] = useState(false);
   const [availableArtists, setAvailableArtists] = useState<any[]>([]);
@@ -383,8 +383,8 @@ export default function AgendaScreen() {
         ? `${AGENDA_CALENDAR_VISIBLE_KEY}:${currentUserId}`
         : AGENDA_CALENDAR_VISIBLE_KEY;
       const saved = await AsyncStorage.getItem(key);
-      if (!cancelled && saved != null) {
-        setIsCalendarVisible(saved !== "false");
+      if (!cancelled) {
+        setIsCalendarVisible(saved === "true");
       }
     };
     void loadCalendarVisible();
@@ -503,10 +503,11 @@ export default function AgendaScreen() {
       if (!event.event_date) {
         return;
       }
-      if (!map[event.event_date]) {
-        map[event.event_date] = [];
+      const dateKey = String(event.event_date).slice(0, 10);
+      if (!map[dateKey]) {
+        map[dateKey] = [];
       }
-      map[event.event_date].push(event);
+      map[dateKey].push(event);
     });
     return map;
   }, [events]);
@@ -1125,6 +1126,45 @@ export default function AgendaScreen() {
         Alert.alert("Erro", "Erro ao verificar permissões");
       }
     }
+  };
+
+  const canEditEventFromDay = (event: {
+    created_by?: string | null;
+    convite_participacao_id?: string | null;
+  }) => {
+    if (event.convite_participacao_id) return false;
+    if (currentUserRole === "admin") return true;
+    if (
+      currentUserRole === "vendedor" &&
+      !!currentUserId &&
+      event.created_by === currentUserId
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  const handleEditEventFromDay = (event: {
+    id: string;
+    convite_participacao_id?: string | null;
+    created_by?: string | null;
+  }) => {
+    if (event.convite_participacao_id) {
+      Alert.alert(
+        "Edição bloqueada",
+        "Este evento veio de um convite de participação e não pode ser alterado após o aceite.",
+      );
+      return;
+    }
+    if (!canEditEventFromDay(event)) {
+      setShowPermissionModal(true);
+      return;
+    }
+    closeDayModal();
+    router.push({
+      pathname: "/editar-evento",
+      params: { eventId: event.id },
+    });
   };
 
   const onRefresh = async () => {
@@ -2266,12 +2306,19 @@ export default function AgendaScreen() {
                             {day.dayNumber}
                           </Text>
                           {hasEvents && (
-                            <View
-                              style={[
-                                styles.eventIndicator,
-                                { backgroundColor: colors.primary },
-                              ]}
-                            />
+                            <View style={styles.eventIndicatorsRow}>
+                              {Array.from({
+                                length: Math.min(dayEvents.length, 3),
+                              }).map((_, dotIndex) => (
+                                <View
+                                  key={`${day.dateString}-dot-${dotIndex}`}
+                                  style={[
+                                    styles.eventIndicator,
+                                    { backgroundColor: colors.primary },
+                                  ]}
+                                />
+                              ))}
+                            </View>
                           )}
                         </TouchableOpacity>
                       );
@@ -2368,59 +2415,98 @@ export default function AgendaScreen() {
               bounces={false}
             >
               {selectedDayEvents.map((event) => (
-                <TouchableOpacity
+                <View
                   key={event.id}
                   style={[styles.dayEventCard, { borderColor: colors.border }]}
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    closeDayModal();
-                    handleEventPress(event.id);
-                  }}
                 >
                   <View style={styles.dayEventHeader}>
-                    <Ionicons
-                      name="musical-notes"
-                      size={18}
-                      color={colors.primary}
-                    />
-                    <Text style={[styles.dayEventName, { color: colors.text }]}>
-                      {event.name}
-                    </Text>
-                  </View>
-                  <View style={styles.dayEventMeta}>
-                    {hasDefinedTime(event.start_time, event.end_time) ? (
-                      <>
+                    <TouchableOpacity
+                      style={styles.dayEventMainPress}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        closeDayModal();
+                        handleEventPress(event.id);
+                      }}
+                    >
+                      <Ionicons
+                        name="musical-notes"
+                        size={18}
+                        color={colors.primary}
+                      />
+                      <Text
+                        style={[styles.dayEventName, { color: colors.text }]}
+                      >
+                        {event.name}
+                      </Text>
+                    </TouchableOpacity>
+                    {canEditEventFromDay(event) ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.dayEventEditButton,
+                          { borderColor: colors.primary },
+                        ]}
+                        onPress={() => handleEditEventFromDay(event)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
+                      >
                         <Ionicons
-                          name="time-outline"
+                          name="create-outline"
                           size={16}
-                          color={colors.textSecondary}
+                          color={colors.primary}
                         />
                         <Text
                           style={[
-                            styles.dayEventTime,
-                            { color: colors.textSecondary },
+                            styles.dayEventEditText,
+                            { color: colors.primary },
                           ]}
                         >
-                          {toHHMM(event.start_time)}
-                          {toHHMM(event.end_time) &&
-                          toHHMM(event.end_time) !== toHHMM(event.start_time)
-                            ? ` - ${toHHMM(event.end_time)}`
-                            : ""}
+                          Editar
                         </Text>
-                      </>
+                      </TouchableOpacity>
                     ) : null}
                   </View>
-                  {currentUserRole === "viewer" && event.viewer_description ? (
-                    <Text
-                      style={[
-                        styles.dayEventViewerDescription,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {event.viewer_description}
-                    </Text>
-                  ) : null}
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      closeDayModal();
+                      handleEventPress(event.id);
+                    }}
+                  >
+                    <View style={styles.dayEventMeta}>
+                      {hasDefinedTime(event.start_time, event.end_time) ? (
+                        <>
+                          <Ionicons
+                            name="time-outline"
+                            size={16}
+                            color={colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.dayEventTime,
+                              { color: colors.textSecondary },
+                            ]}
+                          >
+                            {toHHMM(event.start_time)}
+                            {toHHMM(event.end_time) &&
+                            toHHMM(event.end_time) !== toHHMM(event.start_time)
+                              ? ` - ${toHHMM(event.end_time)}`
+                              : ""}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
+                    {currentUserRole === "viewer" && event.viewer_description ? (
+                      <Text
+                        style={[
+                          styles.dayEventViewerDescription,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        {event.viewer_description}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                </View>
               ))}
 
               {selectedDayEvents.length === 0 && (
@@ -3639,11 +3725,18 @@ const styles = StyleSheet.create({
   calendarDayTodayText: {
     fontWeight: "700",
   },
+  eventIndicatorsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    marginTop: 4,
+    minHeight: 6,
+  },
   eventIndicator: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    marginTop: 4,
   },
   showCard: {
     borderRadius: 14,
@@ -3973,10 +4066,30 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 8,
   },
+  dayEventMainPress: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
   dayEventName: {
     fontSize: 16,
     fontWeight: "600",
     flex: 1,
+  },
+  dayEventEditButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dayEventEditText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   dayEventMeta: {
     flexDirection: "row",

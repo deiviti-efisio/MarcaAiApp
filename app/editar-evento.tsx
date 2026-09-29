@@ -296,6 +296,8 @@ export default function EditarEventoScreen() {
   } | null>(null);
   const [removeContractRequested, setRemoveContractRequested] = useState(false);
   const [isInviteParticipationEvent, setIsInviteParticipationEvent] = useState(false);
+  const [loadedAsUnconfirmed, setLoadedAsUnconfirmed] = useState(false);
+  const [showConfirmedCongratsModal, setShowConfirmedCongratsModal] = useState(false);
 
   const getContractDisplayName = (url: string) => {
     const last = url.split('?')[0]?.split('#')[0]?.split('/').pop() || 'contrato';
@@ -368,6 +370,7 @@ export default function EditarEventoScreen() {
           descricaoViewer: event.viewer_description || '',
           tag: event.tag || 'evento', // Carregar tag existente ou usar padrão
         });
+        setLoadedAsUnconfirmed(!event.confirmed);
         setRemoteContractUrl(event.contract_url ?? null);
         setRemoteContractFileName((event as any)?.contract_file_name ?? null);
         setIsInviteParticipationEvent(Boolean(event.convite_participacao_id));
@@ -500,8 +503,12 @@ export default function EditarEventoScreen() {
             );
           }
         }
-        setPendingEventUpdatedToast('Evento atualizado com sucesso!');
-        router.back();
+        if (loadedAsUnconfirmed && form.status === 'confirmado') {
+          setShowConfirmedCongratsModal(true);
+        } else {
+          setPendingEventUpdatedToast('Evento atualizado com sucesso!');
+          router.back();
+        }
       } else {
         const errorDetail =
           typeof result.error === 'string'
@@ -964,6 +971,42 @@ export default function EditarEventoScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showConfirmedCongratsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowConfirmedCongratsModal(false);
+          setPendingEventUpdatedToast('Evento confirmado. Muito sucesso!');
+          router.back();
+        }}
+      >
+        <View style={styles.congratsOverlay}>
+          <View style={[styles.congratsCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.congratsIconWrap}>
+              <Ionicons name="checkmark-circle" size={72} color={colors.success} />
+            </View>
+            <Text style={[styles.congratsTitle, { color: colors.text }]}>
+              Parabéns!
+            </Text>
+            <Text style={[styles.congratsMessage, { color: colors.textSecondary }]}>
+              Evento confirmado. Muito sucesso no seu show — vai ser incrível!
+            </Text>
+            <TouchableOpacity
+              style={[styles.congratsButton, { backgroundColor: colors.success }]}
+              activeOpacity={0.85}
+              onPress={() => {
+                setShowConfirmedCongratsModal(false);
+                setPendingEventUpdatedToast('Evento confirmado. Muito sucesso!');
+                router.back();
+              }}
+            >
+              <Text style={styles.congratsButtonText}>Continuar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal para seleção de data */}
       <Modal
@@ -1469,5 +1512,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  congratsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  congratsCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+  },
+  congratsIconWrap: {
+    marginBottom: 12,
+  },
+  congratsTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  congratsMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+  congratsButton: {
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  congratsButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

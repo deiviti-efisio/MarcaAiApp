@@ -6,7 +6,7 @@ App mobile para **artistas e equipes** organizarem agenda, eventos, finanças, c
 |------|----------------|
 | iOS | `com.marcaai.app` |
 | Android | `com.marcaaipro.app` |
-| Versão do app (`app.json`) | **2.0.4** (iOS build **106**, Android versionCode **52**) |
+| Versão do app (`app.json`) | **2.0.5** (iOS build **107**, Android versionCode **53**) |
 | Deep link | esquema `marcaai://` |
 
 ---
