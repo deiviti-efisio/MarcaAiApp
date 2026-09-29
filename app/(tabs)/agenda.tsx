@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import OptimizedImage from "../../components/OptimizedImage";
+import EventPaymentProgress from "../../components/EventPaymentProgress";
 import PermissionModal from "../../components/PermissionModal";
 import TransientToast from "../../components/TransientToast";
 import { useActiveArtistContext } from "../../contexts/ActiveArtistContext";
@@ -1848,6 +1849,16 @@ export default function AgendaScreen() {
                 </View>
               </View>
             </View>
+            {canSeeEventValue(item) && showEventValues ? (
+              <EventPaymentProgress
+                eventValue={item.value}
+                paidAmount={item.paid_amount}
+                barColor={colors.success}
+                trackColor={colors.border}
+                textColor={colors.textSecondary}
+                compact
+              />
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -2504,6 +2515,16 @@ export default function AgendaScreen() {
                       >
                         {event.viewer_description}
                       </Text>
+                    ) : null}
+                    {canSeeEventValue(event) ? (
+                      <EventPaymentProgress
+                        eventValue={event.value}
+                        paidAmount={event.paid_amount}
+                        barColor={colors.success}
+                        trackColor={colors.border}
+                        textColor={colors.textSecondary}
+                        compact
+                      />
                     ) : null}
                   </TouchableOpacity>
                 </View>

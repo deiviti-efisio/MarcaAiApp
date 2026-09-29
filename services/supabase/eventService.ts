@@ -58,6 +58,8 @@ export interface Event {
   start_time: string;
   end_time: string;
   value?: number;
+  /** Valor já pago/antecipado. Sem valor (null/0) o app não mostra progresso. */
+  paid_amount?: number | null;
   city?: string;
   state_uf?: string | null;
   contractor_phone?: string;
@@ -106,6 +108,7 @@ export interface CreateEventData {
   start_time: string;
   end_time: string;
   value?: number;
+  paid_amount?: number | null;
   city?: string;
   state_uf?: string | null;
   contractor_phone?: string;
@@ -128,6 +131,7 @@ export interface UpdateEventData {
   description?: string;
   viewer_description?: string | null;
   value?: number;
+  paid_amount?: number | null;
   city?: string;
   state_uf?: string | null;
   contractor_phone?: string;
@@ -167,6 +171,7 @@ export const createEvent = async (
         end_time: eventData.end_time,
         // Preservar R$ 0,00 (0 é um valor válido; `|| null` convertia 0 em null)
         value: eventData.value ?? null,
+        paid_amount: eventData.paid_amount ?? null,
         city: eventData.city || null,
         state_uf:
           eventData.state_uf != null && String(eventData.state_uf).trim()

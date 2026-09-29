@@ -42,10 +42,12 @@ import {
 } from '../utils/currencyBRLInput';
 import { maybeShowConnectionError } from '../utils/maybeShowConnectionError';
 import BrazilStatePickerModal, { BrazilStateFieldButton } from '../components/BrazilStatePickerModal';
+import EventPaymentProgress, { parseOptionalPaidAmount } from '../components/EventPaymentProgress';
 
 interface EventoForm {
   nome: string;
   valor: string;
+  valorPago: string;
   cidade: string;
   estadoUf: string;
   telefoneContratante: string;
@@ -301,6 +303,7 @@ export default function AdicionarEventoScreen() {
   const [form, setForm] = useState<EventoForm>({
     nome: '',
     valor: '',
+    valorPago: '',
     cidade: '',
     estadoUf: '',
     telefoneContratante: '',
@@ -445,6 +448,12 @@ export default function AdicionarEventoScreen() {
       return;
     }
 
+    const paidAmount = parseOptionalPaidAmount(form.valorPago);
+    if (paidAmount != null && paidAmount > parseFloat(numericValue)) {
+      Alert.alert('Valor pago antecipado', 'O valor pago antecipado não pode ser maior que o valor do evento.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -513,6 +522,7 @@ export default function AdicionarEventoScreen() {
         start_time: form.horarioInicio.toTimeString().split(' ')[0].substring(0, 5), // HH:MM
         end_time: form.horarioFim.toTimeString().split(' ')[0].substring(0, 5), // HH:MM
         value: numericValue !== '' ? parseFloat(numericValue) : undefined,
+        paid_amount: paidAmount,
         city: form.cidade.trim() || undefined,
         state_uf: form.estadoUf.trim()
           ? form.estadoUf.trim().toUpperCase().slice(0, 2)
@@ -691,7 +701,7 @@ export default function AdicionarEventoScreen() {
 
         {/* Valor */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Valor (R$) *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Valor do evento *</Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
             value={form.valor}
@@ -706,6 +716,29 @@ export default function AdicionarEventoScreen() {
             autoCapitalize="none"
             returnKeyType="done"
             blurOnSubmit={true}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={[styles.label, { color: colors.text }]}>Valor pago antecipado (Opcional)</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+            value={form.valorPago}
+            onChangeText={(text) => updateForm('valorPago', formatCurrencyBRLInput(text))}
+            placeholder="Informe o valor já recebido"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="numeric"
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="done"
+            blurOnSubmit={true}
+          />
+          <EventPaymentProgress
+            eventValue={extractNumericValueString(form.valor)}
+            paidAmount={parseOptionalPaidAmount(form.valorPago)}
+            barColor={colors.success}
+            trackColor={colors.border}
+            textColor={colors.textSecondary}
           />
         </View>
 

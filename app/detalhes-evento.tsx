@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import OptimizedImage from "../components/OptimizedImage";
 import PermissionModal from "../components/PermissionModal";
+import EventPaymentProgress from "../components/EventPaymentProgress";
 import TransientToast from "../components/TransientToast";
 import { useTheme } from "../contexts/ThemeContext";
 import { formatBrazilStateChoice } from "../lib/brazilGeo";
@@ -1936,7 +1937,7 @@ export default function DetalhesEventoScreen() {
                       { color: colors.textSecondary },
                     ]}
                   >
-                    Valor do Evento:
+                    Valor do evento:
                   </Text>
                   <Text
                     style={[styles.financialValue, { color: colors.success }]}
@@ -1945,11 +1946,18 @@ export default function DetalhesEventoScreen() {
                   </Text>
                 </View>
               </View>
+              <EventPaymentProgress
+                eventValue={event.value}
+                paidAmount={event.paid_amount}
+                barColor={colors.success}
+                trackColor={colors.border}
+                textColor={colors.textSecondary}
+              />
 
               <View
                 style={[
                   styles.financialItemCard,
-                  { borderColor: colors.border },
+                  { borderColor: colors.border, marginTop: 8 },
                 ]}
               >
                 <View style={styles.financialRow}>
@@ -1994,25 +2002,34 @@ export default function DetalhesEventoScreen() {
               </View>
             </>
           ) : ownEventValueVisible ? (
-            <View
-              style={[styles.financialItemCard, { borderColor: colors.border }]}
-            >
-              <View style={styles.financialRow}>
-                <Text
-                  style={[
-                    styles.financialLabel,
-                    { color: colors.textSecondary },
-                  ]}
-                >
-                  Valor do Evento:
-                </Text>
-                <Text
-                  style={[styles.financialValue, { color: colors.success }]}
-                >
-                  {formatCurrency(event.value || 0)}
-                </Text>
+            <>
+              <View
+                style={[styles.financialItemCard, { borderColor: colors.border }]}
+              >
+                <View style={styles.financialRow}>
+                  <Text
+                    style={[
+                      styles.financialLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Valor do evento:
+                  </Text>
+                  <Text
+                    style={[styles.financialValue, { color: colors.success }]}
+                  >
+                    {formatCurrency(event.value || 0)}
+                  </Text>
+                </View>
               </View>
-            </View>
+              <EventPaymentProgress
+                eventValue={event.value}
+                paidAmount={event.paid_amount}
+                barColor={colors.success}
+                trackColor={colors.border}
+                textColor={colors.textSecondary}
+              />
+            </>
           ) : (
             <View style={styles.lockedFinancialContainer}>
               <Ionicons

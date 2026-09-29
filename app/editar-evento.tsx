@@ -21,15 +21,18 @@ import { removeEventContractByUrl, uploadEventContractFile } from '../services/s
 import { getEventById, updateEvent, UpdateEventData } from '../services/supabase/eventService';
 import {
     extractNumericValueString,
+    formatCurrencyBRLFromAmount,
     formatCurrencyBRLInput,
 } from '../utils/currencyBRLInput';
 import BrazilStatePickerModal, { BrazilStateFieldButton } from '../components/BrazilStatePickerModal';
+import EventPaymentProgress, { parseOptionalPaidAmount } from '../components/EventPaymentProgress';
 import { parseCityUf } from '../lib/brazilGeo';
 import { setPendingEventUpdatedToast } from '../lib/pendingEventUpdatedToast';
 
 interface EventoForm {
   nome: string;
   valor: string;
+  valorPago: string;
   cidade: string;
   estadoUf: string;
   telefoneContratante: string;
@@ -267,6 +270,7 @@ export default function EditarEventoScreen() {
   const [form, setForm] = useState<EventoForm>({
     nome: '',
     valor: '',
+    valorPago: '',
     cidade: '',
     estadoUf: '',
     telefoneContratante: '',
@@ -359,6 +363,7 @@ export default function EditarEventoScreen() {
         setForm({
           nome: event.name,
           valor: event.value != null ? formatCurrencyBRLInput((event.value * 100).toString()) : '',
+          valorPago: formatCurrencyBRLFromAmount(Number(event.paid_amount) || 0),
           cidade,
           estadoUf,
           telefoneContratante: maskPhone(event.contractor_phone || ''),
@@ -444,6 +449,17 @@ export default function EditarEventoScreen() {
       return;
     }
 
+    const paidAmount = parseOptionalPaidAmount(form.valorPago);
+    if (
+      paidAmount != null &&
+      numericValue &&
+      !isNaN(parseFloat(numericValue)) &&
+      paidAmount > parseFloat(numericValue)
+    ) {
+      Alert.alert('Valor pago antecipado', 'O valor pago antecipado não pode ser maior que o valor do evento.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -453,6 +469,7 @@ export default function EditarEventoScreen() {
         description: form.descricao.trim() || undefined,
         viewer_description: form.descricaoViewer.trim() || undefined,
         ...(isInviteParticipationEvent ? {} : { value: parseFloat(numericValue) }),
+        paid_amount: paidAmount,
         city: form.cidade.trim() || undefined,
         state_uf: form.estadoUf.trim()
           ? form.estadoUf.trim().toUpperCase().slice(0, 2)
@@ -597,7 +614,7 @@ export default function EditarEventoScreen() {
 
         {/* Valor */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: colors.text }]}>Valor (R$) *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Valor do evento *</Text>
           <TextInput
             style={[
               styles.input,
@@ -624,6 +641,31 @@ export default function EditarEventoScreen() {
             blurOnSubmit={true}
           />
         </View>
+
+        {!isInviteParticipationEvent ? (
+          <View style={[styles.inputGroup, { marginBottom: 32 }]}>
+            <Text style={[styles.label, { color: colors.text }]}>Valor pago antecipado (Opcional)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
+              value={form.valorPago}
+              onChangeText={(text) => updateForm('valorPago', formatCurrencyBRLInput(text))}
+              placeholder="Informe o valor já recebido"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numeric"
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
+            <EventPaymentProgress
+              eventValue={extractNumericValueString(form.valor)}
+              paidAmount={parseOptionalPaidAmount(form.valorPago)}
+              barColor={colors.success}
+              trackColor={colors.border}
+              textColor={colors.textSecondary}
+            />
+          </View>
+        ) : null}
 
         {/* Cidade e estado (opcionais) */}
         <View style={styles.inputGroup}>
