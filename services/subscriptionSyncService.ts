@@ -1,4 +1,5 @@
 import {
+  finishTransaction,
   getActiveSubscriptions,
   getAvailablePurchases,
   initConnection,
@@ -13,6 +14,36 @@ import { checkUserSubscriptionFromTable } from './supabase/userService';
 const PREMIUM_SKUS = ['marcaai_mensal_app', 'marcaai_anual_app'] as const;
 const MONTHLY_SKU = 'marcaai_mensal_app';
 const ANNUAL_SKU = 'marcaai_anual_app';
+const DAY_MS = 86_400_000;
+
+function isAnnualSku(productId: string): boolean {
+  return productId.includes('anual');
+}
+
+/** Teto do que o cliente pode enviar (mensal ~40 dias, anual ~400). */
+function clientExpiryCapMs(productId: string): number {
+  return Date.now() + (isAnnualSku(productId) ? 400 : 40) * DAY_MS;
+}
+
+/**
+ * Data de expiração enviada ao backend.
+ * Android quase nunca traz expiry da Play: usa 32/400 dias.
+ * iOS usa a data da StoreKit, limitada ao teto (evita “10 anos” forjados).
+ */
+export function resolveExpiresAtMs(
+  productId: string,
+  storeExpiresMs: number | null | undefined,
+  platform: 'ios' | 'android',
+): number {
+  const cap = clientExpiryCapMs(productId);
+  if (storeExpiresMs != null && Number.isFinite(storeExpiresMs) && storeExpiresMs > Date.now()) {
+    return Math.min(storeExpiresMs, cap);
+  }
+  if (platform === 'android') {
+    return Date.now() + (isAnnualSku(productId) ? 400 : 32) * DAY_MS;
+  }
+  return Date.now() + 2 * DAY_MS;
+}
 
 /**
  * iOS (StoreKit 2): a linha de assinatura pode vir com `productId` ainda mensal enquanto o usuário
@@ -88,7 +119,7 @@ function purchaseToPayload(purchase: Purchase, source: SyncPayload['source']): S
       transactionId: p.transactionId ?? null,
       originalTransactionId: p.originalTransactionIdentifierIOS ?? p.transactionId ?? null,
       purchaseToken: purchase.purchaseToken ?? null,
-      expiresAtMs: p.expirationDateIOS ?? null,
+      expiresAtMs: resolveExpiresAtMs(effectivePremiumSkuForIos(p), p.expirationDateIOS ?? null, 'ios'),
       purchasedAtMs: p.originalTransactionDateIOS ?? purchase.transactionDate,
       autoRenew: purchase.isAutoRenewing,
     };
@@ -101,10 +132,16 @@ function purchaseToPayload(purchase: Purchase, source: SyncPayload['source']): S
     transactionId: purchase.transactionId ?? null,
     originalTransactionId: purchase.purchaseToken ?? purchase.transactionId ?? null,
     purchaseToken: purchase.purchaseToken ?? null,
-    expiresAtMs: null,
+    expiresAtMs: resolveExpiresAtMs(purchase.productId, null, 'android'),
     purchasedAtMs: purchase.transactionDate,
     autoRenew: purchase.isAutoRenewing,
   };
+}
+
+let lastSyncError: string | null = null;
+
+export function getLastSubscriptionSyncError(): string | null {
+  return lastSyncError;
 }
 
 async function rpcSync(payload: SyncPayload): Promise<boolean> {
@@ -132,14 +169,17 @@ async function rpcSync(payload: SyncPayload): Promise<boolean> {
 
   if (error) {
     console.warn('[subscriptionSync] rpc error', error.message);
+    lastSyncError = error.message;
     return false;
   }
 
   const row = data as { ok?: boolean; error?: string } | null;
   if (row && row.ok === false && row.error) {
     console.warn('[subscriptionSync] sync failed', row.error);
+    lastSyncError = row.error;
     return false;
   }
+  lastSyncError = null;
   return row?.ok === true;
 }
 
@@ -203,7 +243,7 @@ function activeSubscriptionToPayload(sub: ActiveSubscription): SyncPayload {
       transactionId: sub.transactionId ?? null,
       originalTransactionId: iosSub.originalTransactionIdentifierIOS ?? sub.transactionId ?? null,
       purchaseToken: sub.purchaseToken ?? null,
-      expiresAtMs: sub.expirationDateIOS ?? null,
+      expiresAtMs: resolveExpiresAtMs(productId, sub.expirationDateIOS ?? null, 'ios'),
       purchasedAtMs: sub.transactionDate,
       autoRenew: sub.renewalInfoIOS?.willAutoRenew ?? true,
     };
@@ -216,7 +256,7 @@ function activeSubscriptionToPayload(sub: ActiveSubscription): SyncPayload {
     transactionId: sub.transactionId ?? null,
     originalTransactionId: sub.purchaseTokenAndroid ?? sub.purchaseToken ?? sub.transactionId ?? null,
     purchaseToken: sub.purchaseTokenAndroid ?? sub.purchaseToken ?? null,
-    expiresAtMs: null,
+    expiresAtMs: resolveExpiresAtMs(productId, null, 'android'),
     purchasedAtMs: sub.transactionDate,
     autoRenew: sub.autoRenewingAndroid ?? true,
   };
@@ -382,4 +422,40 @@ export async function syncSubscriptionAfterRestore(): Promise<boolean> {
     return syncSubscriptionAfterPurchase(purchase);
   }
   return false;
+}
+
+const recentPurchaseKeys = new Map<string, number>();
+
+/**
+ * Finaliza a transação na loja e sincroniza o Premium (deduplica eventos duplos).
+ * Usar no host global e na tela Assine Premium.
+ */
+export async function handleStorePurchaseUpdate(purchase: Purchase): Promise<boolean> {
+  if (!PREMIUM_SKUS.includes(purchase.productId as (typeof PREMIUM_SKUS)[number])) {
+    return false;
+  }
+  const key = String(
+    purchase.transactionId || purchase.purchaseToken || `${purchase.productId}:${purchase.transactionDate ?? 0}`,
+  );
+  const now = Date.now();
+  const prev = recentPurchaseKeys.get(key);
+  if (prev != null && now - prev < 10_000) {
+    return true;
+  }
+  recentPurchaseKeys.set(key, now);
+
+  try {
+    await finishTransaction({ purchase, isConsumable: false });
+  } catch {
+    /* já finalizada */
+  }
+
+  const synced = await syncSubscriptionAfterPurchase(purchase);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.user?.id) {
+    await cacheService.invalidateUserData(session.user.id).catch(() => undefined);
+  }
+  return synced;
 }

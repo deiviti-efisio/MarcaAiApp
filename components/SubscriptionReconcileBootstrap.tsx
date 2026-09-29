@@ -1,8 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { Alert, AppState, InteractionManager } from 'react-native';
+import { Alert, AppState, InteractionManager, Platform } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { refreshSubscriptionStateFromDatabase } from '../services/subscriptionSyncService';
+import {
+  reconcileSubscriptionWithStore,
+  refreshSubscriptionStateFromDatabase,
+} from '../services/subscriptionSyncService';
 
 const DEBOUNCE_MS = 1600;
 const FOREGROUND_MIN_INTERVAL_MS = 2.5 * 60 * 1000;
@@ -28,17 +31,21 @@ export default function SubscriptionReconcileBootstrap() {
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
         InteractionManager.runAfterInteractions(() => {
-          void refreshSubscriptionStateFromDatabase()
-            .then((r) => {
-              if (r.paymentConfirmationFailed) {
-                Alert.alert(
-                  'Pagamento não confirmado',
-                  'Não recebemos a confirmação da loja no prazo esperado. Sua conta voltou ao plano gratuito. Verifique o pagamento ou, se já foi cobrado, use Restaurar compras em Assine Premium.',
-                  [{ text: 'OK' }],
-                );
-              }
-            })
-            .catch(() => {});
+          void (async () => {
+            const db = await refreshSubscriptionStateFromDatabase().catch(() => ({}));
+            if ((db as { paymentConfirmationFailed?: boolean }).paymentConfirmationFailed) {
+              Alert.alert(
+                'Pagamento não confirmado',
+                'Não recebemos a confirmação da loja no prazo esperado. Sua conta voltou ao plano gratuito. Verifique o pagamento ou, se já foi cobrado, use Restaurar compras em Assine Premium.',
+                [{ text: 'OK' }],
+              );
+            }
+            // Android: a Play não envia webhook; alinhar Premium com a loja ao abrir o app.
+            // iOS: o webhook ASN V2 é a fonte da verdade (evita folha de login da Apple no reconcile).
+            if (Platform.OS === 'android') {
+              await reconcileSubscriptionWithStore().catch(() => undefined);
+            }
+          })();
         });
       }, DEBOUNCE_MS);
     };

@@ -3,7 +3,6 @@ import { Ionicons } from '@expo/vector-icons';
 import {
   deepLinkToSubscriptions,
   ErrorCode,
-  finishTransaction,
   getActiveSubscriptions,
   getAvailablePurchases,
   purchaseErrorListener,
@@ -35,7 +34,8 @@ import { cacheService } from '../services/cacheService';
 import { userSubscriptionIsActive } from '../services/supabase/userService';
 import {
   effectivePremiumSkuForIos,
-  syncSubscriptionAfterPurchase,
+  getLastSubscriptionSyncError,
+  handleStorePurchaseUpdate,
   syncSubscriptionAfterRestore,
 } from '../services/subscriptionSyncService';
 import { LEGAL_URLS } from '../constants/legal';
@@ -437,8 +437,7 @@ export default function AssinePremiumScreen() {
 
         const userStartedThisFlow = userStartedPurchaseFlowRef.current;
         try {
-          await finishTransaction({ purchase, isConsumable: false });
-          const synced = await syncSubscriptionAfterPurchase(purchase);
+          const synced = await handleStorePurchaseUpdate(purchase);
           await syncPurchasedStatus();
           const {
             data: { user },
@@ -554,9 +553,27 @@ export default function AssinePremiumScreen() {
           request: { apple: { sku: product.id, appAccountToken: user.id } },
         });
       } else {
+        const {
+          data: { user: androidUser },
+        } = await supabase.auth.getUser();
+        if (!androidUser?.id) {
+          userStartedPurchaseFlowRef.current = false;
+          setProcessingSku(null);
+          Alert.alert(
+            'Entre na sua conta',
+            'Para assinar o Premium, faça login no app. Assim vinculamos sua assinatura ao seu perfil.',
+          );
+          return;
+        }
         await requestPurchase({
           type: 'subs',
-          request: { google: { skus: [product.id] } },
+          request: {
+            google: {
+              skus: [product.id],
+              obfuscatedAccountIdAndroid: androidUser.id,
+              obfuscatedProfileIdAndroid: androidUser.id,
+            },
+          },
         });
       }
     } catch (purchaseStartError) {
@@ -584,6 +601,14 @@ export default function AssinePremiumScreen() {
       } = await supabase.auth.getUser();
       if (user?.id) await cacheService.invalidateUserData(user.id);
       await refreshPlanFromDb();
+      const syncErr = getLastSubscriptionSyncError();
+      if (syncErr === 'subscription_belongs_to_other_account') {
+        Alert.alert(
+          'Assinatura de outra conta',
+          'Esta compra da loja já está vinculada a outro usuário do Marca AI. Entre na conta original ou fale com o suporte.',
+        );
+        return;
+      }
       Alert.alert(
         synced ? 'Compras restauradas' : 'Restauração concluída',
         synced

@@ -11,6 +11,7 @@ import AppSplashScreen from '../components/AppSplashScreen';
 import AuthDeepLinkHandler from '../components/AuthDeepLinkHandler';
 import ConnectionErrorModalHost from '../components/ConnectionErrorModalHost';
 import SubscriptionReconcileBootstrap from '../components/SubscriptionReconcileBootstrap';
+import IapPurchaseSyncHost from '../components/IapPurchaseSyncHost';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ActiveArtistProvider } from '../contexts/ActiveArtistContext';
 import { PermissionsProvider } from '../contexts/PermissionsContext';
@@ -40,6 +41,7 @@ function NavigationAndStack() {
     <NavigationThemeProvider value={isDarkMode ? DarkTheme : DefaultTheme}>
       <AuthDeepLinkHandler />
       <SubscriptionReconcileBootstrap />
+      <IapPurchaseSyncHost />
       <RootLayoutContent />
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
     </NavigationThemeProvider>

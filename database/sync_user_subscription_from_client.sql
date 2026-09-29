@@ -39,6 +39,9 @@ DECLARE
   v_billing text;
   v_plan_active boolean;
   v_product text;
+  v_cap_end timestamptz;
+  v_fallback_end timestamptz;
+  v_other_owner uuid;
 BEGIN
   uid := auth.uid();
   IF uid IS NULL THEN
@@ -93,6 +96,20 @@ BEGIN
     v_orig := v_tx;
   END IF;
 
+  SELECT s.user_id INTO v_other_owner
+  FROM public.user_subscriptions s
+  WHERE s.user_id IS DISTINCT FROM uid
+    AND s.status IN ('active', 'grace_period', 'pending')
+    AND (
+      s.store_latest_transaction_id = v_tx
+      OR (v_orig IS NOT NULL AND s.store_original_transaction_id = v_orig)
+    )
+  LIMIT 1;
+
+  IF v_other_owner IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'subscription_belongs_to_other_account');
+  END IF;
+
   v_now_ms := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint;
   v_source := COALESCE(nullif(btrim(p_source), ''), 'client_sync');
 
@@ -132,6 +149,23 @@ BEGIN
     WHEN 'marcaai_mensal' THEN 'monthly'
     ELSE 'monthly'
   END;
+
+  v_cap_end := clock_timestamp() + CASE v_billing
+    WHEN 'annual' THEN interval '400 days'
+    ELSE interval '40 days'
+  END;
+  v_fallback_end := clock_timestamp() + CASE
+    WHEN p_platform = 'android' THEN CASE v_billing
+      WHEN 'annual' THEN interval '400 days'
+      ELSE interval '32 days'
+    END
+    WHEN v_source = 'after_purchase' THEN interval '2 days'
+    ELSE interval '1 day'
+  END;
+
+  IF v_expires_from_store IS NOT NULL AND v_expires_from_store > v_cap_end THEN
+    v_expires_from_store := v_cap_end;
+  END IF;
 
   SELECT s.id INTO v_existing_tx_id
   FROM public.user_subscriptions s
@@ -173,7 +207,7 @@ BEGIN
           COALESCE(v_expires_from_store, to_timestamp(p_expires_at_ms / 1000.0))
         WHEN COALESCE((metadata->>'apple_store_confirmed')::boolean, false)
           AND status IN ('active', 'grace_period') THEN COALESCE(v_expires_from_store, expires_at)
-        ELSE COALESCE(v_expires_from_store, clock_timestamp() + interval '1 day')
+        ELSE COALESCE(v_expires_from_store, v_fallback_end)
       END,
       auto_renew = COALESCE(p_auto_renew, TRUE),
       metadata = CASE
@@ -255,7 +289,7 @@ BEGIN
           COALESCE(v_expires_from_store, to_timestamp(p_expires_at_ms / 1000.0))
         WHEN COALESCE((metadata->>'apple_store_confirmed')::boolean, false)
           AND status IN ('active', 'grace_period') THEN COALESCE(v_expires_from_store, expires_at)
-        ELSE COALESCE(v_expires_from_store, clock_timestamp() + interval '1 day')
+        ELSE COALESCE(v_expires_from_store, v_fallback_end)
       END,
       cancelled_at = NULL,
       store_original_transaction_id = v_orig,
@@ -348,7 +382,7 @@ BEGIN
   IF v_status = 'expired' THEN
     v_expires := v_expires_from_store;
   ELSE
-    v_expires := COALESCE(v_expires_from_store, clock_timestamp() + interval '1 day');
+    v_expires := COALESCE(v_expires_from_store, v_fallback_end);
   END IF;
 
   INSERT INTO public.user_subscriptions (
@@ -398,4 +432,4 @@ GRANT EXECUTE ON FUNCTION public.sync_user_subscription_from_client(
 ) TO service_role;
 
 COMMENT ON FUNCTION public.sync_user_subscription_from_client IS
-  'IAP: after_purchase libera active provisório imediato (iOS/Android), reconcile iOS não cria pending novo, e confirmação oficial da loja/webhook mantém ou ajusta status. store_expires_at_client_ms no metadata.';
+  'IAP: after_purchase libera active; Android usa 32/400 dias; iOS sem data da loja usa 2 dias até o webhook; teto de expiry no cliente; recusa transação já ligada a outra conta.';
