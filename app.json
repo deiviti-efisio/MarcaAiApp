@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Marca AI",
+    "name": "MeuShow",
     "slug": "APP_MOBILE_MARCA_AI",
-    "version": "2.0.5",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icone_app_1024.png",
     "scheme": "marcaai",
@@ -20,11 +20,13 @@
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "bundleIdentifier": "com.marcaai.app",
-      "buildNumber": "107",
+      "buildNumber": "109",
       "icon": "./assets/images/icone_app_1024.png",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Este app precisa acessar sua galeria de fotos para permitir que você selecione uma foto de perfil.",
         "NSCameraUsageDescription": "Este app precisa acessar sua câmera para permitir que você tire uma foto para o perfil.",
+        "NSMicrophoneUsageDescription": "O MeuShow usa o microfone para você criar eventos falando a data, o valor e o local.",
+        "NSSpeechRecognitionUsageDescription": "O MeuShow usa o reconhecimento de fala para preencher o evento a partir do que você disser.",
         "NSDocumentsFolderUsageDescription": "Este app precisa acessar a pasta de documentos para salvar e compartilhar relatórios em PDF.",
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
@@ -41,22 +43,27 @@
     },
     "android": {
       "package": "com.marcaaipro.app",
-      "versionCode": 53,
+      "versionCode": 55,
       "googleServicesFile": "./android/app/google-services.json",
       "icon": "./assets/images/icone_512x512.png",
       "adaptiveIcon": {
-        "backgroundColor": "#6B8CE8",
-        "foregroundImage": "./assets/images/icone_512x512.png"
+        "backgroundColor": "#6173EF",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "com.google.android.gms.permission.AD_ID"
       ],
       "intentFilters": [
         {
           "action": "VIEW",
-          "autoVerify": true,
+          "autoVerify": false,
           "data": [
             {
               "scheme": "marcaai"
@@ -104,8 +111,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "O Marca AI usa o microfone para você criar eventos falando a data, o valor e o local.",
-          "speechRecognitionPermission": "O Marca AI usa o reconhecimento de fala para preencher o evento a partir do que você disser.",
+          "microphonePermission": "O MeuShow usa o microfone para você criar eventos falando a data, o valor e o local.",
+          "speechRecognitionPermission": "O MeuShow usa o reconhecimento de fala para preencher o evento a partir do que você disser.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }
       ],
