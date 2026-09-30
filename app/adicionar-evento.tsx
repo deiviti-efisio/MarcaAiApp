@@ -27,6 +27,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import VoiceCreateEventModal from '../components/VoiceCreateEventModal';
 import { persistViewedMonth } from '../contexts/SharedTabMonthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
@@ -35,6 +36,7 @@ import { getCurrentUser } from '../services/supabase/authService';
 import { uploadEventContractFile } from '../services/supabase/eventContractUploadService';
 import { createEvent, CreateExpenseData, getRecentEventNameSuggestions, type RecentEventSuggestion } from '../services/supabase/eventService';
 import { useActiveArtist } from '../services/useActiveArtist';
+import type { SpokenEventDraft, SpokenFieldKey } from '../utils/parseSpokenEvent';
 import {
   extractNumericValueString,
   formatCurrencyBRLFromAmount,
@@ -282,6 +284,31 @@ const TimePickerComponent = ({ selectedTime, onTimeChange, colors }: { selectedT
   );
 };
 
+function firstRouteParam(v: string | string[] | undefined): string {
+  if (Array.isArray(v)) return v[0] ?? '';
+  return typeof v === 'string' ? v : '';
+}
+
+function dateFromYmdOrIso(value: string, fallback: Date): Date {
+  const ymd = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]), 12, 0, 0, 0);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function timeFromHHmm(hhmm: string, hourFallback: number, minuteFallback: number): Date {
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  const t = new Date();
+  if (!m) {
+    t.setHours(hourFallback, minuteFallback, 0, 0);
+    return t;
+  }
+  t.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return t;
+}
+
 export default function AdicionarEventoScreen() {
   const { colors } = useTheme();
   const params = useLocalSearchParams();
@@ -291,7 +318,27 @@ export default function AdicionarEventoScreen() {
   const currentDate = new Date();
   const selectedMonth = params.selectedMonth ? parseInt(params.selectedMonth as string) : currentDate.getMonth();
   const selectedYear = params.selectedYear ? parseInt(params.selectedYear as string) : currentDate.getFullYear();
-  const initialDate = params.selectedDate ? new Date(params.selectedDate as string) : new Date(selectedYear, selectedMonth, currentDate.getDate());
+  const voiceDateRaw = firstRouteParam(params.voiceDate);
+  const selectedDateRaw = firstRouteParam(params.selectedDate);
+  const initialDate = voiceDateRaw
+    ? dateFromYmdOrIso(voiceDateRaw, new Date(selectedYear, selectedMonth, currentDate.getDate()))
+    : selectedDateRaw
+      ? dateFromYmdOrIso(selectedDateRaw, new Date(selectedYear, selectedMonth, currentDate.getDate()))
+      : new Date(selectedYear, selectedMonth, currentDate.getDate());
+
+  const voiceNome = firstRouteParam(params.voiceNome);
+  const voiceValor = firstRouteParam(params.voiceValor);
+  const voiceValorPago = firstRouteParam(params.voiceValorPago);
+  const voiceCidade = firstRouteParam(params.voiceCidade);
+  const voiceStart = firstRouteParam(params.voiceStart);
+  const voiceEnd = firstRouteParam(params.voiceEnd);
+  const voiceTag = firstRouteParam(params.voiceTag) as 'ensaio' | 'evento' | 'reunião' | '';
+  const voiceConfirmed = firstRouteParam(params.voiceConfirmed);
+  const voiceTranscript = firstRouteParam(params.voiceTranscript);
+  const voiceDespesasRaw = firstRouteParam(params.voiceDespesas);
+  const voiceUf = firstRouteParam(params.voiceUf);
+  const voicePhone = firstRouteParam(params.voicePhone);
+  const voiceDesc = firstRouteParam(params.voiceDesc);
 
   // Criar horários padrão
   const createDefaultTime = (hour: number, minute: number = 0) => {
@@ -301,28 +348,44 @@ export default function AdicionarEventoScreen() {
   };
 
   const [form, setForm] = useState<EventoForm>({
-    nome: '',
-    valor: '',
-    valorPago: '',
-    cidade: '',
-    estadoUf: '',
-    telefoneContratante: '',
+    nome: voiceNome,
+    valor: voiceValor ? formatCurrencyBRLFromAmount(Number(voiceValor)) : '',
+    valorPago: voiceValorPago ? formatCurrencyBRLFromAmount(Number(voiceValorPago)) : '',
+    cidade: voiceCidade,
+    estadoUf: voiceUf,
+    telefoneContratante: voicePhone ? maskPhone(voicePhone) : '',
     data: initialDate,
-    // 00:00/00:00 significa "horário não definido"
-    horarioInicio: createDefaultTime(0, 0),
-    horarioFim: createDefaultTime(0, 0),
-    status: 'confirmado',
-    descricao: '',
+    horarioInicio: voiceStart
+      ? timeFromHHmm(voiceStart, 0, 0)
+      : createDefaultTime(0, 0),
+    horarioFim: voiceEnd ? timeFromHHmm(voiceEnd, 0, 0) : createDefaultTime(0, 0),
+    status: voiceConfirmed === '0' ? 'a_confirmar' : 'confirmado',
+    descricao: voiceDesc,
     descricaoViewer: '',
-    tag: 'evento', // Valor padrão
+    tag: voiceTag === 'ensaio' || voiceTag === 'reunião' || voiceTag === 'evento' ? voiceTag : 'evento',
   });
 
-  const [despesas, setDespesas] = useState<DespesaForm[]>([]);
+  const [despesas, setDespesas] = useState<DespesaForm[]>(() => {
+    if (!voiceDespesasRaw) return [];
+    try {
+      const parsed = JSON.parse(voiceDespesasRaw) as { nome?: string; valor?: number }[];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((item) => item && item.nome && item.valor != null && Number(item.valor) > 0)
+        .map((item) => ({
+          nome: String(item.nome),
+          valor: String(Math.round(Number(item.valor) * 100)),
+        }));
+    } catch {
+      return [];
+    }
+  });
 
   const [showDateModal, setShowDateModal] = useState(false);
   const [showTimeInicioModal, setShowTimeInicioModal] = useState(false);
   const [showTimeFimModal, setShowTimeFimModal] = useState(false);
   const [showEstadoModal, setShowEstadoModal] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [contractUri, setContractUri] = useState<string | null>(null);
   const [contractName, setContractName] = useState<string | null>(null);
@@ -573,6 +636,76 @@ export default function AdicionarEventoScreen() {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
+  const applySpokenDraft = (draft: SpokenEventDraft) => {
+    const only = draft.replaceFields;
+    const hit = (key: SpokenFieldKey) => !only || only.includes(key);
+
+    setForm((prev) => {
+      const next = { ...prev };
+      if (hit("nome")) {
+        if (only) {
+          next.nome = draft.nome;
+        } else {
+          const genericNames = ["Show", "Ensaio", "Reunião"];
+          next.nome =
+            prev.nome.trim() && genericNames.includes(draft.nome)
+              ? prev.nome
+              : draft.nome || prev.nome;
+        }
+      }
+      if (hit("valor")) {
+        if (draft.valor != null) next.valor = formatCurrencyBRLFromAmount(draft.valor);
+        else if (only) next.valor = "";
+      }
+      if (hit("valorPago")) {
+        if (draft.valorPago != null) {
+          next.valorPago = formatCurrencyBRLFromAmount(draft.valorPago);
+        } else if (only) next.valorPago = "";
+      }
+      if (hit("cidade")) {
+        if (draft.cidade) next.cidade = draft.cidade;
+        else if (only) next.cidade = "";
+      }
+      if (hit("estadoUf") && (draft.estadoUf || only)) {
+        next.estadoUf = draft.estadoUf || "";
+      }
+      if (hit("telefone")) {
+        if (draft.telefone) next.telefoneContratante = maskPhone(draft.telefone);
+        else if (only) next.telefoneContratante = "";
+      }
+      if (hit("descricao")) {
+        if (draft.descricao) next.descricao = draft.descricao;
+        else if (only) next.descricao = "";
+      }
+      if (hit("data") && draft.dateMentioned) {
+        next.data = dateFromYmdOrIso(draft.dataISO, prev.data);
+      }
+      if (hit("horario")) {
+        if (draft.startHHmm) next.horarioInicio = timeFromHHmm(draft.startHHmm, 0, 0);
+        else if (only) next.horarioInicio = timeFromHHmm("00:00", 0, 0);
+        if (draft.endHHmm) next.horarioFim = timeFromHHmm(draft.endHHmm, 0, 0);
+        else if (only) next.horarioFim = timeFromHHmm("00:00", 0, 0);
+      }
+      if (!only) {
+        next.tag = draft.tag;
+        next.status = draft.confirmed ? "confirmado" : "a_confirmar";
+      } else {
+        if (hit("tag")) next.tag = draft.tag;
+        if (hit("status")) next.status = draft.confirmed ? "confirmado" : "a_confirmar";
+      }
+      return next;
+    });
+    if (hit("despesas") && (only || draft.despesas.length > 0)) {
+      setDespesas(
+        draft.despesas.map((item) => ({
+          nome: item.nome,
+          valor: String(Math.round(item.valor * 100)),
+        })),
+      );
+    }
+    setShowVoiceModal(false);
+  };
+
   const applyRecentSuggestion = (suggestion: RecentEventSuggestion) => {
     const valorFromEvent =
       suggestion.value != null ? formatCurrencyBRLFromAmount(suggestion.value) : '';
@@ -671,6 +804,35 @@ export default function AdicionarEventoScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 100 }}
         >
+        <TouchableOpacity
+          style={[
+            styles.voiceBanner,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+          onPress={() => setShowVoiceModal(true)}
+          activeOpacity={0.85}
+          accessibilityLabel="Falar o evento"
+        >
+          <View style={[styles.voiceBannerIcon, { backgroundColor: colors.primary }]}>
+            <Ionicons name="mic" size={22} color="#fff" />
+          </View>
+          <View style={styles.voiceBannerTextWrap}>
+            <Text style={[styles.voiceBannerTitle, { color: colors.text }]}>
+              Falar
+            </Text>
+            <Text style={[styles.voiceBannerSub, { color: colors.textSecondary }]}>
+              Diga o evento. Depois você confere e salva.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {voiceTranscript ? (
+          <View style={[styles.inputGroup, { marginBottom: 8 }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>
+              Preenchido por áudio — confira antes de salvar
+            </Text>
+          </View>
+        ) : null}
         {/* Nome do Evento */}
         <View style={styles.inputGroup}>
           <View style={styles.nameLabelRow}>
@@ -1323,6 +1485,13 @@ export default function AdicionarEventoScreen() {
         selectedUf={form.estadoUf}
         onSelect={(uf) => updateForm('estadoUf', uf ?? '')}
       />
+      <VoiceCreateEventModal
+        visible={showVoiceModal}
+        fallbackDate={form.data}
+        confirmLabel="Preencher"
+        onClose={() => setShowVoiceModal(false)}
+        onConfirm={(_params, draft) => applySpokenDraft(draft)}
+      />
     </SafeAreaView>
   );
 }
@@ -1380,6 +1549,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  voiceBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+  },
+  voiceBannerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceBannerTextWrap: {
+    flex: 1,
+  },
+  voiceBannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  voiceBannerSub: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
   nameLabel: {
     marginBottom: 0,

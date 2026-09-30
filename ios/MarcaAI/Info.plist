@@ -68,7 +68,9 @@
     <key>NSDocumentsFolderUsageDescription</key>
     <string>Este app precisa acessar a pasta de documentos para salvar e compartilhar relatórios em PDF.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>O Marca AI usa o microfone para você criar eventos falando a data, o valor e o local.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>O Marca AI usa o reconhecimento de fala para preencher o evento a partir do que você disser.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Este app precisa acessar sua galeria de fotos para permitir que você selecione uma foto de perfil.</string>
     <key>NSUserActivityTypes</key>

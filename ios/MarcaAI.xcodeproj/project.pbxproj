@@ -13,8 +13,8 @@
 		7A7706041549C02996036FAC /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C94ECED74F2F35BBE193E17 /* ExpoModulesProvider.swift */; };
 		8A5E09EFCA265D2A52CE9F98 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 6284357D4C6C1A42BCF5BF4E /* PrivacyInfo.xcprivacy */; };
 		8D5CDFC32F7CAAD9001774A2 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D5CDFC22F7CAAD9001774A2 /* StoreKit.framework */; };
-		A1B2C3D52F7CAAE0001774B1 /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F7CAAE0001774B1 /* CoreMotion.framework */; };
 		8DAC8DFB2ECC0B89003AF536 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8DAC8DFA2ECC0B89003AF536 /* GoogleService-Info.plist */; };
+		A1B2C3D52F7CAAE0001774B1 /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F7CAAE0001774B1 /* CoreMotion.framework */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -29,8 +29,8 @@
 		5D971F23476B0EE0D0144CD7 /* Pods-MarcaAI.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MarcaAI.release.xcconfig"; path = "Target Support Files/Pods-MarcaAI/Pods-MarcaAI.release.xcconfig"; sourceTree = "<group>"; };
 		6284357D4C6C1A42BCF5BF4E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = MarcaAI/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8D5CDFC22F7CAAD9001774A2 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
-		A1B2C3D42F7CAAE0001774B1 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
 		8DAC8DFA2ECC0B89003AF536 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		A1B2C3D42F7CAAE0001774B1 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = MarcaAI/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
