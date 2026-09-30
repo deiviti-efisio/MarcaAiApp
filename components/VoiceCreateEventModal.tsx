@@ -257,7 +257,12 @@ export default function VoiceCreateEventModal({
             <View style={[styles.grabber, { backgroundColor: colors.border }]} />
 
             <View style={styles.topRow}>
-              <Text style={[styles.title, { color: colors.text }]}>Falar</Text>
+              <View style={styles.titleRow}>
+                <Text style={[styles.title, { color: colors.text }]}>Falar</Text>
+                <View style={styles.betaBadge}>
+                  <Text style={styles.betaBadgeText}>BETA</Text>
+                </View>
+              </View>
               <TouchableOpacity
                 onPress={handleClose}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -287,7 +292,7 @@ export default function VoiceCreateEventModal({
               {listening ? "Ouvindo… toque para parar" : "Toque e fale"}
             </Text>
             <Text style={[styles.micHint, { color: colors.textSecondary }]}>
-              Cada toque limpa o texto. Diga o evento, ou: altere o nome para…
+              Recurso em teste. Confira tudo no formulário.
             </Text>
 
             <TextInput
@@ -372,9 +377,26 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 8,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   title: {
     fontSize: 20,
     fontWeight: "700",
+  },
+  betaBadge: {
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  betaBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
   },
   micCircle: {
     alignSelf: "center",

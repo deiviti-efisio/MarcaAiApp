@@ -270,6 +270,35 @@ function parseDate(folded: string, fallback: Date): { date: Date; mentioned: boo
     d.setDate(d.getDate() + 1);
     return { date: d, mentioned: true };
   }
+  if (/\bsemana que vem\b/.test(folded) && !/\b(segunda|terca|quarta|quinta|sexta|sabado|domingo)\b/.test(folded)) {
+    const d = new Date(fallback);
+    d.setDate(d.getDate() + 7);
+    return { date: d, mentioned: true };
+  }
+
+  const WEEKDAY: Record<string, number> = {
+    domingo: 0,
+    segunda: 1,
+    terca: 2,
+    quarta: 3,
+    quinta: 4,
+    sexta: 5,
+    sabado: 6,
+  };
+  const wd = folded.match(
+    /\b(?:proxima|proximo)?\s*(domingo|segunda|terca|quarta|quinta|sexta|sabado)(?:\s*feira)?(?:\s+que vem)?\b/,
+  );
+  if (wd) {
+    const target = WEEKDAY[wd[1]];
+    const d = new Date(fallback);
+    let add = (target - d.getDay() + 7) % 7;
+    if (add === 0) add = 7;
+    if (/\bproxima|proximo|que vem\b/.test(folded) && add < 7) {
+      /* já é a próxima ocorrência */
+    }
+    d.setDate(d.getDate() + add);
+    return { date: d, mentioned: true };
+  }
 
   const named = folded.match(
     /\b(?:dia\s+)?(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/,
@@ -401,10 +430,14 @@ function addHoursHHmm(hhmm: string, hours: number): string {
 
 function parseCity(folded: string): string | undefined {
   const m = folded.match(
-    /\b(?:em|cidade)\s+([a-z\s]{2,40}?)(?=\s+(?:valor|cache|preco|dia|as|ate|pago|ja|adiantado|antecipado|hora|telefone|whatsapp|zap|estado|despesa|confirmado|ensaio|no dia)|$)/,
+    /\b(?:em|na|no|cidade(?:\s+de)?)\s+([a-z\s]{2,40}?)(?=\s+(?:valor|cache|preco|dia|as|ate|pago|ja|adiantado|antecipado|hora|telefone|whatsapp|zap|estado|despesa|confirmado|ensaio|no dia)|$)/,
   );
   if (!m) return undefined;
   let city = m[1].trim().replace(/\s+/g, " ").replace(/[.,;]+$/, "");
+  city = city.replace(
+    /\s+(ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)$/i,
+    "",
+  );
   for (const s of BRAZIL_STATES) {
     const n = fold(s.name);
     if (n === "para") continue;
@@ -414,18 +447,72 @@ function parseCity(folded: string): string | undefined {
   return city.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const UF_TAIL =
+  "ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to";
+
+function brazilStatePhrases(): { phrase: string; uf: string }[] {
+  const extra: [string, string][] = [
+    ["mato grosso do sul", "MS"],
+    ["mato grosso sul", "MS"],
+    ["rio grande do sul", "RS"],
+    ["rio grande sul", "RS"],
+    ["rio grande do norte", "RN"],
+    ["rio grande norte", "RN"],
+    ["rio de janeiro", "RJ"],
+    ["espirito santo", "ES"],
+    ["distrito federal", "DF"],
+    ["santa catarina", "SC"],
+    ["sao paulo", "SP"],
+    ["minas gerais", "MG"],
+    ["mato grosso", "MT"],
+    ["minas", "MG"],
+    ["brasilia", "DF"],
+    ["parana", "PR"],
+    ["paraiba", "PB"],
+    ["pernambuco", "PE"],
+    ["alagoas", "AL"],
+    ["amazonas", "AM"],
+    ["amapa", "AP"],
+    ["rondonia", "RO"],
+    ["roraima", "RR"],
+    ["sergipe", "SE"],
+    ["tocantins", "TO"],
+    ["goias", "GO"],
+    ["maranhao", "MA"],
+    ["piaui", "PI"],
+    ["ceara", "CE"],
+    ["bahia", "BA"],
+    ["acre", "AC"],
+  ];
+  const official = BRAZIL_STATES.map((s) => [fold(s.name), s.uf] as [string, string]);
+  const spelled = BRAZIL_STATES.map(
+    (s) => [s.uf.toLowerCase().split("").join(" "), s.uf] as [string, string],
+  );
+  const map = new Map<string, string>();
+  for (const [phrase, uf] of [...extra, ...official, ...spelled]) {
+    if (!phrase || phrase === "para") continue;
+    if (!map.has(phrase)) map.set(phrase, uf);
+  }
+  return [...map.entries()]
+    .map(([phrase, uf]) => ({ phrase, uf }))
+    .sort((a, b) => b.phrase.length - a.phrase.length);
+}
+
+const STATE_PHRASES = brazilStatePhrases();
+
 function parseUf(folded: string): string | undefined {
-  const named = BRAZIL_STATES.find((s) => {
-    const n = fold(s.name);
-    if (n === "para") return /\bestado\s+para\b/.test(folded);
-    return new RegExp(`\\b${n.replace(/\s+/g, "\\s+")}\\b`).test(folded);
-  });
-  if (named) return named.uf;
-  const ufTok = folded.match(/\b(?:estado|uf)\s+([a-z]{2})\b/);
-  if (ufTok) {
-    const uf = ufTok[1].toUpperCase();
+  if (/\bestado\s+(?:do\s+|de\s+)?para\b/.test(folded)) return "PA";
+  for (const { phrase, uf } of STATE_PHRASES) {
+    const re = new RegExp(`\\b${phrase.replace(/\s+/g, "\\s+")}\\b`);
+    if (re.test(folded)) return uf;
+  }
+  const labeled = folded.match(/\b(?:estado|uf)\s+([a-z]{2})\b/);
+  if (labeled) {
+    const uf = labeled[1].toUpperCase();
     if (BRAZIL_STATES.some((s) => s.uf === uf)) return uf;
   }
+  const tail = folded.match(new RegExp(`\\b(${UF_TAIL})\\b\\s*$`));
+  if (tail) return tail[1].toUpperCase();
   return undefined;
 }
 
@@ -526,6 +613,13 @@ function parseSingleFieldEdit(
   const nomeTail = afterPara(
     /^(?:nome|titulo)(?:\s+do\s+evento)?\s*(?:para|pra|pro|:)?\s*(.*)$/,
   );
+  if (/^(?:estado|uf)\b/.test(stripped)) {
+    const tail = afterPara(/^(?:estado|uf)\s*(?:para|pra|pro|de|:)?\s*(.*)$/);
+    draft.estadoUf = parseUf(tail || stripped);
+    draft.replaceFields = ["estadoUf"];
+    return draft;
+  }
+
   if (/^(?:nome|titulo)\b/.test(stripped)) {
     draft.nome = nomeTail ? titleCasePt(nomeTail) : "";
     draft.replaceFields = ["nome"];

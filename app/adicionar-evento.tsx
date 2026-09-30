@@ -817,11 +817,16 @@ export default function AdicionarEventoScreen() {
             <Ionicons name="mic" size={22} color="#fff" />
           </View>
           <View style={styles.voiceBannerTextWrap}>
-            <Text style={[styles.voiceBannerTitle, { color: colors.text }]}>
-              Falar
-            </Text>
+            <View style={styles.voiceBannerTitleRow}>
+              <Text style={[styles.voiceBannerTitle, { color: colors.text }]}>
+                Falar
+              </Text>
+              <View style={styles.betaBadge}>
+                <Text style={styles.betaBadgeText}>BETA</Text>
+              </View>
+            </View>
             <Text style={[styles.voiceBannerSub, { color: colors.textSecondary }]}>
-              Diga o evento. Depois você confere e salva.
+              Em teste. Confira os campos antes de salvar.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -1569,9 +1574,26 @@ const styles = StyleSheet.create({
   voiceBannerTextWrap: {
     flex: 1,
   },
+  voiceBannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   voiceBannerTitle: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  betaBadge: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  betaBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   voiceBannerSub: {
     fontSize: 13,

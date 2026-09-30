@@ -32,8 +32,6 @@ import EventPaymentProgress, {
   getUnpaidRemainder,
 } from "../../components/EventPaymentProgress";
 import PermissionModal from "../../components/PermissionModal";
-import CreateEventMethodModal from "../../components/CreateEventMethodModal";
-import VoiceCreateEventModal from "../../components/VoiceCreateEventModal";
 import TransientToast from "../../components/TransientToast";
 import { useActiveArtistContext } from "../../contexts/ActiveArtistContext";
 import { useSharedTabMonth } from "../../contexts/SharedTabMonthContext";
@@ -123,13 +121,6 @@ export default function AgendaScreen() {
   const [selectedDayEvents, setSelectedDayEvents] = useState<any[]>([]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
-  const [showCreateMethodModal, setShowCreateMethodModal] = useState(false);
-  const [showVoiceCreateModal, setShowVoiceCreateModal] = useState(false);
-  const [pendingAddEvent, setPendingAddEvent] = useState<{
-    selectedMonth: number;
-    selectedYear: number;
-    selectedDate: string;
-  } | null>(null);
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [showRemovedModal, setShowRemovedModal] = useState(false);
   const [showDeletedEventModal, setShowDeletedEventModal] = useState(false);
@@ -1501,8 +1492,7 @@ export default function AgendaScreen() {
     selectedYear: number;
     selectedDate: string;
   }) => {
-    setPendingAddEvent(navParams);
-    setShowCreateMethodModal(true);
+    void openAddEventScreen(navParams);
   };
 
   const handleAddShow = () => {
@@ -3263,53 +3253,6 @@ export default function AgendaScreen() {
         </View>
       </Modal>
 
-      <CreateEventMethodModal
-        visible={showCreateMethodModal}
-        onClose={() => {
-          setShowCreateMethodModal(false);
-          setPendingAddEvent(null);
-        }}
-        onChooseForm={() => {
-          const pending = pendingAddEvent;
-          setShowCreateMethodModal(false);
-          if (!pending) return;
-          void openAddEventScreen(pending);
-        }}
-        onChooseVoice={() => {
-          setShowCreateMethodModal(false);
-          setShowVoiceCreateModal(true);
-        }}
-      />
-      <VoiceCreateEventModal
-        visible={showVoiceCreateModal}
-        fallbackDate={
-          pendingAddEvent
-            ? new Date(pendingAddEvent.selectedDate)
-            : new Date()
-        }
-        confirmLabel="Preencher"
-        onClose={() => {
-          setShowVoiceCreateModal(false);
-          setPendingAddEvent(null);
-        }}
-        onConfirm={(voiceParams) => {
-          const pending = pendingAddEvent;
-          setShowVoiceCreateModal(false);
-          setPendingAddEvent(null);
-          if (!pending) return;
-          const [vy, vm, vd] = (voiceParams.voiceDate ?? "").split("-").map(Number);
-          const dateFromVoice =
-            vy && vm && vd ? new Date(vy, vm - 1, vd) : new Date(pending.selectedDate);
-          void openAddEventScreen(
-            {
-              selectedMonth: dateFromVoice.getMonth(),
-              selectedYear: dateFromVoice.getFullYear(),
-              selectedDate: dateFromVoice.toISOString(),
-            },
-            voiceParams,
-          );
-        }}
-      />
       <PermissionModal
         visible={showPermissionModal}
         onClose={() => setShowPermissionModal(false)}
