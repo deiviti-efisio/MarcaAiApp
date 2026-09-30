@@ -281,7 +281,7 @@ export default function RegisterScreen() {
               >
                 <Ionicons name="arrow-back" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={[dynamicStyles.brandName, { color: colors.primary }]}>MarcaAi</Text>
+              <Text style={[dynamicStyles.brandName, { color: colors.primary }]}>MeuShow</Text>
               <Text style={[dynamicStyles.subtitle, { color: colors.textSecondary }]}>
                 Preencha os dados para criar sua conta
               </Text>

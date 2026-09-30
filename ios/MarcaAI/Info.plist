@@ -14,7 +14,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Marca AI</string>
+    <string>MeuShow</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -68,9 +68,9 @@
     <key>NSDocumentsFolderUsageDescription</key>
     <string>Este app precisa acessar a pasta de documentos para salvar e compartilhar relatórios em PDF.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>O Marca AI usa o microfone para você criar eventos falando a data, o valor e o local.</string>
+    <string>O MeuShow usa o microfone para você criar eventos falando a data, o valor e o local.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>O Marca AI usa o reconhecimento de fala para preencher o evento a partir do que você disser.</string>
+    <string>O MeuShow usa o reconhecimento de fala para preencher o evento a partir do que você disser.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Este app precisa acessar sua galeria de fotos para permitir que você selecione uma foto de perfil.</string>
     <key>NSUserActivityTypes</key>

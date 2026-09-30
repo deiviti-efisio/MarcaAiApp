@@ -35,7 +35,7 @@ export const BrazilStatesShareCapture = React.forwardRef<View, BrazilStatesShare
             style={styles.brandLogo}
             accessibilityIgnoresInvertColors
           />
-          <Text style={styles.brand}>Marca AI</Text>
+          <Text style={styles.brand}>MeuShow</Text>
         </View>
         <Text style={styles.artist} numberOfLines={2}>
           {artistName}
@@ -62,7 +62,7 @@ export const BrazilStatesShareCapture = React.forwardRef<View, BrazilStatesShare
             </View>
           ))}
         </View>
-        <Text style={styles.footer}>Gerado no app Marca AI</Text>
+        <Text style={styles.footer}>Gerado no app MeuShow</Text>
       </View>
     );
   }

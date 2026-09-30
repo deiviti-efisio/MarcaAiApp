@@ -237,7 +237,7 @@ export default function AgendaScreen() {
     {
       title: "Conta criada com sucesso!",
       subtitle:
-        "O Marca AI organiza shows e o financeiro dentro de um perfil de artista. No próximo passo você cria o seu.",
+        "O MeuShow organiza shows e o financeiro dentro de um perfil de artista. No próximo passo você cria o seu.",
       image: true,
       icon: null as string | null,
     },

@@ -1,11 +1,13 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
+
+const TICKET_MARK = require('../assets/images/logo_ticket.png');
 
 interface LogoMarcaAiProps {
   size?: 'small' | 'medium' | 'large';
   showTagline?: boolean;
   showIcon?: boolean;
-  /** Só o ícone azul com M (ex.: tela de loading estilo Instagram) */
+  /** Só o ingresso (ex.: tela de loading) */
   iconOnly?: boolean;
   style?: any;
 }
@@ -22,86 +24,46 @@ export default function LogoMarcaAi({
       case 'small':
         return {
           containerSize: 40,
-          iconSize: 20,
           titleFontSize: 16,
           taglineFontSize: 10,
-          spacing: 4
         };
       case 'large':
         return {
           containerSize: 80,
-          iconSize: 40,
           titleFontSize: 28,
           taglineFontSize: 14,
-          spacing: 8
         };
-      default: // medium
+      default:
         return {
           containerSize: 60,
-          iconSize: 30,
           titleFontSize: 22,
           taglineFontSize: 12,
-          spacing: 6
         };
     }
   };
 
   const config = getSizeConfig();
+  const ticket = (
+    <Image
+      source={TICKET_MARK}
+      style={{ width: config.containerSize, height: config.containerSize }}
+      resizeMode="contain"
+    />
+  );
 
   if (iconOnly) {
-    return (
-      <View style={[styles.container, style]}>
-        <View
-          style={[
-            styles.iconContainer,
-            {
-              width: config.containerSize,
-              height: config.containerSize,
-              borderRadius: config.containerSize * 0.2,
-              marginRight: 0,
-            },
-          ]}
-        >
-          <Text style={[styles.iconText, { fontSize: config.iconSize }]}>M</Text>
-        </View>
-      </View>
-    );
+    return <View style={[styles.container, style]}>{ticket}</View>;
   }
 
   return (
     <View style={[styles.container, style]}>
       {showIcon ? (
         <View style={styles.logoRow}>
-          {/* Quadrado azul com M */}
-          <View style={[
-            styles.iconContainer, 
-            { 
-              width: config.containerSize, 
-              height: config.containerSize,
-              borderRadius: config.containerSize * 0.2
-            }
-          ]}>
-            <Text style={[
-              styles.iconText, 
-              { fontSize: config.iconSize }
-            ]}>
-              M
-            </Text>
-          </View>
-          
-          {/* Texto MarcaAi */}
+          <View style={styles.iconWrap}>{ticket}</View>
           <View style={styles.textContainer}>
-            <Text style={[
-              styles.title, 
-              { fontSize: config.titleFontSize }
-            ]}>
-              MarcaAi
-            </Text>
+            <Text style={[styles.title, { fontSize: config.titleFontSize }]}>MeuShow</Text>
             {showTagline && (
-              <Text style={[
-                styles.tagline, 
-                { fontSize: config.taglineFontSize }
-              ]}>
+              <Text style={[styles.tagline, { fontSize: config.taglineFontSize }]}>
                 Agenda & Finanças
               </Text>
             )}
@@ -109,17 +71,11 @@ export default function LogoMarcaAi({
         </View>
       ) : (
         <View style={styles.textOnlyContainer}>
-          <Text style={[
-            styles.titleCentered, 
-            { fontSize: config.titleFontSize * 1.5 }
-          ]}>
-            MarcaAi
+          <Text style={[styles.titleCentered, { fontSize: config.titleFontSize * 1.5 }]}>
+            MeuShow
           </Text>
           {showTagline && (
-            <Text style={[
-              styles.taglineCentered, 
-              { fontSize: config.taglineFontSize * 1.2 }
-            ]}>
+            <Text style={[styles.taglineCentered, { fontSize: config.taglineFontSize * 1.2 }]}>
               Agenda & Finanças
             </Text>
           )}
@@ -138,24 +94,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconContainer: {
-    backgroundColor: '#667eea',
-    justifyContent: 'center',
-    alignItems: 'center',
+  iconWrap: {
     marginRight: 12,
-    shadowColor: '#667eea',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: Platform.OS === 'android' ? 0 : 0.25,
-    shadowRadius: Platform.OS === 'android' ? 0 : 3.84,
-    elevation: Platform.OS === 'android' ? 0 : 5,
-  },
-  iconText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    fontFamily: 'System',
   },
   textContainer: {
     justifyContent: 'center',

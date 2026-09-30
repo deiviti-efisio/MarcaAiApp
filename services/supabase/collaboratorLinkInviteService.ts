@@ -4,7 +4,7 @@ import { assertArtistTeamSlot } from './userService';
 export type CollaboratorLinkInviteRole = 'admin' | 'vendedor' | 'viewer';
 
 /**
- * Convite de colaborador por email, para quem ainda não tem conta no MarcaAI.
+ * Convite de colaborador por email, para quem ainda não tem conta no MeuShow.
  * Fica pendente em `pending_collaborator_invites`; um trigger no banco adiciona a pessoa
  * automaticamente em `artist_members` quando ela criar conta com esse mesmo email
  * (ver database/ADD_COLLABORATOR_LINK_INVITE.sql).

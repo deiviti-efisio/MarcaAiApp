@@ -142,13 +142,13 @@ export const generateFinancialReport = async (data: FinancialReportData): Promis
         <div class="header-section">
           <div class="logo">
             <div class="logo-inner">
-              <div class="logo-text">M</div>
+              <div class="logo-text">MS</div>
             </div>
           </div>
           <div class="header-content">
             ${artistName ? `<h1 class="artist-name">${artistName.toUpperCase()}</h1>` : ''}
             <h2 class="report-title">Relatório financeiro · ${months[month]} / ${year}</h2>
-            <p class="generated-info">Gerado em ${dataGeracao} · Marca AI</p>
+            <p class="generated-info">Gerado em ${dataGeracao} · MeuShow</p>
           </div>
         </div>
         
@@ -293,7 +293,7 @@ export const generateFinancialReport = async (data: FinancialReportData): Promis
         `}
 
         <div class="footer">
-          <p>Marca AI · Gestão de shows e eventos</p>
+          <p>MeuShow · Gestão de shows e eventos</p>
           <p>${includeFinancials ? 'Relatório com valores financeiros' : 'Relatório sem valores financeiros'}</p>
         </div>
       </body>
@@ -666,20 +666,20 @@ export const generateYearlyFinancialReport = async (
         <div class="header-section">
           <div class="logo">
             <div class="logo-inner">
-              <div class="logo-text">M</div>
+              <div class="logo-text">MS</div>
             </div>
           </div>
           <div class="header-content">
             ${artistName ? `<h1 class="artist-name">${artistName.toUpperCase()}</h1>` : ''}
             <h2 class="report-title">Relatório financeiro · ano ${year}</h2>
-            <p class="generated-info">Detalhamento por mês · Gerado em ${dataGeracao} · Marca AI</p>
+            <p class="generated-info">Detalhamento por mês · Gerado em ${dataGeracao} · MeuShow</p>
           </div>
         </div>
         <div class="header-divider"></div>
         ${monthsHtml}
         ${summaryYearHtml}
         <div class="footer">
-          <p>Marca AI · Gestão de shows e eventos</p>
+          <p>MeuShow · Gestão de shows e eventos</p>
           <p>${includeFinancials ? 'Relatório anual com valores financeiros' : 'Relatório anual sem valores financeiros'}</p>
         </div>
       </body>

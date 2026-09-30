@@ -1,4 +1,4 @@
-/** App Store — MarcaAi: https://apps.apple.com/br/app/marcaai/id6755204156 */
+/** App Store — MeuShow: https://apps.apple.com/br/app/marcaai/id6755204156 */
 export const APP_STORE_ID = '6755204156';
 
 /** Precisa bater com android.package no app.json / applicationId no build.gradle. */

@@ -239,7 +239,7 @@ export default function ColaboradoresArtistaScreen() {
       const storeUrl = Platform.OS === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
       await Share.share({
         message:
-          `Você foi convidado(a) para colaborar como ${roleLabel} no MarcaAi, o app de gestão de agenda do artista "${activeArtist.name}".\n\n` +
+          `Você foi convidado(a) para colaborar como ${roleLabel} no MeuShow, o app de gestão de agenda do artista "${activeArtist.name}".\n\n` +
           `1. Baixe o app: ${storeUrl}\n` +
           `2. Crie sua conta usando este email: ${email}\n\n` +
           `Assim que você criar a conta, já entra automaticamente na equipe.`,
@@ -249,7 +249,7 @@ export default function ColaboradoresArtistaScreen() {
       setShowAddModal(false);
       Alert.alert(
         'Convite pronto',
-        'Assim que essa pessoa criar conta no MarcaAi usando o mesmo email, ela entra automaticamente na equipe.'
+        'Assim que essa pessoa criar conta no MeuShow usando o mesmo email, ela entra automaticamente na equipe.'
       );
     } catch {
       Alert.alert('Erro', 'Erro ao criar convite por link');
@@ -935,7 +935,7 @@ export default function ColaboradoresArtistaScreen() {
               {searchTerm.length >= 2 && searchResults.length === 0 && !isSearching && isValidEmailForLinkInvite(searchTerm) && (
                 <View style={[styles.linkInviteCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <Text style={[styles.linkInviteTitle, { color: colors.text }]}>
-                    Esse email ainda não tem conta no MarcaAi
+                    Esse email ainda não tem conta no MeuShow
                   </Text>
                   <Text style={[styles.linkInviteSubtitle, { color: colors.textSecondary }]}>
                     Escolha a permissão e envie um convite por link. Quando a pessoa criar a conta com esse email, ela entra na equipe automaticamente.

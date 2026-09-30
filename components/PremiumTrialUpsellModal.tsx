@@ -74,7 +74,7 @@ export default function PremiumTrialUpsellModal({
             </View>
             <View style={styles.sparkleRow}>
               <Ionicons name="sparkles" size={16} color={colors.primary} />
-              <Text style={[styles.sparkleLabel, { color: colors.primary }]}>Marca AI Premium</Text>
+              <Text style={[styles.sparkleLabel, { color: colors.primary }]}>MeuShow Premium</Text>
               <Ionicons name="sparkles" size={16} color={colors.primary} />
             </View>
           </View>

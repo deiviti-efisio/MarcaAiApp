@@ -13,6 +13,7 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
+    Image,
     Switch,
     Text,
     TextInput,
@@ -487,7 +488,7 @@ export default function ConfiguracoesScreen() {
     }
   };
 
-  /** App Store — MarcaAi: https://apps.apple.com/br/app/marcaai/id6755204156 */
+  /** App Store — MeuShow: https://apps.apple.com/br/app/marcaai/id6755204156 */
   const APP_STORE_ID = '6755204156';
   const PLAY_STORE_PACKAGE = 'com.organizei.marcaai';
 
@@ -701,7 +702,7 @@ export default function ConfiguracoesScreen() {
               ) : (
                 <>
                   <Text style={dynamicStyles.profileName}>
-                    {userProfile?.name || 'Usuário Marca AI'}
+                    {userProfile?.name || 'Usuário MeuShow'}
                   </Text>
                   <Text style={dynamicStyles.profileEmail}>
                     {userProfile?.email || 'usuario@marcaai.com'}
@@ -917,7 +918,7 @@ export default function ConfiguracoesScreen() {
             {renderSettingItem(
               'star',
               'Avaliar aplicativo',
-              'Avalie o MarcaAi na Loja',
+              'Avalie o MeuShow na Loja',
               handleRateApp
             )}
             
@@ -968,7 +969,7 @@ export default function ConfiguracoesScreen() {
                   showLoadingIndicator={false}
                 />
                 <Text style={[dynamicStyles.profileModalTitle, { color: colors.text }]}>
-                  {userProfile.name || 'Usuário Marca AI'}
+                  {userProfile.name || 'Usuário MeuShow'}
                 </Text>
                 <Text style={[dynamicStyles.profileModalSubtitle, { color: colors.textSecondary }]}>
                   {userProfile.email}
@@ -1231,20 +1232,20 @@ export default function ConfiguracoesScreen() {
           
           <ScrollView style={dynamicStyles.modalContent} showsVerticalScrollIndicator={false}>
             <View style={[dynamicStyles.termsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[dynamicStyles.termsTitle, { color: colors.text }]}>Termos de Uso - Marca AI</Text>
+              <Text style={[dynamicStyles.termsTitle, { color: colors.text }]}>Termos de Uso - MeuShow</Text>
               <Text style={[dynamicStyles.termsLastUpdated, { color: colors.textSecondary }]}>
                 Última atualização: {new Date().toLocaleDateString('pt-BR')}
               </Text>
               
               <Text style={[dynamicStyles.termsSectionTitle, { color: colors.text }]}>1. Aceitação dos Termos</Text>
               <Text style={[dynamicStyles.termsText, { color: colors.text }]}>
-                Ao utilizar o aplicativo Marca AI, você concorda em cumprir e estar sujeito a estes Termos de Uso. 
+                Ao utilizar o aplicativo MeuShow, você concorda em cumprir e estar sujeito a estes Termos de Uso. 
                 Se você não concordar com qualquer parte destes termos, não deve usar nosso aplicativo.
               </Text>
 
               <Text style={[dynamicStyles.termsSectionTitle, { color: colors.text }]}>2. Descrição do Serviço</Text>
               <Text style={[dynamicStyles.termsText, { color: colors.text }]}>
-                O Marca AI é uma plataforma digital que conecta artistas musicais com contratantes, facilitando 
+                O MeuShow é uma plataforma digital que conecta artistas musicais com contratantes, facilitando 
                 a gestão de eventos, agendamentos e transações financeiras relacionadas a apresentações musicais.
               </Text>
 
@@ -1288,7 +1289,7 @@ export default function ConfiguracoesScreen() {
 
               <Text style={[dynamicStyles.termsSectionTitle, { color: colors.text }]}>8. Limitação de Responsabilidade</Text>
               <Text style={[dynamicStyles.termsText, { color: colors.text }]}>
-                O Marca AI não se responsabiliza por:{'\n'}
+                O MeuShow não se responsabiliza por:{'\n'}
                 • Danos diretos, indiretos ou consequenciais{'\n'}
                 • Perda de dados ou interrupção de serviços{'\n'}
                 • Ações de terceiros ou outros usuários{'\n'}
@@ -1322,7 +1323,7 @@ export default function ConfiguracoesScreen() {
 
               <View style={[dynamicStyles.termsFooter, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <Text style={[dynamicStyles.termsFooterText, { color: colors.textSecondary }]}>
-                  Ao continuar usando o Marca AI, você confirma que leu, entendeu e concorda com estes Termos de Uso.
+                  Ao continuar usando o MeuShow, você confirma que leu, entendeu e concorda com estes Termos de Uso.
                 </Text>
               </View>
             </View>
@@ -1623,9 +1624,13 @@ export default function ConfiguracoesScreen() {
 
             <View style={dynamicStyles.aboutSimpleBody}>
               <View style={dynamicStyles.aboutLogoSquareSmall}>
-                <Text style={dynamicStyles.aboutLogoMSmall}>M</Text>
+                <Image
+                  source={require('../../assets/images/logo_ticket.png')}
+                  style={dynamicStyles.aboutLogoTicket}
+                  resizeMode="contain"
+                />
               </View>
-              <Text style={[dynamicStyles.aboutAppNameSmall, { color: colors.text }]}>MarcaAi</Text>
+              <Text style={[dynamicStyles.aboutAppNameSmall, { color: colors.text }]}>MeuShow</Text>
               <Text style={[dynamicStyles.aboutTaglineSmall, { color: colors.textSecondary }]}>
                 Versão {appVersionDisplay}
               </Text>
@@ -1645,7 +1650,7 @@ export default function ConfiguracoesScreen() {
                 </Text>
               </TouchableOpacity>
               <Text style={[dynamicStyles.aboutCopyrightSmall, { color: colors.textSecondary }]}>
-                © 2026 MarcaAi
+                © 2026 MeuShow
               </Text>
             </View>
 
@@ -2465,18 +2470,15 @@ const createDynamicStyles = (isDark: boolean, colors: any) => StyleSheet.create(
            paddingBottom: 4,
          },
          aboutLogoSquareSmall: {
-           width: 52,
-           height: 52,
-           borderRadius: 12,
-           backgroundColor: '#667eea',
+           width: 64,
+           height: 64,
            justifyContent: 'center',
            alignItems: 'center',
            marginBottom: 10,
          },
-         aboutLogoMSmall: {
-           fontSize: 28,
-           fontWeight: '800',
-           color: '#ffffff',
+         aboutLogoTicket: {
+           width: 64,
+           height: 64,
          },
          aboutAppNameSmall: {
            fontSize: 18,

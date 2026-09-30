@@ -198,7 +198,7 @@ export default function UserProfileScreen() {
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={[styles.brandName, { color: colors.primary }]}>MarcaAi</Text>
+              <Text style={[styles.brandName, { color: colors.primary }]}>MeuShow</Text>
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 Adicione telefone e localização para continuar
               </Text>

@@ -42,10 +42,10 @@ import { LEGAL_URLS } from '../constants/legal';
 
 const PREMIUM_SKUS = ['marcaai_mensal_app', 'marcaai_anual_app'];
 const PLAN_LABELS: Record<string, string> = {
-  marcaai_mensal_app: 'Marca AI Premium Mensal',
-  marcaai_anual_app: 'Marca AI Premium Anual',
-  marcaai_mensal: 'Marca AI Premium Mensal',
-  marcaai_anual: 'Marca AI Premium Anual',
+  marcaai_mensal_app: 'MeuShow Premium Mensal',
+  marcaai_anual_app: 'MeuShow Premium Anual',
+  marcaai_mensal: 'MeuShow Premium Mensal',
+  marcaai_anual: 'MeuShow Premium Anual',
 };
 const FREE_VS_PREMIUM = [
   { label: 'Perfis de artista', free: '1', premium: 'Ilimitados' },
@@ -605,7 +605,7 @@ export default function AssinePremiumScreen() {
       if (syncErr === 'subscription_belongs_to_other_account') {
         Alert.alert(
           'Assinatura de outra conta',
-          'Esta compra da loja já está vinculada a outro usuário do Marca AI. Entre na conta original ou fale com o suporte.',
+          'Esta compra da loja já está vinculada a outro usuário do MeuShow. Entre na conta original ou fale com o suporte.',
         );
         return;
       }

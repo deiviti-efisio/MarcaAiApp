@@ -114,7 +114,7 @@ export function buildEventShareMessage(
   }
 
   lines.push('');
-  lines.push('Marca AI');
+  lines.push('MeuShow');
   return lines.join('\n');
 }
 

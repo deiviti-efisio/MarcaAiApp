@@ -160,7 +160,7 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
       </head>
       <body>
         <div class="header">
-          <h1>🎵 MARCA AI</h1>
+          <h1>🎵 MeuShow</h1>
           <p>Relatório de Evento</p>
         </div>
 
@@ -242,7 +242,7 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
         ` : ''}
 
         <div class="footer">
-          <p><strong>Sistema: Marca AI - Gestão de Shows e Eventos</strong></p>
+          <p><strong>Sistema: MeuShow - Gestão de Shows e Eventos</strong></p>
           <p>Relatório gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
           <p>${includeFinancials ? '💰 Com valores financeiros' : '🔒 Sem valores financeiros'}</p>
         </div>
@@ -286,7 +286,7 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
               text: 'Copiar',
               onPress: async () => {
                 const textContent = `
-🎵 MARCA AI - RELATÓRIO DE EVENTO
+🎵 MeuShow - RELATÓRIO DE EVENTO
 
 📋 INFORMAÇÕES DO EVENTO
 Nome: ${event.name}
@@ -355,7 +355,7 @@ ${event.description ? `📝 DESCRIÇÃO\n${event.description}` : ''}
             text: 'Copiar Texto',
             onPress: async () => {
               const textContent = `
-🎵 MARCA AI - RELATÓRIO DE EVENTO
+🎵 MeuShow - RELATÓRIO DE EVENTO
 
 📋 INFORMAÇÕES DO EVENTO
 Nome: ${event.name}
@@ -732,13 +732,13 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
         <!-- Cabeçalho -->
         <div class="header-section">
           <div class="logo">
-            <div class="logo-text">M</div>
+            <div class="logo-text">MS</div>
           </div>
           <div class="header-content">
             ${artistName ? `<h1 class="artist-name">${artistName.toUpperCase()}</h1>` : ''}
             <h2 class="report-title">Lista de Eventos - ${months[month]}/${year}</h2>
             <p class="generated-info">
-              Relatório gerado: ${dataGeracao} pelo aplicativo Marca AI.
+              Relatório gerado: ${dataGeracao} pelo aplicativo MeuShow.
             </p>
           </div>
         </div>
@@ -859,7 +859,7 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
         `}
 
         <div class="footer">
-          <p>Marca AI - Gestão Profissional de Shows e Eventos</p>
+          <p>MeuShow - Gestão Profissional de Shows e Eventos</p>
           <p>Documento gerado automaticamente • ${includeFinancials ? 'Relatório Completo' : 'Relatório Sem Valores'}</p>
         </div>
       </body>

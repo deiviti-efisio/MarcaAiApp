@@ -372,11 +372,11 @@ export async function generateFinanceiroDetalhesPdf(
   <div class="doc-root">
   <div class="section-keep">
     <div class="header-section">
-      <div class="logo"><div class="logo-text">M</div></div>
+      <div class="logo"><div class="logo-text">MS</div></div>
       <div class="header-content">
         ${artistName ? `<div class="artist-name">${escapeHtml(artistName.toUpperCase())}</div>` : ''}
         <div class="report-title">Detalhes financeiros · ${escapeHtml(MONTHS[month])} / ${year}</div>
-        <p class="generated-info">Gerado em ${escapeHtml(dataGeracao)} · Marca AI</p>
+        <p class="generated-info">Gerado em ${escapeHtml(dataGeracao)} · MeuShow</p>
       </div>
     </div>
     <div class="header-divider"></div>
@@ -426,7 +426,7 @@ export async function generateFinanceiroDetalhesPdf(
   </div>
 
   <div class="footer">
-    <p>Marca AI · Documento gerado automaticamente</p>
+    <p>MeuShow · Documento gerado automaticamente</p>
   </div>
   </div>
 </body>

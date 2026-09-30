@@ -97,7 +97,7 @@ function ParceirosFrequentesShareCapture({
   totalInApp: number;
 }) {
   const now = new Date();
-  const footer = `Gerado em ${now.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · Marca AI`;
+  const footer = `Gerado em ${now.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · MeuShow`;
   const omitted = totalInApp > partners.length ? totalInApp - partners.length : 0;
 
   return (

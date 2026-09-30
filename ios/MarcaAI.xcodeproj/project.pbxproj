@@ -24,6 +24,7 @@
 		13B07F961A680F5B00A75B9A /* MarcaAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MarcaAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = MarcaAI/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = MarcaAI/Info.plist; sourceTree = "<group>"; };
+		13B07FB81A68108700A75B9B /* MarcaAIRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = MarcaAIRelease.entitlements; path = MarcaAI/MarcaAIRelease.entitlements; sourceTree = "<group>"; };
 		492B45C8DE94E02ED928C185 /* libPods-MarcaAI.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-MarcaAI.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C94ECED74F2F35BBE193E17 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-MarcaAI/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		5D971F23476B0EE0D0144CD7 /* Pods-MarcaAI.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MarcaAI.release.xcconfig"; path = "Target Support Files/Pods-MarcaAI/Pods-MarcaAI.release.xcconfig"; sourceTree = "<group>"; };
@@ -60,6 +61,7 @@
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
+				13B07FB81A68108700A75B9B /* MarcaAIRelease.entitlements */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				6284357D4C6C1A42BCF5BF4E /* PrivacyInfo.xcprivacy */,
 			);
@@ -267,6 +269,7 @@
 				"$(SRCROOT)/.xcode.env",
 				"$(SRCROOT)/.xcode.env.local",
 				"$(SRCROOT)/MarcaAI/MarcaAI.entitlements",
+				"$(SRCROOT)/MarcaAI/MarcaAIRelease.entitlements",
 				"$(SRCROOT)/Pods/Target Support Files/Pods-MarcaAI/expo-configure-project.sh",
 			);
 			name = "[Expo] Configure project";
@@ -419,7 +422,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = MarcaAI/MarcaAI.entitlements;
-				CURRENT_PROJECT_VERSION = 107;
+				CURRENT_PROJECT_VERSION = 109;
 				DEVELOPMENT_TEAM = L5S2D49AB5;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -433,7 +436,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -460,8 +463,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = MarcaAI/MarcaAI.entitlements;
-				CURRENT_PROJECT_VERSION = 107;
+				CODE_SIGN_ENTITLEMENTS = MarcaAI/MarcaAIRelease.entitlements;
+				CURRENT_PROJECT_VERSION = 109;
 				DEVELOPMENT_TEAM = L5S2D49AB5;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = MarcaAI/Info.plist;
@@ -470,7 +473,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

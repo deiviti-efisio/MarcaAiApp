@@ -851,7 +851,7 @@ export default function NotificacoesScreen() {
                   >
                     <CardWrapper {...cardWrapperProps}>
                       <View style={styles.notificationLeft}>
-                        {/* Mensagem do sistema: avatar Marca AI */}
+                        {/* Mensagem do sistema: avatar MeuShow */}
                         {notification.type === "basic" ? (
                           <View style={styles.userAvatarContainer}>
                             <View style={styles.userAvatarWithIcon}>
@@ -864,9 +864,11 @@ export default function NotificacoesScreen() {
                                   },
                                 ]}
                               >
-                                <Text style={styles.marcaAiSystemAvatarLetter}>
-                                  M
-                                </Text>
+                                <Image
+                                  source={require("../assets/images/logo_ticket_white.png")}
+                                  style={styles.marcaAiSystemAvatarTicket}
+                                  resizeMode="contain"
+                                />
                               </View>
                             </View>
                           </View>
@@ -1027,7 +1029,7 @@ export default function NotificacoesScreen() {
                                     { color: colors.textSecondary },
                                   ]}
                                 >
-                                  Marca AI
+                                  MeuShow
                                 </Text>
                               </View>
                             ) : notification.from_user ? (
@@ -2019,11 +2021,9 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: Platform.OS === "android" ? 2 : 0,
   },
-  marcaAiSystemAvatarLetter: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "800",
-    fontFamily: "System",
+  marcaAiSystemAvatarTicket: {
+    width: 26,
+    height: 26,
   },
   notificationIconBadge: {
     position: "absolute",
