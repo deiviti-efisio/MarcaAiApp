@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppleSignInButton, { AppleSignInResult } from '../components/AppleSignInButton';
 import GoogleGLogo from '../components/GoogleGLogo';
+import MeuShowWordmark from '../components/MeuShowWordmark';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { checkArtistsAndRedirect } from '../services/supabase/authService';
@@ -281,7 +282,7 @@ export default function RegisterScreen() {
               >
                 <Ionicons name="arrow-back" size={24} color={colors.text} />
               </TouchableOpacity>
-              <Text style={[dynamicStyles.brandName, { color: colors.primary }]}>MeuShow</Text>
+              <MeuShowWordmark size="sm" style={dynamicStyles.brandLogo} />
               <Text style={[dynamicStyles.subtitle, { color: colors.textSecondary }]}>
                 Preencha os dados para criar sua conta
               </Text>
@@ -489,12 +490,8 @@ const createDynamicStyles = (colors: any) => StyleSheet.create({
     padding: 10,
     zIndex: 10,
   },
-  brandName: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  brandLogo: {
     marginBottom: 6,
-    letterSpacing: 0.5,
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
+import MeuShowWordmark from '../../../components/MeuShowWordmark';
 import { dispatchResetToLogin } from '../../../lib/resetToLoginStack';
 import { getCurrentUser } from '../../../services/supabase/authService';
 import { uploadUserImage } from '../../../services/supabase/imageUploadService';
@@ -198,7 +199,7 @@ export default function UserProfileScreen() {
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={[styles.brandName, { color: colors.primary }]}>MeuShow</Text>
+              <MeuShowWordmark size="sm" style={styles.brandLogo} />
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 Adicione telefone e localização para continuar
               </Text>
@@ -370,12 +371,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     marginTop: 10,
   },
-  brandName: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  brandLogo: {
     marginBottom: 6,
-    letterSpacing: 0.5,
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,

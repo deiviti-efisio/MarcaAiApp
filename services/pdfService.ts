@@ -4,6 +4,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
 import { formatCalendarDate } from '../lib/dateUtils';
+import { getMeuShowWordmarkDataUri, meuShowPdfLogoHtml } from '../utils/meuShowLogoDataUri';
 import { Event } from '../services/supabase/eventService';
 
 interface EventPDFData {
@@ -32,6 +33,7 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
     
     // Calcular lucro
     const profit = (event.value || 0) - totalExpenses;
+    const logoSrc = await getMeuShowWordmarkDataUri();
     
     // Formatar hora
     const formatTime = (timeString: string) => {
@@ -75,6 +77,12 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
             color: #666;
             margin: 5px 0 0 0;
             font-size: 14px;
+          }
+          .header .brand-wordmark {
+            height: 64px;
+            width: auto;
+            display: block;
+            margin: 0 auto 8px;
           }
           .section {
             margin-bottom: 30px;
@@ -160,7 +168,7 @@ export const generateEventPDF = async (data: EventPDFData): Promise<{ success: b
       </head>
       <body>
         <div class="header">
-          <h1>🎵 MeuShow</h1>
+          ${meuShowPdfLogoHtml(logoSrc)}
           <p>Relatório de Evento</p>
         </div>
 
@@ -439,6 +447,7 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
     // Criar HTML formatado para o PDF da agenda
     const now = new Date();
     const dataGeracao = `${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}hs`;
+    const logoSrc = await getMeuShowWordmarkDataUri();
     
     const htmlContent = `
     <!DOCTYPE html>
@@ -462,33 +471,32 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
           }
           
           .header-section {
-            display: flex;
-            align-items: flex-start;
-            gap: 20px;
+            display: block;
+            width: 100%;
+            text-align: center;
             margin-bottom: 20px;
           }
           
           .logo {
-            width: 70px;
-            height: 70px;
-            background: #667eea;
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            background: transparent;
+            width: 100%;
+            height: auto;
+            border-radius: 0;
+            box-shadow: none;
+            margin: 0 0 10px 0;
+            text-align: center;
           }
-          
-          .logo-text {
-            font-size: 42px;
-            font-weight: bold;
-            color: #ffffff;
-            line-height: 1;
+
+          .brand-wordmark {
+            height: 56px;
+            width: auto;
+            display: block;
+            margin: 0 auto;
           }
           
           .header-content {
-            flex: 1;
+            width: 100%;
+            text-align: center;
           }
           
           .artist-name {
@@ -498,6 +506,7 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
             margin-bottom: 6px;
             letter-spacing: 0.5px;
             line-height: 1.2;
+            text-align: center;
           }
           
           .report-title {
@@ -505,12 +514,14 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
             color: #333;
             font-weight: 700;
             margin-bottom: 6px;
+            text-align: center;
           }
           
           .generated-info {
             font-size: 11px;
             color: #666;
             line-height: 1.5;
+            text-align: center;
           }
           
           .header-divider {
@@ -732,7 +743,7 @@ export const generateAgendaPDF = async (data: AgendaPDFData): Promise<{ success:
         <!-- Cabeçalho -->
         <div class="header-section">
           <div class="logo">
-            <div class="logo-text">MS</div>
+            ${meuShowPdfLogoHtml(logoSrc)}
           </div>
           <div class="header-content">
             ${artistName ? `<h1 class="artist-name">${artistName.toUpperCase()}</h1>` : ''}

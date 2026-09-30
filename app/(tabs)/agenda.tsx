@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import OptimizedImage from "../../components/OptimizedImage";
+import MeuShowWordmark from "../../components/MeuShowWordmark";
 import EventPaymentProgress, {
   getUnpaidRemainder,
 } from "../../components/EventPaymentProgress";
@@ -3084,11 +3085,7 @@ export default function AgendaScreen() {
             >
               {WELCOME_STEPS[welcomeStep].image ? (
                 <View style={styles.welcomeModalImageWrap}>
-                  <Image
-                    source={require("../../assets/images/icone_app.png")}
-                    style={styles.welcomeModalImage}
-                    resizeMode="contain"
-                  />
+                  <MeuShowWordmark size="sm" />
                 </View>
               ) : (
                 <View
@@ -4449,16 +4446,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   welcomeModalImageWrap: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
-    backgroundColor: "transparent",
-  },
-  welcomeModalImage: {
-    width: "100%",
-    height: "100%",
   },
   welcomeModalIconWrap: {
     width: 100,

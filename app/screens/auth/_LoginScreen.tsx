@@ -21,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppleSignInButton, { AppleSignInResult } from '../../../components/AppleSignInButton';
 import GoogleGLogo from '../../../components/GoogleGLogo';
-import LogoMarcaAi from '../../../components/LogoMarcaAi';
+import MeuShowWordmark from '../../../components/MeuShowWordmark';
 import { useActiveArtistContext } from '../../../contexts/ActiveArtistContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { supabase } from '../../../lib/supabase';
@@ -547,7 +547,10 @@ export default function LoginScreen() {
           <View style={styles.content}>
             {/* Logo/Header */}
             <View style={styles.header}>
-              <LogoMarcaAi size="large" showTagline={true} showIcon={false} />
+              <MeuShowWordmark size="md" />
+              <Text style={[styles.brandTagline, { color: colors.textSecondary }]}>
+                Agenda & Finanças
+              </Text>
             </View>
 
             {/* Formulário de Login */}
@@ -881,8 +884,13 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 60,
-    marginTop: 20,
+    marginBottom: 28,
+    marginTop: 8,
+  },
+  brandTagline: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '500',
   },
   form: {
     borderRadius: 16,

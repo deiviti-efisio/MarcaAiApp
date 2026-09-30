@@ -1,7 +1,8 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { LocationBucket } from '../services/eventInsightsService';
 import { BrazilUfMap } from './BrazilUfMap';
+import MeuShowWordmark from './MeuShowWordmark';
 
 /** Largura fixa para PNG legível em redes sociais / WhatsApp */
 export const BRAZIL_STATES_SHARE_WIDTH = 360;
@@ -30,12 +31,7 @@ export const BrazilStatesShareCapture = React.forwardRef<View, BrazilStatesShare
     return (
       <View ref={ref} collapsable={false} style={styles.root}>
         <View style={styles.brandRow}>
-          <Image
-            source={require('../assets/images/icone_512x512.png')}
-            style={styles.brandLogo}
-            accessibilityIgnoresInvertColors
-          />
-          <Text style={styles.brand}>MeuShow</Text>
+          <MeuShowWordmark size="xs" />
         </View>
         <Text style={styles.artist} numberOfLines={2}>
           {artistName}

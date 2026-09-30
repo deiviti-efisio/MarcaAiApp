@@ -3,6 +3,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { formatCalendarDate } from '../lib/dateUtils';
+import { getMeuShowWordmarkDataUri, meuShowPdfLogoHtml } from '../utils/meuShowLogoDataUri';
 
 export type DetalhesPdfSlice = { value: number; color: string; label: string };
 
@@ -160,6 +161,7 @@ export async function generateFinanceiroDetalhesPdf(
     hour: '2-digit',
     minute: '2-digit',
   })}`;
+  const logoSrc = await getMeuShowWordmarkDataUri();
 
   const positive = pieSlices.filter((s) => s.value > 0);
   const total = pieTotal > 0 ? pieTotal : positive.reduce((a, s) => a + s.value, 0);
@@ -323,13 +325,13 @@ export async function generateFinanceiroDetalhesPdf(
     .section-allow-break {
       margin-bottom: 8px;
     }
-    .header-section { display:flex; align-items:flex-start; gap:18px; margin-bottom:12px; page-break-inside:avoid; break-inside:avoid; }
-    .logo { width:64px; height:64px; background:#667eea; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .logo-text { font-size:38px; font-weight:bold; color:#fff; line-height:1; }
-    .header-content { flex:1; }
-    .artist-name { font-size:24px; font-weight:bold; color:#111; margin-bottom:4px; }
-    .report-title { font-size:17px; font-weight:700; color:#333; margin-bottom:4px; }
-    .generated-info { font-size:11px; color:#666; }
+    .header-section { display:block; width:100%; text-align:center; margin-bottom:12px; page-break-inside:avoid; break-inside:avoid; }
+    .logo { width:100%; margin:0 0 10px 0; text-align:center; }
+    .brand-wordmark { height:52px; width:auto; display:block; margin:0 auto; }
+    .header-content { width:100%; text-align:center; }
+    .artist-name { font-size:24px; font-weight:bold; color:#111; margin-bottom:4px; text-align:center; }
+    .report-title { font-size:17px; font-weight:700; color:#333; margin-bottom:4px; text-align:center; }
+    .generated-info { font-size:11px; color:#666; text-align:center; }
     .header-divider { height:2px; background:#333; margin:10px 0 14px; page-break-after:avoid; }
     h3 {
       font-size:15px;
@@ -372,7 +374,7 @@ export async function generateFinanceiroDetalhesPdf(
   <div class="doc-root">
   <div class="section-keep">
     <div class="header-section">
-      <div class="logo"><div class="logo-text">MS</div></div>
+      <div class="logo">${meuShowPdfLogoHtml(logoSrc)}</div>
       <div class="header-content">
         ${artistName ? `<div class="artist-name">${escapeHtml(artistName.toUpperCase())}</div>` : ''}
         <div class="report-title">Detalhes financeiros · ${escapeHtml(MONTHS[month])} / ${year}</div>

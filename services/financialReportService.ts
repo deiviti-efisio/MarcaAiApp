@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { formatCalendarDate } from '../lib/dateUtils';
+import { getMeuShowWordmarkDataUri, meuShowPdfLogoHtml } from '../utils/meuShowLogoDataUri';
 import { FINANCIAL_REPORT_HTML_STYLES } from './yearlyFinancialReportHtml';
 
 interface EventWithExpenses {
@@ -115,6 +116,7 @@ export const generateFinancialReport = async (data: FinancialReportData): Promis
     const now = new Date();
     const dataGeracao = `${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}hs`;
     console.log('📅 Data de geração:', dataGeracao);
+    const logoSrc = await getMeuShowWordmarkDataUri();
     
     console.log('📊 Dados do relatório:', {
       eventos: events.length,
@@ -142,7 +144,7 @@ export const generateFinancialReport = async (data: FinancialReportData): Promis
         <div class="header-section">
           <div class="logo">
             <div class="logo-inner">
-              <div class="logo-text">MS</div>
+              ${meuShowPdfLogoHtml(logoSrc)}
             </div>
           </div>
           <div class="header-content">
@@ -468,6 +470,7 @@ export const generateYearlyFinancialReport = async (
       hour: '2-digit',
       minute: '2-digit',
     })}hs`;
+    const logoSrc = await getMeuShowWordmarkDataUri();
 
     const renderMonthBody = (block: YearlyReportMonthBlock): string => {
       const { monthIndex, events, standaloneIncome, standaloneExpenses } = block;
@@ -666,7 +669,7 @@ export const generateYearlyFinancialReport = async (
         <div class="header-section">
           <div class="logo">
             <div class="logo-inner">
-              <div class="logo-text">MS</div>
+              ${meuShowPdfLogoHtml(logoSrc)}
             </div>
           </div>
           <div class="header-content">

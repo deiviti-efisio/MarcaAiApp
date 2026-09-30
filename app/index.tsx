@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import LogoMarcaAi from '../components/LogoMarcaAi';
+import MeuShowWordmark from '../components/MeuShowWordmark';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { setAppIconBadge } from '../services/appIconBadge';
@@ -188,7 +188,7 @@ export default function Index() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <LogoMarcaAi size="large" iconOnly style={styles.logoBlock} />
+      <MeuShowWordmark size="sm" style={styles.logoBlock} />
 
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color={colors.primary} />

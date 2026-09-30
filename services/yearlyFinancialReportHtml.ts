@@ -28,45 +28,49 @@ export const FINANCIAL_REPORT_HTML_STYLES = `
             max-width: 100%;
           }
 
-          /* Cabeçalho: tabela = layout previsível no PDF */
+          /* Cabeçalho: logo em cima, título centralizado */
           .header-section {
-            display: table;
+            display: block;
             width: 100%;
-            table-layout: fixed;
+            text-align: center;
             margin-bottom: 14px;
           }
 
           .header-section .logo,
           .header-section .header-content {
-            display: table-cell;
-            vertical-align: top;
+            display: block;
+            width: 100%;
           }
 
           .logo {
-            width: 64px;
-            padding-right: 14px;
+            width: 100%;
+            padding: 0;
+            margin: 0 0 10px 0;
+            text-align: center;
           }
 
           .logo-inner {
-            width: 56px;
-            height: 56px;
-            background: #667eea;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+            background: transparent;
+            width: auto;
+            height: auto;
+            box-shadow: none;
+            border-radius: 0;
+            margin: 0 auto;
+          }
+
+          .brand-wordmark {
+            height: 52px;
+            width: auto;
+            display: block;
+            margin: 0 auto;
           }
 
           .logo-text {
-            font-size: 28px;
-            font-weight: bold;
-            color: #ffffff;
-            line-height: 1;
+            display: none;
           }
 
           .header-content {
-            text-align: left;
+            text-align: center;
             word-wrap: break-word;
             overflow-wrap: break-word;
           }
@@ -78,6 +82,7 @@ export const FINANCIAL_REPORT_HTML_STYLES = `
             margin: 0 0 4px 0;
             letter-spacing: 0.02em;
             line-height: 1.25;
+            text-align: center;
           }
 
           .report-title {
@@ -86,6 +91,7 @@ export const FINANCIAL_REPORT_HTML_STYLES = `
             color: #374151;
             margin: 0 0 6px 0;
             line-height: 1.3;
+            text-align: center;
           }
 
           .generated-info {
@@ -93,6 +99,7 @@ export const FINANCIAL_REPORT_HTML_STYLES = `
             color: #6b7280;
             line-height: 1.4;
             margin: 0;
+            text-align: center;
           }
 
           .header-divider {

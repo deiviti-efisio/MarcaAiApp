@@ -13,7 +13,6 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
-    Image,
     Switch,
     Text,
     TextInput,
@@ -22,6 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import OptimizedImage from '../../components/OptimizedImage';
+import MeuShowWordmark from '../../components/MeuShowWordmark';
 import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { artistImageUpdateService } from '../../services/artistImageUpdateService';
@@ -1623,14 +1623,7 @@ export default function ConfiguracoesScreen() {
             </TouchableOpacity>
 
             <View style={dynamicStyles.aboutSimpleBody}>
-              <View style={dynamicStyles.aboutLogoSquareSmall}>
-                <Image
-                  source={require('../../assets/images/logo_ticket.png')}
-                  style={dynamicStyles.aboutLogoTicket}
-                  resizeMode="contain"
-                />
-              </View>
-              <Text style={[dynamicStyles.aboutAppNameSmall, { color: colors.text }]}>MeuShow</Text>
+              <MeuShowWordmark size="sm" style={dynamicStyles.aboutLogoTicket} />
               <Text style={[dynamicStyles.aboutTaglineSmall, { color: colors.textSecondary }]}>
                 Versão {appVersionDisplay}
               </Text>
@@ -2469,21 +2462,8 @@ const createDynamicStyles = (isDark: boolean, colors: any) => StyleSheet.create(
            alignItems: 'center',
            paddingBottom: 4,
          },
-         aboutLogoSquareSmall: {
-           width: 64,
-           height: 64,
-           justifyContent: 'center',
-           alignItems: 'center',
-           marginBottom: 10,
-         },
          aboutLogoTicket: {
-           width: 64,
-           height: 64,
-         },
-         aboutAppNameSmall: {
-           fontSize: 18,
-           fontWeight: '800',
-           marginBottom: 4,
+           marginBottom: 10,
          },
          aboutTaglineSmall: {
            fontSize: 13,
