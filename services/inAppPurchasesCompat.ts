@@ -5,6 +5,7 @@
  * Não instale o pacote `expo-in-app-purchases` junto com `expo-iap`: haveria conflito na loja.
  */
 import { endConnection, fetchProducts, initConnection, type Product } from 'expo-iap';
+import { storePurchaseSkus } from '../constants/iapSkus';
 
 /** Valores alinhados ao enum clássico da Expo (OK = sucesso da consulta). */
 export const IAPResponseCode = {
@@ -16,7 +17,7 @@ export const IAPResponseCode = {
 
 export type IAPResponseCodeValue = (typeof IAPResponseCode)[keyof typeof IAPResponseCode];
 
-export const subscriptionIds = ['marcaai_mensal_app', 'marcaai_anual_app'] as const;
+export const subscriptionIds = storePurchaseSkus();
 
 export async function connectAsync(): Promise<void> {
   const ok = await initConnection();

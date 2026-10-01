@@ -70,6 +70,8 @@ BEGIN
 
   v_product := btrim(p_product_id);
   IF v_product = '' OR v_product NOT IN (
+    'meushow_990',
+    'meushow_9990',
     'marcaai_mensal_app',
     'marcaai_anual_app',
     'marcaai_mensal',
@@ -143,8 +145,10 @@ BEGIN
   -- SKU fixo (PT/EN por nome do produto na loja) — não usar só LIKE '%annual%'
   -- senão marcaai_anual_app cai no ELSE e vira monthly.
   v_billing := CASE v_product
+    WHEN 'meushow_9990' THEN 'annual'
     WHEN 'marcaai_anual_app' THEN 'annual'
     WHEN 'marcaai_anual' THEN 'annual'
+    WHEN 'meushow_990' THEN 'monthly'
     WHEN 'marcaai_mensal_app' THEN 'monthly'
     WHEN 'marcaai_mensal' THEN 'monthly'
     ELSE 'monthly'

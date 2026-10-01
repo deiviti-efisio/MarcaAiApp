@@ -7,18 +7,12 @@ import {
   type Purchase,
 } from 'expo-iap';
 import { Platform } from 'react-native';
+import { ALL_PREMIUM_SKUS, isAnnualSku, isPremiumSku } from '../constants/iapSkus';
 import { supabase } from '../lib/supabase';
 import { cacheService } from './cacheService';
 import { checkUserSubscriptionFromTable } from './supabase/userService';
 
-const PREMIUM_SKUS = ['marcaai_mensal_app', 'marcaai_anual_app'] as const;
-const MONTHLY_SKU = 'marcaai_mensal_app';
-const ANNUAL_SKU = 'marcaai_anual_app';
 const DAY_MS = 86_400_000;
-
-function isAnnualSku(productId: string): boolean {
-  return productId.includes('anual');
-}
 
 /** Teto do que o cliente pode enviar (mensal ~40 dias, anual ~400). */
 function clientExpiryCapMs(productId: string): number {
@@ -61,12 +55,12 @@ export function effectivePremiumSkuForIos(row: {
     row.renewalInfoIOS?.autoRenewPreference,
     row.productId,
   ].filter(
-    (id): id is string =>
-      typeof id === 'string' && PREMIUM_SKUS.includes(id as (typeof PREMIUM_SKUS)[number]),
+    (id): id is string => typeof id === 'string' && isPremiumSku(id),
   );
 
-  if (candidates.includes(ANNUAL_SKU)) return ANNUAL_SKU;
-  if (candidates.includes(MONTHLY_SKU)) return MONTHLY_SKU;
+  const annual = candidates.find(isAnnualSku);
+  if (annual) return annual;
+  if (candidates[0]) return candidates[0];
   return row.productId;
 }
 
@@ -83,7 +77,7 @@ type SyncPayload = {
 };
 
 function resolveActivePremiumPurchase(purchases: Purchase[]): Purchase | null {
-  const premium = purchases.filter((p) => PREMIUM_SKUS.includes(p.productId as (typeof PREMIUM_SKUS)[number]));
+  const premium = purchases.filter((p) => isPremiumSku(p.productId));
   if (!premium.length) return null;
 
   const now = Date.now();
@@ -94,10 +88,9 @@ function resolveActivePremiumPurchase(purchases: Purchase[]): Purchase | null {
   });
   const pool = valid.length > 0 ? valid : premium;
 
-  const annual = pool.find((p) => effectivePremiumSkuForIos(p) === ANNUAL_SKU);
+  const annual = pool.find((p) => isAnnualSku(effectivePremiumSkuForIos(p)));
   if (annual) return annual;
-  const monthly = pool.find((p) => effectivePremiumSkuForIos(p) === MONTHLY_SKU);
-  return monthly ?? pool[0] ?? null;
+  return pool[0] ?? null;
 }
 
 function purchaseToPayload(purchase: Purchase, source: SyncPayload['source']): SyncPayload {
@@ -204,7 +197,7 @@ async function rpcReconcileClear(): Promise<boolean> {
 
 function pickBestActiveSubscription(rows: ActiveSubscription[]): ActiveSubscription | null {
   const premium = rows.filter(
-    (s) => s.isActive && PREMIUM_SKUS.includes(s.productId as (typeof PREMIUM_SKUS)[number]),
+    (s) => s.isActive && isPremiumSku(s.productId),
   );
   if (!premium.length) return null;
 
@@ -216,10 +209,9 @@ function pickBestActiveSubscription(rows: ActiveSubscription[]): ActiveSubscript
   });
   const pool = valid.length > 0 ? valid : premium;
 
-  const annual = pool.find((s) => effectivePremiumSkuForIos(s) === ANNUAL_SKU);
+  const annual = pool.find((s) => isAnnualSku(effectivePremiumSkuForIos(s)));
   if (annual) return annual;
-  const monthly = pool.find((s) => effectivePremiumSkuForIos(s) === MONTHLY_SKU);
-  return monthly ?? pool[0] ?? null;
+  return pool[0] ?? null;
 }
 
 function activeSubscriptionToPayload(sub: ActiveSubscription): SyncPayload {
@@ -342,7 +334,7 @@ export async function reconcileSubscriptionWithStore(): Promise<ReconcileResult>
       let storeResponded = false;
 
       try {
-        const activeSubs = await getActiveSubscriptions([...PREMIUM_SKUS]);
+        const activeSubs = await getActiveSubscriptions([...ALL_PREMIUM_SKUS]);
         storeResponded = true;
         const best = pickBestActiveSubscription(activeSubs);
         if (best) {
@@ -400,7 +392,7 @@ export async function syncSubscriptionAfterPurchase(purchase: Purchase): Promise
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return false;
-  if (!PREMIUM_SKUS.includes(purchase.productId as (typeof PREMIUM_SKUS)[number])) return false;
+  if (!isPremiumSku(purchase.productId)) return false;
 
   const payload = purchaseToPayload(purchase, 'after_purchase');
   return rpcSync(payload);
@@ -431,7 +423,7 @@ const recentPurchaseKeys = new Map<string, number>();
  * Usar no host global e na tela Assine Premium.
  */
 export async function handleStorePurchaseUpdate(purchase: Purchase): Promise<boolean> {
-  if (!PREMIUM_SKUS.includes(purchase.productId as (typeof PREMIUM_SKUS)[number])) {
+  if (!isPremiumSku(purchase.productId)) {
     return false;
   }
   const key = String(

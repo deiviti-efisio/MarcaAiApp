@@ -32,6 +32,8 @@ const supabase =
     : null;
 
 const ALLOWED_PRODUCT_IDS = new Set([
+  "meushow_990",
+  "meushow_9990",
   "marcaai_mensal_app",
   "marcaai_anual_app",
   "marcaai_mensal",
@@ -157,8 +159,8 @@ function mapSubscriptionStatus(
 /** Alinhado à RPC sync_user_subscription_from_client (SKU explícito, não só "annual" no nome). */
 function billingPeriodFromProductId(productId: string): "monthly" | "annual" {
   const p = productId.trim();
-  if (p === "marcaai_anual_app" || p === "marcaai_anual") return "annual";
-  if (p === "marcaai_mensal_app" || p === "marcaai_mensal") return "monthly";
+  if (p === "meushow_9990" || p === "marcaai_anual_app" || p === "marcaai_anual") return "annual";
+  if (p === "meushow_990" || p === "marcaai_mensal_app" || p === "marcaai_mensal") return "monthly";
   const low = p.toLowerCase();
   if (low.includes("anual") || low.includes("annual") || low.includes("year"))
     return "annual";

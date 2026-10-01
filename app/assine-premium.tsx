@@ -38,15 +38,21 @@ import {
   handleStorePurchaseUpdate,
   syncSubscriptionAfterRestore,
 } from '../services/subscriptionSyncService';
+import {
+  ALL_PREMIUM_SKUS,
+  PLAN_LABELS,
+  isAnnualSku,
+  isPremiumSku,
+  storeAnnualSku,
+  storeMonthlySku,
+  storePurchaseSkus,
+} from '../constants/iapSkus';
 import { LEGAL_URLS } from '../constants/legal';
 
-const PREMIUM_SKUS = ['marcaai_mensal_app', 'marcaai_anual_app'];
-const PLAN_LABELS: Record<string, string> = {
-  marcaai_mensal_app: 'MeuShow Premium Mensal',
-  marcaai_anual_app: 'MeuShow Premium Anual',
-  marcaai_mensal: 'MeuShow Premium Mensal',
-  marcaai_anual: 'MeuShow Premium Anual',
-};
+const PREMIUM_SKUS = storePurchaseSkus();
+const MONTHLY_SKU = storeMonthlySku();
+const ANNUAL_SKU = storeAnnualSku();
+
 const FREE_VS_PREMIUM = [
   { label: 'Perfis de artista', free: '1', premium: 'Ilimitados' },
   { label: 'Colaboradores por artista', free: 'Até 4', premium: 'Ilimitados' },
@@ -54,9 +60,6 @@ const FREE_VS_PREMIUM = [
   { label: 'Relatórios', free: 'Essenciais', premium: 'Avançados + PDF' },
   { label: 'Suporte', free: 'Padrão', premium: 'Prioritário' },
 ];
-const MONTHLY_SKU = 'marcaai_mensal_app';
-const ANNUAL_SKU = 'marcaai_anual_app';
-
 /** Só carrega `fetchProducts` no iOS depois que o usuário confirma que vai usar conta Sandbox na folha da loja (evita login com Apple ID do aparelho por engano). */
 const IOS_SANDBOX_IAP_ACK_KEY = 'marcaai_ios_sandbox_iap_ack_v1';
 
@@ -159,7 +162,7 @@ const getAnnualSavingsPercent = (monthlyProduct?: Product, annualProduct?: Produ
  * priorizamos o anual e usamos getActiveSubscriptions quando possível (iOS StoreKit 2).
  */
 function resolveActivePremiumSkuFromPurchases(purchases: Purchase[]): string | null {
-  const premium = purchases.filter((p) => PREMIUM_SKUS.includes(p.productId));
+  const premium = purchases.filter((p) => isPremiumSku(p.productId));
   if (!premium.length) return null;
 
   const now = Date.now();
@@ -170,11 +173,8 @@ function resolveActivePremiumSkuFromPurchases(purchases: Purchase[]): string | n
   });
   const pool = valid.length > 0 ? valid : premium;
 
-  const annual = pool.find((p) => effectivePremiumSkuForIos(p) === ANNUAL_SKU);
-  if (annual) return ANNUAL_SKU;
-
-  const monthly = pool.find((p) => effectivePremiumSkuForIos(p) === MONTHLY_SKU);
-  if (monthly) return MONTHLY_SKU;
+  const annual = pool.find((p) => isAnnualSku(effectivePremiumSkuForIos(p)));
+  if (annual) return effectivePremiumSkuForIos(annual);
 
   return pool[0] ? effectivePremiumSkuForIos(pool[0]) : null;
 }
@@ -299,7 +299,7 @@ export default function AssinePremiumScreen() {
   /** Atualiza qual SKU a loja considera ativo (para “Gerenciar assinatura”). */
   const syncPurchasedStatus = useCallback(async () => {
     try {
-      const activeSubs = await getActiveSubscriptions(PREMIUM_SKUS);
+      const activeSubs = await getActiveSubscriptions([...ALL_PREMIUM_SKUS]);
       if (
         __DEV__ &&
         Platform.OS === 'ios' &&
@@ -311,9 +311,9 @@ export default function AssinePremiumScreen() {
           '[assine-premium] Loja em ambiente Xcode (StoreKit local): webhooks da Apple e “Última compra” no App Store Connect não se aplicam. Para sandbox real: Edit Scheme → Run → Options → StoreKit Configuration = None; iPhone físico. Guia: ios/TESTE_SANDBOX_APPLE.md',
         );
       }
-      const premiumRows = activeSubs.filter((s) => s.isActive && PREMIUM_SKUS.includes(s.productId));
+      const premiumRows = activeSubs.filter((s) => s.isActive && isPremiumSku(s.productId));
       if (premiumRows.length > 0) {
-        const annualRow = premiumRows.find((s) => effectivePremiumSkuForIos(s) === ANNUAL_SKU);
+        const annualRow = premiumRows.find((s) => isAnnualSku(effectivePremiumSkuForIos(s)));
         const row = annualRow ?? premiumRows[0];
         const sku = row ? effectivePremiumSkuForIos(row) : null;
         setActiveSku(sku);
@@ -433,7 +433,7 @@ export default function AssinePremiumScreen() {
 
     subscriptions.push(
       purchaseUpdatedListener(async (purchase: Purchase) => {
-        if (!PREMIUM_SKUS.includes(purchase.productId)) return;
+        if (!isPremiumSku(purchase.productId)) return;
 
         const userStartedThisFlow = userStartedPurchaseFlowRef.current;
         try {
@@ -817,7 +817,7 @@ export default function AssinePremiumScreen() {
               const rawDescription = product?.description?.trim() ?? '';
               const showDescription = rawDescription.length > 0 && rawDescription !== 'Produto ainda não retornado pela loja.';
               const unavailable = !product;
-              const isAnnual = sku === ANNUAL_SKU;
+              const isAnnual = isAnnualSku(sku);
               const isHighlighted = isAnnual && annualSavingsPercent !== null;
               const isThisSkuInStore = activeSku === sku;
               const premiumLocked = planIsActive && !isThisSkuInStore;
@@ -852,7 +852,7 @@ export default function AssinePremiumScreen() {
                       <Text style={[styles.highlightTagText, { color: colors.primary }]}>Melhor custo</Text>
                     </View>
                   ) : null}
-                  {sku === ANNUAL_SKU && annualSavingsPercent !== null ? (
+                  {isAnnual && annualSavingsPercent !== null ? (
                     <View style={[styles.savingsTag, { backgroundColor: `${colors.success}22` }]}>
                       <Text style={[styles.savingsTagText, { color: colors.success }]}>−{annualSavingsPercent}%</Text>
                     </View>
