@@ -289,7 +289,7 @@ export const checkUserSubscriptionFromTable = async (
       .from('user_subscriptions')
       .select('status, expires_at, metadata')
       .eq('user_id', userId)
-      .in('status', ['active', 'grace_period', 'pending']);
+      .in('status', ['active', 'grace_period', 'cancelled', 'pending']);
 
     if (error) {
       return { isActive: false, status: null, error: error.message };
@@ -307,6 +307,9 @@ export const checkUserSubscriptionFromTable = async (
       if (!expiresOk) continue;
 
       if (row.status === 'active' || row.status === 'grace_period') {
+        return { isActive: true, status: row.status, error: null };
+      }
+      if (row.status === 'cancelled' && row.expires_at && exp != null && exp > now) {
         return { isActive: true, status: row.status, error: null };
       }
       if (

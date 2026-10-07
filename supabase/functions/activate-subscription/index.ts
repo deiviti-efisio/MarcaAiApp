@@ -1,8 +1,11 @@
 /**
  * App Store Server Notifications V2 → Supabase (`user_subscriptions` + `users.plan_is_active`)
  *
- * Fluxo anti-duplicata: UPDATE por transactionId → por originalTransactionId → consolida pending do app; INSERT só se não houver linha compatível.
+ * Fluxo: JWS (PEM/x5c/G3) → bundle com.marcaai.app → claim notificationUUID →
+ * UPDATE por transactionId / originalTransactionId → consolida pending; INSERT se preciso.
+ * Não apaga cortesia manual_db. Recalcula plan_is_active com Apple + Android + cortesia.
  *
+ * SQL extra: database/apple_webhook_events.sql
  * Deploy: `supabase functions deploy activate-subscription`
  * URL:    https://<ref>.supabase.co/functions/v1/activate-subscription
  *
@@ -20,6 +23,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import * as jose from "npm:jose@5.9.6";
 import { X509Certificate } from "node:crypto";
+
+/** Bundle iOS no App Store Connect / Xcode — não usar o applicationId Android. */
+const APPLE_BUNDLE_ID = "com.marcaai.app";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -83,17 +91,43 @@ function derFromX5cBase64(b64: string): Uint8Array {
   return out;
 }
 
-/** Valida JWS assinado pela Apple (ASN V2 / transação / renovação): x5c + ES256 + raiz G3. */
+/** `X509Certificate.toString()` no Deno/Node não é PEM — o jose precisa do PEM do x5c. */
+function x5cToPem(b64: string): string {
+  const clean = b64.replace(/\s/g, "");
+  const lines = clean.match(/.{1,64}/g) ?? [clean];
+  return `-----BEGIN CERTIFICATE-----\n${lines.join("\n")}\n-----END CERTIFICATE-----`;
+}
+
+function certDateMs(value: string): number {
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : NaN;
+}
+
+/**
+ * Valida JWS ASN V2: cadeia x5c (folha → WWDR → Apple Root CA G3) + assinatura.
+ * Alinhado à library oficial da Apple (`chain.length` 3; usa x5c[0]/x5c[1] e raiz embarcada).
+ */
 async function verifyJWS(jws: string): Promise<boolean> {
   try {
     const header = jose.decodeProtectedHeader(jws);
-    if (header.alg !== "ES256") return false;
+    const alg = header.alg;
+    if (alg !== "ES256" && alg !== "ES384") {
+      console.error("[Apple Webhook] verifyJWS: alg não suportado:", alg);
+      return false;
+    }
 
     const x5c = header.x5c;
-    if (!Array.isArray(x5c) || x5c.length < 2) return false;
+    if (!Array.isArray(x5c) || x5c.length < 2) {
+      console.error(
+        "[Apple Webhook] verifyJWS: x5c ausente ou curto (esperado 2–3 certs). length=",
+        Array.isArray(x5c) ? x5c.length : x5c,
+      );
+      return false;
+    }
     const leafB64 = x5c[0];
     const intermediateB64 = x5c[1];
     if (typeof leafB64 !== "string" || typeof intermediateB64 !== "string") {
+      console.error("[Apple Webhook] verifyJWS: x5c[0]/x5c[1] não são string.");
       return false;
     }
 
@@ -101,41 +135,156 @@ async function verifyJWS(jws: string): Promise<boolean> {
     const intermediate = new X509Certificate(derFromX5cBase64(intermediateB64));
     const root = new X509Certificate(APPLE_ROOT_CA_G3_PEM);
 
-    if (!intermediate.checkIssued(root)) return false;
-    if (!leaf.checkIssued(intermediate)) return false;
-    if (!intermediate.verify(root.publicKey)) return false;
-    if (!leaf.verify(intermediate.publicKey)) return false;
+    if (typeof x5c[2] === "string") {
+      const chainRoot = new X509Certificate(derFromX5cBase64(x5c[2]));
+      const sameFp =
+        typeof chainRoot.fingerprint256 === "string" &&
+        typeof root.fingerprint256 === "string" &&
+        chainRoot.fingerprint256.length > 0 &&
+        chainRoot.fingerprint256 === root.fingerprint256;
+      const sameSubject = chainRoot.subject === root.subject;
+      if (!sameFp && !sameSubject) {
+        console.error(
+          "[Apple Webhook] verifyJWS: x5c[2] não é Apple Root CA - G3.",
+          "subject=",
+          chainRoot.subject,
+        );
+        return false;
+      }
+    }
+
+    if (leaf.issuer !== intermediate.subject) {
+      console.error(
+        "[Apple Webhook] verifyJWS: folha não emitida pela intermediária.",
+        "issuer=",
+        leaf.issuer,
+        "intermediate.subject=",
+        intermediate.subject,
+      );
+      return false;
+    }
+    if (intermediate.issuer !== root.subject) {
+      console.error(
+        "[Apple Webhook] verifyJWS: intermediária não emitida pela G3.",
+        "issuer=",
+        intermediate.issuer,
+        "root.subject=",
+        root.subject,
+      );
+      return false;
+    }
+
+    try {
+      if (!leaf.verify(intermediate.publicKey)) {
+        console.error("[Apple Webhook] verifyJWS: assinatura da folha inválida.");
+        return false;
+      }
+      if (!intermediate.verify(root.publicKey)) {
+        console.error("[Apple Webhook] verifyJWS: assinatura da intermediária inválida.");
+        return false;
+      }
+    } catch (e) {
+      console.warn(
+        "[Apple Webhook] verifyJWS: X509.verify indisponível neste runtime; seguindo com DN + G3 + JWS.",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
 
     const now = Date.now();
-    if (new Date(leaf.validTo).getTime() < now) return false;
-    if (new Date(leaf.validFrom).getTime() > now) return false;
+    const leafFrom = certDateMs(leaf.validFrom);
+    const leafTo = certDateMs(leaf.validTo);
+    if (Number.isFinite(leafTo) && leafTo < now) {
+      console.error("[Apple Webhook] verifyJWS: certificado folha expirado.", leaf.validTo);
+      return false;
+    }
+    if (Number.isFinite(leafFrom) && leafFrom > now) {
+      console.error("[Apple Webhook] verifyJWS: certificado folha ainda não válido.", leaf.validFrom);
+      return false;
+    }
 
-    const key = await jose.importX509(leaf.toString(), "ES256");
+    const key = await jose.importX509(x5cToPem(leafB64), alg);
     await jose.compactVerify(jws, key);
     return true;
-  } catch {
+  } catch (e) {
+    console.error(
+      "[Apple Webhook] verifyJWS: falha ao verificar JWS.",
+      e instanceof Error ? e.message : String(e),
+    );
     return false;
   }
+}
+
+type AppleTransaction = {
+  appAccountToken?: string;
+  bundleId?: string;
+  environment?: string;
+  expiresDate?: number;
+  originalTransactionId?: string;
+  productId?: string;
+  purchaseDate?: number;
+  revocationDate?: number;
+  transactionId?: string;
+};
+
+type AppleRenewal = {
+  appAccountToken?: string;
+  autoRenewStatus?: number;
+  expirationIntent?: number;
+  gracePeriodExpiresDate?: number;
+  isInBillingRetryPeriod?: boolean;
+  originalTransactionId?: string;
+};
+
+function autoRenewFromApple(
+  subtype: string | undefined,
+  renewal: AppleRenewal | null,
+  previousAutoRenew: boolean,
+): boolean {
+  if (subtype === "AUTO_RENEW_DISABLED") return false;
+  if (subtype === "AUTO_RENEW_ENABLED") return true;
+  if (renewal?.autoRenewStatus === 0) return false;
+  if (renewal?.autoRenewStatus === 1) return true;
+  return previousAutoRenew;
 }
 
 function mapSubscriptionStatus(
   notificationType: string,
   subtype: string | undefined,
+  transaction: AppleTransaction,
+  renewal: AppleRenewal | null,
+  now = Date.now(),
 ): string {
+  if (transaction.revocationDate != null) return "revoked";
+
+  const expires = transaction.expiresDate ?? 0;
+  const graceUntil = renewal?.gracePeriodExpiresDate ?? 0;
+  const inGrace =
+    (notificationType === "DID_FAIL_TO_RENEW" && subtype === "GRACE_PERIOD") ||
+    (graceUntil > now &&
+      (renewal?.isInBillingRetryPeriod === true ||
+        notificationType === "DID_FAIL_TO_RENEW"));
+
+  if (inGrace && graceUntil > now) return "grace_period";
+
+  const stillValid = expires > now;
+
   switch (notificationType) {
     case "SUBSCRIBED":
     case "INITIAL_BUY":
     case "DID_RENEW":
+    case "DID_RECOVER":
     case "RENEWAL_EXTENDED":
     case "OFFER_REDEEMED":
-      return "active";
-
-    case "DID_CHANGE_RENEWAL_PREF":
+    case "INTERACTIVE_RENEWAL":
     case "DID_CHANGE_RENEWAL_STATUS":
-      return "active";
-
+    case "DID_CHANGE_RENEWAL_PREF":
     case "REFUND_DECLINED":
-      return "active";
+    case "PRICE_INCREASE":
+    case "PRICE_INCREASE_CONSENT":
+      return stillValid ? "active" : "expired";
+
+    case "DID_FAIL_TO_RENEW":
+      return stillValid ? "active" : "expired";
 
     case "EXPIRED":
     case "GRACE_PERIOD_EXPIRED":
@@ -145,14 +294,8 @@ function mapSubscriptionStatus(
     case "REVOKE":
       return "revoked";
 
-    case "DID_FAIL_TO_RENEW":
-      return subtype === "GRACE_PERIOD" ? "grace_period" : "active";
-
-    case "PRICE_INCREASE":
-      return "active";
-
     default:
-      return "pending";
+      return stillValid ? "active" : "expired";
   }
 }
 
@@ -187,14 +330,70 @@ function mergeAppleServerMetadata(
   return { ...base, ...layer };
 }
 
-type SubRow = { id: string; metadata: unknown };
+type SubRow = {
+  id: string;
+  user_id?: string;
+  status?: string;
+  expires_at?: string | null;
+  auto_renew?: boolean | null;
+  metadata: unknown;
+  store_original_transaction_id?: string | null;
+  store_latest_transaction_id?: string | null;
+};
+
+function metadataObject(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as JsonRecord) }
+    : {};
+}
 
 function isManualDbMetadata(metadata: unknown): boolean {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return false;
-  }
-  const source = String((metadata as JsonRecord).source ?? "");
+  const source = String(metadataObject(metadata).source ?? "");
   return source === "manual_db" || source.startsWith("manual_db");
+}
+
+function metadataNumber(metadata: unknown, key: string): number | null {
+  const value = metadataObject(metadata)[key];
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isOlderAppleEvent(metadata: unknown, signedDate?: number): boolean {
+  if (!signedDate) return false;
+  const previous = metadataNumber(metadata, "apple_signed_date_ms");
+  return previous != null && signedDate < previous;
+}
+
+function entitlementIsActive(
+  status: string | null | undefined,
+  expiresAt: string | null | undefined,
+  graceExpiresAt: number | null,
+): boolean {
+  const now = Date.now();
+  if (status === "revoked" || status === "expired") return false;
+  if (status === "grace_period") {
+    return graceExpiresAt != null && graceExpiresAt > now;
+  }
+  if (status === "cancelled") {
+    return !!expiresAt && new Date(expiresAt).getTime() > now;
+  }
+  if (status === "active") {
+    return !expiresAt || new Date(expiresAt).getTime() > now;
+  }
+  if (status === "pending") {
+    return !!expiresAt && new Date(expiresAt).getTime() > now;
+  }
+  return false;
+}
+
+function isMissingAppleEventsTable(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = error.message ?? "";
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    (/apple_webhook_events/i.test(msg) && /does not exist|schema cache|Could not find/i.test(msg))
+  );
 }
 
 /**
@@ -227,7 +426,7 @@ async function selectIosRowToMergeAppleWebhook(
   const nonManual = rows.filter((r) => !isManualDbMetadata(r.metadata));
   if (nonManual.length === 0) return null;
   const preferred = nonManual.find((r) =>
-    ["pending", "active", "grace_period"].includes(r.status),
+    ["pending", "active", "grace_period", "cancelled"].includes(r.status),
   );
   const chosen = preferred ?? nonManual[0];
   return { id: chosen.id, metadata: chosen.metadata };
@@ -262,7 +461,9 @@ async function selectRowByLatestTransactionId(
 ): Promise<SubRow | null> {
   const { data, error } = await supabase!
     .from("user_subscriptions")
-    .select("id, metadata")
+    .select(
+      "id, user_id, status, expires_at, auto_renew, metadata, store_original_transaction_id, store_latest_transaction_id",
+    )
     .eq("user_id", userId)
     .eq("store_latest_transaction_id", transactionId)
     .order("updated_at", { ascending: false })
@@ -283,7 +484,9 @@ async function selectRowByOriginalTransactionId(
 ): Promise<SubRow | null> {
   const { data, error } = await supabase!
     .from("user_subscriptions")
-    .select("id, metadata")
+    .select(
+      "id, user_id, status, expires_at, auto_renew, metadata, store_original_transaction_id, store_latest_transaction_id",
+    )
     .eq("user_id", userId)
     .eq("store_original_transaction_id", originalTransactionId)
     .order("updated_at", { ascending: false })
@@ -334,7 +537,7 @@ async function expireOtherIosPendingDuplicates(
   }
 }
 
-/** Antes do INSERT: expira linhas iOS ativas/pending não manuais + cortesia manual ativa. */
+/** Antes do INSERT: expira linhas iOS ativas/pending da loja. Não toca em cortesia manual_db. */
 async function expireIosNonManualForAppleReplace(userId: string): Promise<void> {
   const { data, error } = await supabase!
     .from("user_subscriptions")
@@ -357,43 +560,52 @@ async function expireIosNonManualForAppleReplace(userId: string): Promise<void> 
       .update({ status: "expired" })
       .eq("id", row.id);
   }
-  const { data: courtesyRows } = await supabase!
-    .from("user_subscriptions")
-    .select("id, metadata")
-    .eq("user_id", userId)
-    .eq("platform", "ios")
-    .in("status", ["active", "grace_period"])
-    .order("updated_at", { ascending: false })
-    .limit(20);
-  const manualId = (courtesyRows ?? []).find((row) => isManualDbMetadata(row.metadata))
-    ?.id as string | undefined;
-  if (manualId) {
-    await supabase!
-      .from("user_subscriptions")
-      .update({ status: "expired" })
-      .eq("id", manualId);
-  }
 }
 
-async function syncUserPlanActive(
-  userId: string,
-  status: string,
-  expiresAtIso: string | null,
-): Promise<void> {
+async function selectSubscriptionsForUser(userId: string): Promise<SubRow[]> {
+  const { data, error } = await supabase!
+    .from("user_subscriptions")
+    .select("id, user_id, status, expires_at, metadata")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(100);
+  if (error) {
+    console.error(
+      "[Apple Webhook] Erro ao listar assinaturas para plan_is_active:",
+      error.message,
+    );
+    return [];
+  }
+  return (data ?? []) as SubRow[];
+}
+
+/** Recalcula Premium com Apple + Android + cortesia manual_db. */
+async function syncUserPlanActive(userId: string): Promise<void> {
   if (!supabase) return;
 
+  const rows = await selectSubscriptionsForUser(userId);
   let planActive = false;
 
-  if (status === "revoked" || status === "expired") {
-    planActive = false;
-  } else if (status === "active" || status === "grace_period") {
-    planActive = true;
-  } else if (
-    status === "pending" &&
-    expiresAtIso &&
-    new Date(expiresAtIso).getTime() > Date.now()
-  ) {
-    planActive = true;
+  for (const row of rows) {
+    const metadata = metadataObject(row.metadata);
+    if (isManualDbMetadata(metadata)) {
+      if (
+        (row.status === "active" ||
+          row.status === "grace_period" ||
+          row.status === "cancelled" ||
+          row.status === "pending") &&
+        (!row.expires_at || new Date(row.expires_at).getTime() > Date.now())
+      ) {
+        planActive = true;
+        break;
+      }
+      continue;
+    }
+    const graceExpiresAt = metadataNumber(metadata, "apple_grace_period_expires_date_ms");
+    if (entitlementIsActive(row.status, row.expires_at, graceExpiresAt)) {
+      planActive = true;
+      break;
+    }
   }
 
   const { error } = await supabase
@@ -403,12 +615,154 @@ async function syncUserPlanActive(
 
   if (error) {
     console.error(
-      "[Apple Webhook] Erro ao sincronizar users.plan_is_active com o status da assinatura (usuário",
+      "[Apple Webhook] Erro ao sincronizar users.plan_is_active (usuário",
       userId,
       "):",
       error.message,
-      "— O registro em user_subscriptions pode estar correto; confira o usuário no app.",
     );
+  }
+}
+
+async function resolveUserId(
+  originalTransactionId: string,
+  appAccountToken?: string,
+): Promise<string | null> {
+  const existingOwner = await selectUserIdByOriginalTransactionId(originalTransactionId);
+  const token = typeof appAccountToken === "string" ? appAccountToken.trim() : "";
+  const tokenIsUuid = UUID_RE.test(token);
+
+  if (existingOwner) {
+    if (tokenIsUuid && existingOwner.toLowerCase() !== token.toLowerCase()) {
+      console.error(
+        "[Apple Webhook] CONFLITO: originalTransactionId já pertence a outro usuário.",
+      );
+      return null;
+    }
+    return existingOwner;
+  }
+
+  if (!tokenIsUuid) {
+    console.error(
+      "[Apple Webhook] Sem appAccountToken UUID e sem vínculo prévio deste originalTransactionId.",
+      "Na compra iOS, envie appAccountToken = UUID do usuário no requestPurchase (StoreKit 2).",
+    );
+    return null;
+  }
+  return token;
+}
+
+async function claimNotification(notificationUUID: string): Promise<boolean> {
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+
+  const { data: inserted, error: insertError } = await supabase!
+    .from("apple_webhook_events")
+    .insert({
+      notification_uuid: notificationUUID,
+      status: "processing",
+      claimed_at: now.toISOString(),
+    })
+    .select("notification_uuid")
+    .maybeSingle();
+
+  if (!insertError && inserted) return true;
+  if (isMissingAppleEventsTable(insertError)) {
+    console.warn(
+      "[Apple Webhook] Tabela apple_webhook_events ausente — processando sem idempotência. Rode database/apple_webhook_events.sql.",
+    );
+    return true;
+  }
+
+  const { data: existing, error: readError } = await supabase!
+    .from("apple_webhook_events")
+    .select("status, claimed_at")
+    .eq("notification_uuid", notificationUUID)
+    .limit(1)
+    .maybeSingle();
+
+  if (isMissingAppleEventsTable(readError)) return true;
+  if (readError || !existing) {
+    if (insertError?.code === "23505") return false;
+    console.warn(
+      "[Apple Webhook] Não foi possível claim da notificação:",
+      readError?.message ?? insertError?.message,
+    );
+    return true;
+  }
+
+  if (existing.status === "processed") return false;
+  if (
+    existing.status === "processing" &&
+    existing.claimed_at &&
+    existing.claimed_at > staleBefore
+  ) {
+    return false;
+  }
+
+  let query = supabase!
+    .from("apple_webhook_events")
+    .update({
+      status: "processing",
+      claimed_at: now.toISOString(),
+      last_error: null,
+    })
+    .eq("notification_uuid", notificationUUID);
+
+  if (existing.status === "processing") {
+    query = query.eq("status", "processing").lt("claimed_at", staleBefore);
+  } else {
+    query = query.eq("status", "failed");
+  }
+
+  const { data: claimed, error: claimError } = await query
+    .select("notification_uuid")
+    .limit(1);
+  if (claimError) {
+    if (isMissingAppleEventsTable(claimError)) return true;
+    console.warn("[Apple Webhook] Falha ao re-claim:", claimError.message);
+    return true;
+  }
+  return Array.isArray(claimed) && claimed.length > 0;
+}
+
+async function markNotificationProcessed(
+  notificationUUID: string | null,
+  userId: string | null,
+  transactionId: string | null,
+  signedDate: number | null,
+): Promise<void> {
+  if (!notificationUUID) return;
+  const { error } = await supabase!
+    .from("apple_webhook_events")
+    .update({
+      status: "processed",
+      processed_at: new Date().toISOString(),
+      user_id: userId,
+      transaction_id: transactionId,
+      signed_date: signedDate ? new Date(signedDate).toISOString() : null,
+      last_error: null,
+    })
+    .eq("notification_uuid", notificationUUID);
+  if (error && !isMissingAppleEventsTable(error)) {
+    console.warn("[Apple Webhook] Falha ao marcar processed:", error.message);
+  }
+}
+
+async function markNotificationFailed(
+  notificationUUID: string | null,
+  err: unknown,
+): Promise<void> {
+  if (!notificationUUID) return;
+  const { error } = await supabase!
+    .from("apple_webhook_events")
+    .update({
+      status: "failed",
+      last_error:
+        err instanceof Error ? err.message.slice(0, 2000) : String(err).slice(0, 2000),
+    })
+    .eq("notification_uuid", notificationUUID);
+  if (error && !isMissingAppleEventsTable(error)) {
+    console.warn("[Apple Webhook] Falha ao marcar failed:", error.message);
   }
 }
 
@@ -428,6 +782,8 @@ serve(async (req) => {
     return new Response("server misconfigured", { status: 500 });
   }
 
+  let notificationUUID: string | null = null;
+
   try {
     const body = await req.json();
 
@@ -435,16 +791,13 @@ serve(async (req) => {
     if (!signedPayload || typeof signedPayload !== "string") {
       console.warn(
         "[Apple Webhook] Corpo JSON sem o campo signedPayload (notificações V2 exigem esse JWS).",
-        "Nada foi alterado no banco. No App Store Connect, use Notificações do servidor em formato V2.",
       );
       return new Response("ok", { status: 200 });
     }
 
-    const outerOk = await verifyJWS(signedPayload);
-    if (!outerOk) {
+    if (!(await verifyJWS(signedPayload))) {
       console.error(
-        "[Apple Webhook] Assinatura do JWS externo (signedPayload) rejeitada pela verificação.",
-        "Resposta 401 para a Apple tentar novamente após corrigir chaves/certificados em produção.",
+        "[Apple Webhook] Assinatura do JWS externo (signedPayload) rejeitada.",
       );
       return new Response("invalid signature", { status: 401 });
     }
@@ -453,9 +806,11 @@ serve(async (req) => {
       notificationType?: string;
       subtype?: string;
       notificationUUID?: string;
+      signedDate?: number;
       data?: {
         bundleId?: string;
         environment?: string;
+        status?: number;
         signedTransactionInfo?: string;
         signedRenewalInfo?: string;
       };
@@ -463,136 +818,159 @@ serve(async (req) => {
 
     const notificationType = outer.notificationType ?? "UNKNOWN";
     const subtype = outer.subtype;
+    const signedDate = outer.signedDate;
+    notificationUUID =
+      typeof outer.notificationUUID === "string" && UUID_RE.test(outer.notificationUUID)
+        ? outer.notificationUUID
+        : null;
+
     console.log(
-      "[Apple Webhook] Notificação recebida — tipo:",
+      "[Apple Webhook] Notificação — tipo:",
       notificationType,
       "| subtipo:",
       subtype ?? "(nenhum)",
-      "| ambiente no payload:",
+      "| ambiente:",
       outer.data?.environment ?? "(não informado)",
+      "| bundle:",
+      outer.data?.bundleId ?? "(não informado)",
     );
 
-    /** Ping da Apple ao configurar a URL — não deve gravar em `user_subscriptions`. */
     if (notificationType === "TEST") {
-      console.log(
-        "[Apple Webhook] Notificação TEST: a Apple só validou a URL do webhook.",
-        "Nenhuma linha em user_subscriptions foi alterada (comportamento esperado).",
-      );
+      console.log("[Apple Webhook] TEST: URL validada; nada gravado em user_subscriptions.");
       return new Response("ok", { status: 200 });
+    }
+
+    const outerBundle = outer.data?.bundleId;
+    if (outerBundle && outerBundle !== APPLE_BUNDLE_ID) {
+      console.error("[Apple Webhook] bundleId rejeitado:", outerBundle);
+      return new Response("ok", { status: 200 });
+    }
+
+    const environment = outer.data?.environment;
+    if (environment && environment !== "Production" && environment !== "Sandbox") {
+      console.error("[Apple Webhook] environment inválido:", environment);
+      return new Response("ok", { status: 200 });
+    }
+
+    if (notificationUUID) {
+      const shouldProcess = await claimNotification(notificationUUID);
+      if (!shouldProcess) {
+        return new Response("ok", { status: 200 });
+      }
     }
 
     const signedTransactionInfo = outer.data?.signedTransactionInfo;
     if (!signedTransactionInfo) {
-      console.log(
-        "[Apple Webhook] Esta notificação não traz signedTransactionInfo dentro de data.",
-        "Nada a sincronizar na tabela user_subscriptions; retornando 200 para a Apple.",
-      );
+      await markNotificationProcessed(notificationUUID, null, null, signedDate ?? null);
       return new Response("ok", { status: 200 });
     }
 
-    const txOk = await verifyJWS(signedTransactionInfo);
-    if (!txOk) {
-      console.error(
-        "[Apple Webhook] Assinatura do JWS da transação (signedTransactionInfo) rejeitada.",
-        "Resposta 401 para a Apple reenviar após correção.",
-      );
+    if (!(await verifyJWS(signedTransactionInfo))) {
+      console.error("[Apple Webhook] JWS da transação rejeitado.");
       return new Response("invalid transaction jws", { status: 401 });
     }
 
-    const tx = decodeJWSPayload<{
-      originalTransactionId?: string;
-      transactionId?: string;
-      productId?: string;
-      purchaseDate?: number;
-      expiresDate?: number;
-      revocationDate?: number;
-      appAccountToken?: string;
-    }>(signedTransactionInfo);
+    const tx = decodeJWSPayload<AppleTransaction>(signedTransactionInfo);
+
+    if (tx.bundleId && tx.bundleId !== APPLE_BUNDLE_ID) {
+      console.error("[Apple Webhook] bundleId da transação rejeitado:", tx.bundleId);
+      await markNotificationProcessed(notificationUUID, null, tx.transactionId ?? null, signedDate ?? null);
+      return new Response("ok", { status: 200 });
+    }
 
     const originalTransactionId = tx.originalTransactionId;
     const transactionId = tx.transactionId;
-    const productId = tx.productId;
+    const productId = tx.productId?.trim();
 
     if (!originalTransactionId || !transactionId || !productId) {
-      console.warn(
-        "[Apple Webhook] JWS da transação incompleto: faltam originalTransactionId, transactionId ou productId.",
-        "Nada foi gravado. Verifique o produto na App Store Connect e o payload da notificação.",
-      );
+      console.warn("[Apple Webhook] Transação incompleta (ids).");
+      await markNotificationProcessed(notificationUUID, null, transactionId ?? null, signedDate ?? null);
       return new Response("ok", { status: 200 });
     }
 
-    if (!ALLOWED_PRODUCT_IDS.has(productId.trim())) {
-      console.warn(
-        "[Apple Webhook] product_id da Apple não está na lista permitida deste app:",
-        productId,
-        "— Ignorado de propósito (sem alterar o banco).",
-      );
+    if (!ALLOWED_PRODUCT_IDS.has(productId)) {
+      console.warn("[Apple Webhook] Produto não permitido:", productId);
+      await markNotificationProcessed(notificationUUID, null, transactionId, signedDate ?? null);
       return new Response("ok", { status: 200 });
     }
 
-    let userId: string | null = null;
-
-    if (tx.appAccountToken) {
-      const raw = tx.appAccountToken.trim();
-      const uuidRe =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRe.test(raw)) {
-        userId = raw;
-      } else {
-        console.warn(
-          "[Apple Webhook] appAccountToken veio na transação, mas não é um UUID válido (esperado: id do usuário Supabase).",
-          "Tentando localizar o usuário pelo original_transaction_id já salvo no banco.",
-        );
-      }
-    }
-
-    if (!userId) {
-      userId = await selectUserIdByOriginalTransactionId(originalTransactionId);
-    }
-
-    if (!userId) {
-      console.error(
-        "[Apple Webhook] Não foi possível identificar o usuário: nem appAccountToken (UUID) nem linha em user_subscriptions com este original_transaction_id.",
-        "Na compra iOS, envie appAccountToken = UUID do usuário no requestPurchase (StoreKit 2).",
-        "Retornando 200 para a Apple não ficar reenfileirando erro de aplicação.",
-      );
-      return new Response("ok", { status: 200 });
-    }
-
-    const status = mapSubscriptionStatus(notificationType, subtype);
-    const purchasedAt = msToIso(tx.purchaseDate);
-    const expiresAt = msToIso(tx.expiresDate);
-    const cancelledAt = msToIso(tx.revocationDate);
-
-    let autoRenew = true;
+    let renewal: AppleRenewal | null = null;
     const signedRenewal = outer.data?.signedRenewalInfo;
     if (signedRenewal) {
       try {
-        const renOk = await verifyJWS(signedRenewal);
-        if (renOk) {
-          const ren = decodeJWSPayload<{ autoRenewStatus?: number }>(
-            signedRenewal,
-          );
-          if (ren.autoRenewStatus === 0) autoRenew = false;
+        if (await verifyJWS(signedRenewal)) {
+          renewal = decodeJWSPayload<AppleRenewal>(signedRenewal);
+          if (
+            renewal.originalTransactionId &&
+            renewal.originalTransactionId !== originalTransactionId
+          ) {
+            console.warn(
+              "[Apple Webhook] originalTransactionId do renewal não bate com a transação — ignorando renewal.",
+            );
+            renewal = null;
+          }
         }
       } catch (e) {
         console.warn(
-          "[Apple Webhook] Não foi possível interpretar signedRenewalInfo (renovação automática).",
-          "Mantendo auto_renew=true. Detalhe:",
+          "[Apple Webhook] signedRenewalInfo ignorado:",
           e instanceof Error ? e.message : String(e),
         );
       }
     }
 
+    const userId = await resolveUserId(
+      originalTransactionId,
+      tx.appAccountToken ?? renewal?.appAccountToken,
+    );
+
+    if (!userId) {
+      await markNotificationProcessed(notificationUUID, null, transactionId, signedDate ?? null);
+      return new Response("ok", { status: 200 });
+    }
+
+    const existingByTx = await selectRowByLatestTransactionId(userId, transactionId);
+    const existingSub =
+      existingByTx ?? (await selectRowByOriginalTransactionId(userId, originalTransactionId));
+
+    if (existingSub?.user_id && existingSub.user_id !== userId) {
+      console.error("[Apple Webhook] Tentativa de alterar assinatura de outro usuário.");
+      await markNotificationProcessed(notificationUUID, null, transactionId, signedDate ?? null);
+      return new Response("ok", { status: 200 });
+    }
+
+    if (existingSub && isOlderAppleEvent(existingSub.metadata, signedDate)) {
+      await syncUserPlanActive(userId);
+      await markNotificationProcessed(notificationUUID, userId, transactionId, signedDate ?? null);
+      console.log("[Apple Webhook] Notificação antiga ignorada:", notificationUUID);
+      return new Response("ok", { status: 200 });
+    }
+
+    const previousAutoRenew = existingSub?.auto_renew !== false;
+    const autoRenew = autoRenewFromApple(subtype, renewal, previousAutoRenew);
+    const status = mapSubscriptionStatus(notificationType, subtype, tx, renewal);
+    const purchasedAt = msToIso(tx.purchaseDate);
+    const expiresAt = msToIso(tx.expiresDate);
+    const cancelledAt = tx.revocationDate
+      ? msToIso(tx.revocationDate)
+      : !autoRenew
+        ? msToIso(signedDate)
+        : null;
+
     const appleMetaLayer: JsonRecord = {
       source: "apple_asn_v2",
       apple_store_confirmed: true,
+      apple_signed_date_ms: signedDate ?? null,
       apple_confirmed_at_ms: Date.now(),
+      apple_notification_uuid: notificationUUID,
       notificationType,
       subtype: subtype ?? null,
-      notificationUUID: outer.notificationUUID ?? null,
-      environment: outer.data?.environment ?? null,
+      environment: environment ?? null,
+      apple_status: outer.data?.status ?? null,
+      apple_grace_period_expires_date_ms: renewal?.gracePeriodExpiresDate ?? null,
+      apple_is_in_billing_retry_period: renewal?.isInBillingRetryPeriod ?? false,
+      apple_expiration_intent: renewal?.expirationIntent ?? null,
       transaction: tx as unknown as JsonRecord,
+      renewal: renewal as unknown as JsonRecord,
     };
 
     const rowPayload = (metadata: JsonRecord) => ({
@@ -610,176 +988,103 @@ serve(async (req) => {
       metadata,
     });
 
-    const existingByTx = await selectRowByLatestTransactionId(
-      userId,
-      transactionId,
-    );
+    const finishOk = async (keepId: string, path: string) => {
+      await expireOtherIosPendingDuplicates(userId, keepId);
+      await syncUserPlanActive(userId);
+      await markNotificationProcessed(notificationUUID, userId, transactionId, signedDate ?? null);
+      console.log("[Apple Webhook] Sucesso", path, "| tipo:", notificationType, "| status:", status, "| user:", userId);
+    };
 
     if (existingByTx) {
-      const metadata = mergeAppleServerMetadata(
-        existingByTx.metadata,
-        appleMetaLayer,
-      );
+      const metadata = mergeAppleServerMetadata(existingByTx.metadata, appleMetaLayer);
       const { error } = await supabase
         .from("user_subscriptions")
         .update(rowPayload(metadata))
-        .eq("id", existingByTx.id);
+        .eq("id", existingByTx.id)
+        .eq("user_id", userId);
       if (error) {
-        console.error(
-          "[Apple Webhook] Erro ao atualizar user_subscriptions quando já existia o mesmo store_latest_transaction_id (confirmação idempotente).",
-          "user_id:",
-          userId,
-          "| Mensagem do banco:",
-          error.message,
-        );
+        console.error("[Apple Webhook] Erro UPDATE transaction_id:", error.message);
         return new Response("db error", { status: 500 });
       }
-      await expireOtherIosPendingDuplicates(userId, existingByTx.id);
-      const txTail =
-        transactionId.length > 10
-          ? `…${transactionId.slice(-8)}`
-          : transactionId;
-      console.log(
-        "[Apple Webhook] Sucesso (caminho 1 — mesmo último transaction_id):",
-        "O app ou a RPC já havia gravado este transactionId na linha da assinatura.",
-        "A Apple reenviou a notificação; atualizamos status, datas e metadata (confirmação oficial).",
-        "| Tipo da notificação:",
-        notificationType,
-        "| Sufixo do transaction_id:",
-        txTail,
-        "| user_id:",
-        userId,
-      );
-      await syncUserPlanActive(userId, status, expiresAt);
-      console.log(
-        "[Apple Webhook] Campo users.plan_is_active atualizado para user_id",
-        userId,
-        "de acordo com o status",
-        status,
-        "(após caminho 1).",
-      );
+      await finishOk(existingByTx.id, "caminho 1 (mesmo transaction_id)");
       return new Response("ok", { status: 200 });
     }
 
-    const existingSub = await selectRowByOriginalTransactionId(
-      userId,
-      originalTransactionId,
-    );
-
     if (existingSub) {
-      const metadata = mergeAppleServerMetadata(
-        existingSub.metadata,
-        appleMetaLayer,
-      );
+      const metadata = mergeAppleServerMetadata(existingSub.metadata, appleMetaLayer);
       const { error } = await supabase
         .from("user_subscriptions")
         .update(rowPayload(metadata))
-        .eq("id", existingSub.id);
+        .eq("id", existingSub.id)
+        .eq("user_id", userId);
       if (error) {
-        console.error(
-          "[Apple Webhook] Erro ao atualizar user_subscriptions pelo original_transaction_id (renovação ou alinhamento com a linha existente).",
-          "user_id:",
-          userId,
-          "| Mensagem:",
-          error.message,
-        );
+        console.error("[Apple Webhook] Erro UPDATE original_transaction_id:", error.message);
         return new Response("db error", { status: 500 });
       }
-      await expireOtherIosPendingDuplicates(userId, existingSub.id);
-      console.log(
-        "[Apple Webhook] Sucesso (caminho 2 — mesmo original_transaction_id):",
-        "Encontramos a assinatura pelo ID original da loja (ex.: renovação com novo transaction_id).",
-        "Linha atualizada; pendentes iOS duplicados foram expirados quando aplicável.",
-        "| Tipo:",
-        notificationType,
-        "| user_id:",
-        userId,
-      );
-    } else {
-      const consolidateRow = await selectIosRowToMergeAppleWebhook(userId);
-
-      if (consolidateRow) {
-        const metadata = mergeAppleServerMetadata(
-          consolidateRow.metadata,
-          appleMetaLayer,
-        );
-        const { error } = await supabase
-          .from("user_subscriptions")
-          .update(rowPayload(metadata))
-          .eq("id", consolidateRow.id);
-        if (error) {
-          console.error(
-            "[Apple Webhook] Erro ao consolidar na linha iOS existente do usuário (sem criar registro novo).",
-            "user_id:",
-            userId,
-            "| Mensagem:",
-            error.message,
-          );
-          return new Response("db error", { status: 500 });
-        }
-        await expireOtherIosPendingDuplicates(userId, consolidateRow.id);
-        console.log(
-          "[Apple Webhook] Sucesso (caminho 3 — consolidação por usuário):",
-          "Não havia match por transaction_id/original_id, mas existe linha iOS não manual para este usuário.",
-          "Atualizamos essa linha para evitar duplicata; não foi feito INSERT.",
-          "| Tipo:",
-          notificationType,
-          "| user_id:",
-          userId,
-        );
-      } else {
-        if (status === "active" || status === "grace_period") {
-          await expireIosNonManualForAppleReplace(userId);
-        }
-
-        const metadata = mergeAppleServerMetadata({}, appleMetaLayer);
-        const { data: insertedRows, error } = await supabase
-          .from("user_subscriptions")
-          .insert(rowPayload(metadata))
-          .select("id");
-        if (error) {
-          console.error(
-            "[Apple Webhook] Erro ao inserir nova linha em user_subscriptions (primeira assinatura iOS deste usuário no banco).",
-            "user_id:",
-            userId,
-            "| Mensagem:",
-            error.message,
-          );
-          return new Response("db error", { status: 500 });
-        }
-        const insertedId = insertedRows?.[0]?.id;
-        if (insertedId) {
-          await expireOtherIosPendingDuplicates(userId, insertedId);
-        }
-        console.log(
-          "[Apple Webhook] Sucesso (caminho 4 — novo registro):",
-          "Não havia linha iOS compatível; inserimos user_subscriptions a partir dos dados oficiais da Apple.",
-          "Outras assinaturas ativas/pendentes não manuais podem ter sido expiradas antes do insert (status active/grace).",
-          "| Tipo:",
-          notificationType,
-          "| user_id:",
-          userId,
-        );
-      }
+      await finishOk(existingSub.id, "caminho 2 (mesmo original_transaction_id)");
+      return new Response("ok", { status: 200 });
     }
 
-    await syncUserPlanActive(userId, status, expiresAt);
+    const consolidateRow = await selectIosRowToMergeAppleWebhook(userId);
+    if (consolidateRow) {
+      const metadata = mergeAppleServerMetadata(consolidateRow.metadata, appleMetaLayer);
+      const { error } = await supabase
+        .from("user_subscriptions")
+        .update(rowPayload(metadata))
+        .eq("id", consolidateRow.id)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("[Apple Webhook] Erro consolidação:", error.message);
+        return new Response("db error", { status: 500 });
+      }
+      await finishOk(consolidateRow.id, "caminho 3 (consolidação)");
+      return new Response("ok", { status: 200 });
+    }
 
-    console.log(
-      "[Apple Webhook] Campo users.plan_is_active atualizado para user_id",
-      userId,
-      "de acordo com o status",
-      status,
-      "(após caminho 2, 3 ou 4).",
-    );
+    if (status === "active" || status === "grace_period") {
+      await expireIosNonManualForAppleReplace(userId);
+    }
+
+    const metadata = mergeAppleServerMetadata({}, appleMetaLayer);
+    const { data: insertedRows, error } = await supabase
+      .from("user_subscriptions")
+      .insert(rowPayload(metadata))
+      .select("id");
+    if (error) {
+      const raceRow = await selectRowByOriginalTransactionId(userId, originalTransactionId);
+      if (raceRow) {
+        const raceMetadata = mergeAppleServerMetadata(raceRow.metadata, appleMetaLayer);
+        const { error: retryError } = await supabase
+          .from("user_subscriptions")
+          .update(rowPayload(raceMetadata))
+          .eq("id", raceRow.id)
+          .eq("user_id", userId);
+        if (retryError) {
+          console.error("[Apple Webhook] Erro INSERT/retry:", retryError.message);
+          return new Response("db error", { status: 500 });
+        }
+        await finishOk(raceRow.id, "caminho 4b (corrida no insert)");
+        return new Response("ok", { status: 200 });
+      }
+      console.error("[Apple Webhook] Erro INSERT:", error.message);
+      return new Response("db error", { status: 500 });
+    }
+    const insertedId = insertedRows?.[0]?.id;
+    if (insertedId) await finishOk(insertedId, "caminho 4 (insert)");
+    else {
+      await syncUserPlanActive(userId);
+      await markNotificationProcessed(notificationUUID, userId, transactionId, signedDate ?? null);
+    }
 
     return new Response("ok", { status: 200 });
   } catch (err) {
-    console.error(
-      "[Apple Webhook] Exceção não tratada ao processar a notificação (stack / mensagem abaixo).",
-      "A Apple pode reenviar; corrija o código ou os dados e monitore os logs.",
-      err,
-    );
+    console.error("[Apple Webhook] Exceção:", err);
+    try {
+      await markNotificationFailed(notificationUUID, err);
+    } catch {
+      /* ignore */
+    }
     return new Response("error", { status: 500 });
   }
 });
+

@@ -21,6 +21,11 @@ AS $$
           AND (s.expires_at IS NULL OR s.expires_at > now())
         )
         OR (
+          s.status = 'cancelled'
+          AND s.expires_at IS NOT NULL
+          AND s.expires_at > now()
+        )
+        OR (
           s.status = 'pending'
           AND s.expires_at IS NOT NULL
           AND s.expires_at > now()
@@ -52,6 +57,11 @@ AS $$
             AND (s.expires_at IS NULL OR s.expires_at > now())
           )
           OR (
+            s.status = 'cancelled'
+            AND s.expires_at IS NOT NULL
+            AND s.expires_at > now()
+          )
+          OR (
             s.status = 'pending'
             AND s.expires_at IS NOT NULL
             AND s.expires_at > now()
@@ -68,7 +78,7 @@ GRANT EXECUTE ON FUNCTION public.any_users_have_active_subscription(uuid[]) TO a
 GRANT EXECUTE ON FUNCTION public.any_users_have_active_subscription(uuid[]) TO service_role;
 
 COMMENT ON FUNCTION public.user_subscription_is_active(uuid) IS
-  'Premium: active/grace_period com expiração válida OU pending (sem confirmação Apple) com expires_at > agora (janela até webhook).';
+  'Premium: active/grace_period/cancelled com expiração válida OU pending (sem confirmação Apple) com expires_at > agora (janela até webhook).';
 
 COMMENT ON FUNCTION public.any_users_have_active_subscription(uuid[]) IS
   'Indica se algum dos usuários tem assinatura vigente (inclui pending na janela).';
