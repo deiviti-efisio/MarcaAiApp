@@ -76,6 +76,16 @@ export interface EditarFeedInput {
   nome?: string | null;
 }
 
+function isRpcSignatureMissing(message: string | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes('could not find the function') ||
+    m.includes('schema cache') ||
+    (m.includes('function') && m.includes('does not exist'))
+  );
+}
+
 function pickRpcRow<T extends object>(data: T[] | T | null): T | null {
   if (!data) return null;
   if (Array.isArray(data)) return data[0] ?? null;
@@ -221,7 +231,7 @@ export async function publicarFeed(
   input: PublicarFeedInput
 ): Promise<{ success: boolean; error: string | null; eventoId?: string }> {
   try {
-    const { data, error } = await supabase.rpc('rpc_app_publicar_feed', {
+    const payload = {
       p_artista_id: input.artistaId,
       p_feed_tipo: input.feedTipo,
       p_event_date: input.eventDate,
@@ -235,8 +245,20 @@ export async function publicarFeed(
       p_whatsapp: input.whatsapp?.trim() || null,
       p_feed_mostrar_cache: input.mostrarCache === true,
       p_nome: input.nome?.trim() || null,
-    });
-    if (error) return { success: false, error: error.message };
+    };
+    let { data, error } = await supabase.rpc('rpc_app_publicar_feed', payload);
+    if (error && isRpcSignatureMissing(error.message)) {
+      const { p_nome: _omit, ...semNome } = payload;
+      ({ data, error } = await supabase.rpc('rpc_app_publicar_feed', semNome));
+    }
+    if (error) {
+      return {
+        success: false,
+        error: isRpcSignatureMissing(error.message)
+          ? 'O banco do feed está desatualizado. Rode database/FEED_MARKETPLACE_PATCH_NOME_EVENTO.sql no SQL Editor.'
+          : error.message,
+      };
+    }
     const row = pickRpcRow<{ success: boolean; error: string | null; evento_id: string | null }>(data);
     if (!row) return { success: false, error: 'Resposta inválida ao publicar.' };
     if (!row.success) return { success: false, error: row.error || 'Não foi possível publicar.' };
@@ -250,7 +272,7 @@ export async function editarAnuncioFeed(
   input: EditarFeedInput
 ): Promise<{ success: boolean; error: string | null }> {
   try {
-    const { data, error } = await supabase.rpc('rpc_app_editar_anuncio_feed', {
+    const payload = {
       p_evento_id: input.eventoId,
       p_event_date: input.eventDate,
       p_state_uf: input.stateUf?.trim() || null,
@@ -263,8 +285,20 @@ export async function editarAnuncioFeed(
       p_whatsapp: input.whatsapp?.trim() || null,
       p_feed_mostrar_cache: input.mostrarCache === true,
       p_nome: input.nome?.trim() || null,
-    });
-    if (error) return { success: false, error: error.message };
+    };
+    let { data, error } = await supabase.rpc('rpc_app_editar_anuncio_feed', payload);
+    if (error && isRpcSignatureMissing(error.message)) {
+      const { p_nome: _omit, ...semNome } = payload;
+      ({ data, error } = await supabase.rpc('rpc_app_editar_anuncio_feed', semNome));
+    }
+    if (error) {
+      return {
+        success: false,
+        error: isRpcSignatureMissing(error.message)
+          ? 'O banco do feed está desatualizado. Rode database/FEED_MARKETPLACE_PATCH_NOME_EVENTO.sql no SQL Editor.'
+          : error.message,
+      };
+    }
     const row = pickRpcRow<{ success: boolean; error: string | null }>(data);
     if (!row) return { success: false, error: 'Resposta inválida ao editar.' };
     if (!row.success) return { success: false, error: row.error || 'Não foi possível editar.' };
