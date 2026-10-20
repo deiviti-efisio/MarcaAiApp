@@ -249,7 +249,14 @@ export default function NegociarFeedScreen() {
               <Text style={[styles.badge, { color: colors.primary }]}>
                 {anuncio.feed_tipo === 'demanda' ? 'Procurando' : 'Oferta'}
               </Text>
-              <Text style={[styles.name, { color: colors.text }]}>{anuncio.artist_name}</Text>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({ pathname: '/perfil-artista', params: { artistId: anuncio.artist_id } })
+                }
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.name, { color: colors.text }]}>{anuncio.artist_name}</Text>
+              </TouchableOpacity>
               {anuncio.evento_nome ? (
                 <Text style={[styles.meta, { color: colors.text }]}>{anuncio.evento_nome}</Text>
               ) : null}

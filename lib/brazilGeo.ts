@@ -46,6 +46,18 @@ export function brazilStateByUf(uf: string | null | undefined): BrazilState | un
   return BRAZIL_STATES.find((s) => s.uf === u);
 }
 
+export function brazilStateByName(name: string | null | undefined): BrazilState | undefined {
+  if (!name || typeof name !== 'string') return undefined;
+  const n = name.trim().toLowerCase();
+  if (!n) return undefined;
+  if (n.length === 2) return brazilStateByUf(n);
+  return BRAZIL_STATES.find((s) => s.name.toLowerCase() === n);
+}
+
+export function brazilUfFromStateName(name: string | null | undefined): string | null {
+  return brazilStateByName(name)?.uf ?? null;
+}
+
 export function formatBrazilStateChoice(uf: string | null | undefined): string {
   const s = brazilStateByUf(uf);
   if (!s) return '';

@@ -13,7 +13,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,6 +24,7 @@ import PermissionModal from '../../components/PermissionModal';
 import FeedComoFuncionaModal from '../../components/FeedComoFuncionaModal';
 import PropostaEnviadaModal from '../../components/PropostaEnviadaModal';
 import BrazilStatePickerModal from '../../components/BrazilStatePickerModal';
+import BrazilPlaceSearchField from '../../components/BrazilPlaceSearchField';
 import FeedFuncaoPickerModal, { FeedFuncaoFieldButton } from '../../components/FeedFuncaoPickerModal';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
@@ -445,7 +445,13 @@ export default function FeedScreen() {
 
         <View style={styles.cardBody}>
           <View style={styles.cardHeaderRow}>
-            <View style={[styles.cardAvatar, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() =>
+                router.push({ pathname: '/perfil-artista', params: { artistId: item.artist_id } })
+              }
+              activeOpacity={0.8}
+              style={[styles.cardAvatar, { backgroundColor: colors.background, borderColor: colors.border }]}
+            >
               {artistAvatarUrl ? (
                 <OptimizedImage
                   imageUrl={artistAvatarUrl}
@@ -457,7 +463,7 @@ export default function FeedScreen() {
               ) : (
                 <Text style={[styles.cardAvatarInitial, { color: colors.primary }]}>{artistInitial}</Text>
               )}
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.cardDateCol}>
               {weekday ? (
@@ -469,9 +475,16 @@ export default function FeedScreen() {
                   <Text style={[styles.cardDateRest, { color: colors.text }]}>{dateParts.rest}</Text>
                 </View>
               ) : null}
-              <Text style={[styles.cardArtistName, { color: colors.text }]} numberOfLines={1}>
-                {artistLabel}
-              </Text>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({ pathname: '/perfil-artista', params: { artistId: item.artist_id } })
+                }
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.cardArtistName, { color: colors.text }]} numberOfLines={1}>
+                  {artistLabel}
+                </Text>
+              </TouchableOpacity>
               {!meuAnuncio ? (
                 <ArtistReputationBadge
                   compact
@@ -834,21 +847,16 @@ export default function FeedScreen() {
                   },
                 ]}
               >
-                <Ionicons name="location-outline" size={15} color={colors.textSecondary} />
-                <TextInput
+                <BrazilPlaceSearchField
+                  compact
                   value={cidade}
                   onChangeText={setCidade}
+                  onSelectPlace={(place) => {
+                    setCidade(place.city);
+                    if (place.uf) setEstadoUf(place.uf);
+                  }}
                   placeholder="Cidade"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[styles.geoInput, { color: colors.text }]}
-                  returnKeyType="search"
-                  autoCorrect={false}
                 />
-                {cidade.trim() ? (
-                  <TouchableOpacity onPress={() => setCidade('')} hitSlop={10}>
-                    <Ionicons name="close-circle" size={15} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ) : null}
               </View>
             </View>
             <View style={styles.funcaoRow}>

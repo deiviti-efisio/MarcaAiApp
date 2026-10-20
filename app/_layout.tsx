@@ -144,6 +144,7 @@ function RootLayoutContent() {
         <Stack.Screen name="notificacoes" options={{ headerShown: false }} />
         <Stack.Screen name="editar-usuario" options={{ headerShown: false }} />
         <Stack.Screen name="editar-artista" options={{ headerShown: false }} />
+        <Stack.Screen name="perfil-artista" options={{ headerShown: false }} />
         <Stack.Screen name="configuracoes-artista" options={{ headerShown: false }} />
         <Stack.Screen name="colaboradores-artista" options={{ headerShown: false }} />
         <Stack.Screen name="press-kit-artista" options={{ headerShown: false }} />

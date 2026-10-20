@@ -31,6 +31,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import BrazilStatePickerModal, {
   BrazilStateFieldButton,
 } from '../components/BrazilStatePickerModal';
+import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -897,15 +898,14 @@ export default function PublicarFeedScreen() {
           <Text style={[styles.label, { color: colors.text }]}>
             {isProcurar ? 'Cidade do evento (opcional)' : 'Cidade em que você pode atender (opcional)'}
           </Text>
-          <TextInput
+          <BrazilPlaceSearchField
             value={cidade}
             onChangeText={setCidade}
-            placeholder="Local, se quiser informar"
-            placeholderTextColor={colors.textSecondary}
-            style={[
-              styles.input,
-              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
-            ]}
+            onSelectPlace={(place) => {
+              setCidade(place.city);
+              if (place.uf) setEstadoUf(place.uf);
+            }}
+            placeholder="Buscar cidade, rua ou CEP"
           />
 
           <Text style={[styles.label, { color: colors.text }]}>Observações (opcional)</Text>

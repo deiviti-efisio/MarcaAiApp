@@ -26,9 +26,11 @@ import {
   parseArtistStringArrayFromJson,
 } from '../constants/artistProfileLists';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
+import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import PermissionModal from '../components/PermissionModal';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { parseArtistSocialLinks, socialLinksToJson, isLikelyHttpUrl } from '../lib/socialLinks';
 import { artistImageUpdateService } from '../services/artistImageUpdateService';
 import { getArtistById, updateArtist } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
@@ -127,6 +129,14 @@ export default function EditarArtistaScreen() {
   const [showFormatDraft, setShowFormatDraft] = useState('');
   const [profileUrl, setProfileUrl] = useState('');
   const [originalProfileUrl, setOriginalProfileUrl] = useState('');
+  const [coverUrl, setCoverUrl] = useState('');
+  const [originalCoverUrl, setOriginalCoverUrl] = useState('');
+  const [bio, setBio] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [spotifyUrl, setSpotifyUrl] = useState('');
+  const [instagramUrl, setInstagramUrl] = useState('');
+  const [extraVideos, setExtraVideos] = useState('');
+  const [coverLoadError, setCoverLoadError] = useState(false);
   const formatCurrencyInput = (raw: string): string => {
     const digitsOnly = raw.replace(/\D/g, '');
     if (!digitsOnly) return '';
@@ -272,6 +282,15 @@ export default function EditarArtistaScreen() {
       setSelectedShowFormats(parseArtistStringArrayFromJson(currentArtist.show_formats));
       setProfileUrl(currentArtist.profile_url || '');
       setOriginalProfileUrl(currentArtist.profile_url || '');
+      setCoverUrl(currentArtist.cover_url || '');
+      setOriginalCoverUrl(currentArtist.cover_url || '');
+      setCoverLoadError(false);
+      setBio(currentArtist.bio || '');
+      const links = parseArtistSocialLinks(currentArtist.social_links);
+      setYoutubeUrl(links.youtube || '');
+      setSpotifyUrl(links.spotify || '');
+      setInstagramUrl(links.instagram || '');
+      setExtraVideos((links.videos || []).join('\n'));
 
     } catch {
       Alert.alert('Erro', 'Erro ao carregar dados do artista');
@@ -322,6 +341,23 @@ export default function EditarArtistaScreen() {
     }
   };
 
+  const handleSelectCover = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setCoverUrl(result.assets[0].uri);
+        setCoverLoadError(false);
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível selecionar a capa. Tente de novo.');
+    }
+  };
+
   const handlePressKitPress = () => {
     if (userPermissions?.role !== 'admin') {
       Alert.alert(
@@ -363,7 +399,7 @@ export default function EditarArtistaScreen() {
       return;
     }
 
-    if (isAvailableForGigs) {
+      if (isAvailableForGigs) {
       if (!whatsapp.trim()) {
         Alert.alert('Atenção', 'Informe o WhatsApp para aparecer na busca de convites.');
         return;
@@ -378,9 +414,16 @@ export default function EditarArtistaScreen() {
       }
     }
 
-    try {
+    const socialCandidates = [youtubeUrl, spotifyUrl, instagramUrl, ...extraVideos.split('\n')];
+    if (socialCandidates.some((item) => item.trim() && !isLikelyHttpUrl(item))) {
+      Alert.alert('Atenção', 'Confira os links de YouTube, Spotify ou Instagram.');
+      return;
+    }
+
+      try {
       setIsSaving(true);
       let finalProfileUrl = profileUrl;
+      let finalCoverUrl = coverUrl;
 
       // Se a imagem foi alterada (nova imagem selecionada)
       if (profileUrl !== originalProfileUrl && profileUrl.trim() !== '') {
@@ -405,6 +448,23 @@ export default function EditarArtistaScreen() {
         }
       }
 
+      if (coverUrl !== originalCoverUrl && coverUrl.trim() !== '') {
+        setIsUploadingImage(true);
+        const coverUpload = await uploadImageToSupabase(coverUrl, 'image_artists');
+        if (coverUpload.success && coverUpload.url) {
+          finalCoverUrl = coverUpload.url;
+          if (originalCoverUrl && originalCoverUrl.trim() !== '' && !originalCoverUrl.startsWith('data:')) {
+            const oldCover = extractFileNameFromUrl(originalCoverUrl);
+            if (oldCover) {
+              await deleteImageFromSupabase(oldCover, 'image_artists');
+            }
+          }
+        } else {
+          Alert.alert('Erro', `Erro ao enviar a capa: ${coverUpload.error}`);
+          return;
+        }
+      }
+
       console.log('📤 EDITAR ARTISTA - Enviando update:', {
         artistId: artist.id,
         name: name.trim(),
@@ -416,14 +476,22 @@ export default function EditarArtistaScreen() {
         name: name.trim(),
         musical_style: musicalStyle.trim() || undefined,
         whatsapp: isAvailableForGigs ? whatsapp.trim() || null : null,
-        city: isAvailableForGigs ? city.trim() || null : null,
-        state: isAvailableForGigs ? state.trim() || null : null,
+        city: isAvailableForGigs ? city.trim() || null : city.trim() || null,
+        state: isAvailableForGigs ? state.trim() || null : state.trim() || null,
         is_available_for_gigs: isAvailableForGigs,
         show_whatsapp: isAvailableForGigs && showWhatsappInSearch,
         average_cache_value: isAvailableForGigs ? parsedAverageCacheValue : null,
         work_roles: isAvailableForGigs ? selectedWorkRoles : [],
         show_formats: isAvailableForGigs ? selectedShowFormats : [],
         profile_url: finalProfileUrl,
+        cover_url: finalCoverUrl.trim() ? finalCoverUrl : null,
+        bio: bio.trim() || null,
+        social_links: socialLinksToJson({
+          youtube: youtubeUrl,
+          spotify: spotifyUrl,
+          instagram: instagramUrl,
+          videos: extraVideos.split('\n'),
+        }),
       });
 
       console.log('📥 EDITAR ARTISTA - Resultado do update:', updateResult);
@@ -521,6 +589,15 @@ export default function EditarArtistaScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Editar Artista</Text>
+        <TouchableOpacity
+          onPress={() =>
+            router.push({ pathname: '/perfil-artista', params: { artistId: artist?.id || activeArtist?.id || '' } })
+          }
+          style={styles.previewBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="eye-outline" size={20} color={colors.primary} />
+        </TouchableOpacity>
         <TouchableOpacity 
           onPress={handleSave} 
           style={[styles.saveButton, { backgroundColor: colors.primary }]}
@@ -538,6 +615,32 @@ export default function EditarArtistaScreen() {
         {/* Informações do artista */}
         {artist && (
           <View style={[styles.artistInfoCard, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity onPress={handleSelectCover} activeOpacity={0.8} style={styles.coverTap}>
+              {coverUrl && coverUrl.trim() !== '' && !coverLoadError ? (
+                <Image
+                  source={{ uri: coverUrl }}
+                  style={styles.coverImage}
+                  resizeMode="cover"
+                  onError={() => setCoverLoadError(true)}
+                />
+              ) : (
+                <View style={[styles.coverPlaceholder, { backgroundColor: colors.background }]}>
+                  <Ionicons name="image-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.coverHint, { color: colors.textSecondary }]}>
+                    Toque para adicionar uma capa
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.coverCamera, { backgroundColor: colors.primary }]}>
+                <Ionicons name="camera" size={14} color="#fff" />
+              </View>
+            </TouchableOpacity>
+            {coverUrl ? (
+              <TouchableOpacity onPress={() => { setCoverUrl(''); setCoverLoadError(false); }} style={styles.removeCover}>
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Remover capa</Text>
+              </TouchableOpacity>
+            ) : null}
+            <View style={styles.artistRow}>
             <TouchableOpacity 
               style={styles.avatarContainer}
               onPress={handleSelectImage}
@@ -580,6 +683,7 @@ export default function EditarArtistaScreen() {
               </Text>
               <Text style={[styles.editImageText, { color: colors.textSecondary }]}>Toque na imagem para alterar</Text>
             </View>
+            </View>
           </View>
         )}
 
@@ -620,6 +724,101 @@ export default function EditarArtistaScreen() {
               </View>
               <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Apresentação</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.bioInput,
+                { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text },
+              ]}
+              value={bio}
+              onChangeText={setBio}
+              placeholder="Conte um pouco da sua história, estilo e palco."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              maxLength={600}
+            />
+          </View>
+
+          {renderInput('YouTube', youtubeUrl, setYoutubeUrl, 'https://youtube.com/...', 'url', false)}
+          {renderInput('Spotify', spotifyUrl, setSpotifyUrl, 'https://open.spotify.com/...', 'url', false)}
+          {renderInput('Instagram', instagramUrl, setInstagramUrl, 'https://instagram.com/...', 'url', false)}
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Outros vídeos ou músicas</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.bioInput,
+                { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text },
+              ]}
+              value={extraVideos}
+              onChangeText={setExtraVideos}
+              placeholder="Um link por linha (YouTube ou Spotify)"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>
+              Cidade {isAvailableForGigs ? <Text style={styles.required}>*</Text> : null}
+            </Text>
+            <BrazilPlaceSearchField
+              value={city}
+              onChangeText={setCity}
+              onSelectPlace={(place) => {
+                setCity(place.city);
+                setState(place.stateName);
+              }}
+              placeholder="Buscar cidade, rua ou CEP"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>
+              Estado {isAvailableForGigs ? <Text style={styles.required}>*</Text> : null}
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.estadoSelector,
+                { borderColor: colors.border, backgroundColor: colors.surface },
+              ]}
+              onPress={() => setShowEstados(!showEstados)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.estadoText, { color: state ? colors.text : colors.textSecondary }]}>
+                {state || 'Selecione seu estado'}
+              </Text>
+              <Ionicons
+                name={showEstados ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+            {showEstados && (
+              <View style={[styles.estadosList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <ScrollView style={styles.estadosScroll} nestedScrollEnabled>
+                  {ESTADOS_BRASIL.map((estadoItem) => (
+                    <TouchableOpacity
+                      key={estadoItem}
+                      style={[styles.estadoItem, { borderBottomColor: colors.border }]}
+                      onPress={() => {
+                        setState(estadoItem);
+                        setShowEstados(false);
+                      }}
+                    >
+                      <Text style={[styles.estadoItemText, { color: colors.text }]}>{estadoItem}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputContainer}>
@@ -692,56 +891,6 @@ export default function EditarArtistaScreen() {
                     ? 'Ligado: organizadores veem o WhatsApp na busca de convites.'
                     : 'Desligado: o número permanece cadastrado, mas não aparece na busca.'}
                 </Text>
-              </View>
-
-              {renderInput(
-                'Cidade',
-                city,
-                setCity,
-                'Digite a cidade',
-                'default',
-                true
-              )}
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>
-                  Estado <Text style={styles.required}>*</Text>
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.estadoSelector,
-                    { borderColor: colors.border, backgroundColor: colors.surface },
-                  ]}
-                  onPress={() => setShowEstados(!showEstados)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.estadoText, { color: state ? colors.text : colors.textSecondary }]}>
-                    {state || 'Selecione seu estado'}
-                  </Text>
-                  <Ionicons
-                    name={showEstados ? 'chevron-up' : 'chevron-down'}
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-                {showEstados && (
-                  <View style={[styles.estadosList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <ScrollView style={styles.estadosScroll} nestedScrollEnabled>
-                      {ESTADOS_BRASIL.map((estadoItem) => (
-                        <TouchableOpacity
-                          key={estadoItem}
-                          style={[styles.estadoItem, { borderBottomColor: colors.border }]}
-                          onPress={() => {
-                            setState(estadoItem);
-                            setShowEstados(false);
-                          }}
-                        >
-                          <Text style={[styles.estadoItemText, { color: colors.text }]}>{estadoItem}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
               </View>
 
               <View style={styles.inputContainer}>
@@ -951,12 +1100,49 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
+  previewBtn: {
+    padding: 8,
+    marginRight: 4,
+  },
   saveButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
     minWidth: 80,
     alignItems: 'center',
+  },
+  coverTap: {
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 12,
+    height: 120,
+    overflow: 'hidden',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  coverImage: { width: '100%', height: '100%' },
+  coverPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  coverHint: { fontSize: 13 },
+  coverCamera: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeCover: { alignSelf: 'flex-end', marginBottom: 8 },
+  bioInput: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+    paddingTop: 12,
   },
   saveButtonText: {
     color: '#fff',
@@ -981,8 +1167,9 @@ const styles = StyleSheet.create({
     margin: 20,
     borderRadius: 12,
     padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
+    overflow: 'hidden',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -991,6 +1178,10 @@ const styles = StyleSheet.create({
     shadowOpacity: Platform.OS === 'android' ? 0 : 0.1,
     shadowRadius: Platform.OS === 'android' ? 0 : 3.84,
     elevation: Platform.OS === 'android' ? 0 : 5,
+  },
+  artistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   avatarContainer: {
     position: 'relative',

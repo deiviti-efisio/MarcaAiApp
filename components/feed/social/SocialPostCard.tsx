@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -139,7 +140,13 @@ export default function SocialPostCard({
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.header}>
-        <View style={[styles.avatarWrap, { backgroundColor: colors.secondary }]}>
+        <TouchableOpacity
+          style={[styles.avatarWrap, { backgroundColor: colors.secondary }]}
+          onPress={() =>
+            router.push({ pathname: '/perfil-artista', params: { artistId: post.artist_id } })
+          }
+          activeOpacity={0.8}
+        >
           {post.artist_image ? (
             <OptimizedImage
               imageUrl={post.artist_image}
@@ -150,11 +157,18 @@ export default function SocialPostCard({
           ) : (
             <Ionicons name="person" size={20} color={colors.primary} />
           )}
-        </View>
+        </TouchableOpacity>
         <View style={styles.headerCopy}>
-          <Text style={[styles.artistName, { color: colors.text }]} numberOfLines={1}>
-            {post.artist_name}
-          </Text>
+          <TouchableOpacity
+            onPress={() =>
+              router.push({ pathname: '/perfil-artista', params: { artistId: post.artist_id } })
+            }
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.artistName, { color: colors.text }]} numberOfLines={1}>
+              {post.artist_name}
+            </Text>
+          </TouchableOpacity>
           {post.location ? (
             <Text style={[styles.location, { color: colors.textSecondary }]} numberOfLines={1}>
               {post.location}

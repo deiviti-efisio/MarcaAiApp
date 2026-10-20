@@ -25,6 +25,7 @@ import {
     formatCurrencyBRLInput,
 } from '../utils/currencyBRLInput';
 import BrazilStatePickerModal, { BrazilStateFieldButton } from '../components/BrazilStatePickerModal';
+import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import EventPaymentProgress, { parseOptionalPaidAmount } from '../components/EventPaymentProgress';
 import { parseCityUf } from '../lib/brazilGeo';
 import { setPendingEventUpdatedToast } from '../lib/pendingEventUpdatedToast';
@@ -670,24 +671,16 @@ export default function EditarEventoScreen() {
         {/* Cidade e estado (opcionais) */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: colors.text }]}>Cidade (opcional)</Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                color: colors.text,
-                opacity: isInviteParticipationEvent ? 0.8 : 1,
-              },
-            ]}
+          <BrazilPlaceSearchField
             value={form.cidade}
             editable={!isInviteParticipationEvent}
             onChangeText={(text) => updateForm('cidade', text)}
-            placeholder="Ex.: Rio de Janeiro"
-            placeholderTextColor={colors.textSecondary}
-            autoCorrect={false}
-            autoCapitalize="words"
-            returnKeyType="next"
+            onSelectPlace={(place) => {
+              if (isInviteParticipationEvent) return;
+              updateForm('cidade', place.city);
+              if (place.uf) updateForm('estadoUf', place.uf);
+            }}
+            placeholder="Buscar cidade, rua ou CEP"
           />
         </View>
         <View style={[styles.inputGroup, { opacity: isInviteParticipationEvent ? 0.8 : 1 }]}>

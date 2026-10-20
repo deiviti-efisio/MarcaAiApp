@@ -772,6 +772,17 @@ export default function ConfiguracoesScreen() {
 
             <View style={dynamicStyles.settingsCard}>
               {renderSettingItem(
+                'person-outline',
+                'Ver perfil público',
+                'Capa, bio, vídeos e agenda que os outros veem',
+                () =>
+                  router.push({
+                    pathname: '/perfil-artista',
+                    params: { artistId: currentArtist.id },
+                  })
+              )}
+
+              {renderSettingItem(
                 premiumEntitlementActive ? 'add-circle' : 'lock-closed',
                 'Criar Novo Artista',
                 premiumEntitlementActive

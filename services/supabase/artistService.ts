@@ -1,4 +1,9 @@
 import { supabase } from '../../lib/supabase';
+import {
+  parseArtistSocialLinks,
+  type ArtistSocialLinks,
+} from '../../lib/socialLinks';
+import { parseArtistStringArrayFromJson } from '../../constants/artistProfileLists';
 import { normalizeArtistMemberRole } from './permissionsService';
 import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES } from './userService';
 
@@ -7,6 +12,9 @@ export interface Artist {
   name: string;
   musical_style?: string;
   profile_url?: string;
+  cover_url?: string | null;
+  bio?: string | null;
+  social_links?: ArtistSocialLinks;
   whatsapp?: string;
   city?: string;
   state?: string;
@@ -25,6 +33,9 @@ export interface CreateArtistData {
   name: string;
   musical_style?: string;
   profile_url?: string;
+  cover_url?: string | null;
+  bio?: string | null;
+  social_links?: ArtistSocialLinks;
   user_id: string;
   whatsapp?: string | null;
   city?: string | null;
@@ -34,6 +45,31 @@ export interface CreateArtistData {
   average_cache_value?: number | null;
   work_roles?: string[];
   show_formats?: string[];
+}
+
+function mapArtistRow(row: Record<string, unknown> | null | undefined): Artist | null {
+  if (!row || !row.id) return null;
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    musical_style: (row.musical_style as string) || undefined,
+    profile_url: (row.profile_url as string) || undefined,
+    cover_url: (row.cover_url as string) || null,
+    bio: (row.bio as string) || null,
+    social_links: parseArtistSocialLinks(row.social_links),
+    whatsapp: (row.whatsapp as string) || undefined,
+    city: (row.city as string) || undefined,
+    state: (row.state as string) || undefined,
+    is_available_for_gigs: Boolean(row.is_available_for_gigs),
+    show_whatsapp: Boolean(row.show_whatsapp),
+    average_cache_value:
+      row.average_cache_value == null ? null : Number(row.average_cache_value),
+    work_roles: parseArtistStringArrayFromJson(row.work_roles),
+    show_formats: parseArtistStringArrayFromJson(row.show_formats),
+    role: row.role ? normalizeArtistMemberRole(String(row.role)) : undefined,
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? ''),
+  };
 }
 
 function mapCreateArtistError(message: string): string {
@@ -224,9 +260,27 @@ export const getArtistById = async (artistId: string): Promise<{ artist: Artist 
       return { artist: null, error: error.message };
     }
 
-    return { artist: data, error: null };
+    return { artist: mapArtistRow(data as Record<string, unknown>), error: null };
   } catch {
     return { artist: null, error: 'Erro de conexão' };
+  }
+};
+
+export const getArtistPublicProfile = async (
+  artistId: string,
+): Promise<{ artist: Artist | null; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.rpc('get_artist_public_profile', {
+      p_artist_id: artistId,
+    });
+    if (!error) {
+      const row = Array.isArray(data) ? data[0] : data;
+      const mapped = mapArtistRow(row as Record<string, unknown> | null);
+      if (mapped) return { artist: mapped, error: null };
+    }
+    return getArtistById(artistId);
+  } catch {
+    return getArtistById(artistId);
   }
 };
 
@@ -269,6 +323,16 @@ export const updateArtist = async (artistId: string, artistData: Partial<CreateA
           : artistData.average_cache_value,
       work_roles: artistData.work_roles,
       show_formats: artistData.show_formats,
+      cover_url:
+        artistData.cover_url === undefined ? undefined : artistData.cover_url,
+      bio:
+        artistData.bio === undefined
+          ? undefined
+          : artistData.bio === null
+            ? null
+            : artistData.bio.trim() || null,
+      social_links:
+        artistData.social_links === undefined ? undefined : artistData.social_links,
       updated_at: new Date().toISOString()
     };
 
@@ -290,6 +354,25 @@ export const updateArtist = async (artistId: string, artistData: Partial<CreateA
     });
 
     if (error) {
+      const msg = (error.message || '').toLowerCase();
+      const missingProfileCols =
+        msg.includes('cover_url') ||
+        msg.includes('social_links') ||
+        (msg.includes('bio') && (msg.includes('column') || msg.includes('schema')));
+      if (missingProfileCols) {
+        const { cover_url: _c, bio: _b, social_links: _s, ...legacy } = sanitizedPayload as Record<
+          string,
+          unknown
+        >;
+        const retry = await supabase.from('artists').update(legacy).eq('id', artistId).select();
+        if (!retry.error) {
+          return {
+            success: true,
+            error: null,
+            artist: mapArtistRow(retry.data?.[0] as Record<string, unknown>) || undefined,
+          };
+        }
+      }
       console.error('❌ UPDATE ARTIST - Erro:', error);
       return { success: false, error: error.message };
     }
@@ -303,7 +386,11 @@ export const updateArtist = async (artistId: string, artistData: Partial<CreateA
       profile_url: updatedArtist?.profile_url
     });
 
-    return { success: true, error: null, artist: updatedArtist || undefined };
+    return {
+      success: true,
+      error: null,
+      artist: mapArtistRow(updatedArtist as Record<string, unknown>) || undefined,
+    };
   } catch (err) {
     console.error('💥 UPDATE ARTIST - Erro inesperado:', err);
     return { success: false, error: 'Erro de conexão' };

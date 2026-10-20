@@ -92,6 +92,32 @@ export async function listarFeedSocial(params: {
   }
 }
 
+export async function listarFeedSocialArtista(params: {
+  artistId: string;
+  artistaAtualId?: string | null;
+}): Promise<{ posts: SocialPost[]; error: string | null }> {
+  try {
+    const { data, error } = await supabase.rpc('listar_feed_social_artista', {
+      p_artist_id: params.artistId,
+      p_artista_atual_id: params.artistaAtualId ?? null,
+    });
+    if (error) {
+      const fallback = await listarFeedSocial({
+        artistaAtualId: params.artistaAtualId,
+        somenteMeus: false,
+      });
+      return {
+        posts: fallback.posts.filter((post) => post.artist_id === params.artistId),
+        error: fallback.error,
+      };
+    }
+    const rows = (data || []) as Record<string, unknown>[];
+    return { posts: rows.map(mapPost), error: null };
+  } catch {
+    return { posts: [], error: 'Erro de conexão' };
+  }
+}
+
 export async function publicarSocialPost(input: {
   artistaId: string;
   body?: string | null;
