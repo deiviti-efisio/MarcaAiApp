@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { Alert, Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { navigateAfterAuth } from '../lib/continueAfterAuth';
 import { createOrUpdateUserFromGoogle } from '../services/supabase/userService';
 
 // Função auxiliar para fazer parsing de URLs customizadas (marcaai://)
@@ -149,6 +150,7 @@ export default function AuthDeepLinkHandler() {
               // Criar ou atualizar usuário com dados do Google OAuth
               const userMetadata = session.user.user_metadata;
               
+              let isNewUser = false;
               if (userMetadata && session.user.email) {
                 const result = await createOrUpdateUserFromGoogle(
                   session.user.id,
@@ -158,10 +160,9 @@ export default function AuthDeepLinkHandler() {
                     photo: userMetadata.avatar_url || userMetadata.picture || undefined,
                   }
                 );
+                isNewUser = Boolean(result.isNewUser);
               }
-              
-              // Redirecionar para agenda
-              router.replace('/(tabs)/agenda');
+              await navigateAfterAuth(undefined, session.user.id, isNewUser);
             } else {
               console.error('❌ Sessão OAuth não foi salva corretamente');
             }

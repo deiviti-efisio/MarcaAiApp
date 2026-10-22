@@ -53,12 +53,19 @@ export default function BrazilPlaceSearchField({
     setLoading(true);
     timerRef.current = setTimeout(() => {
       const req = ++requestRef.current;
-      void searchBrazilPlaces(q).then((places) => {
-        if (req !== requestRef.current) return;
-        setResults(places);
-        setOpen(places.length > 0);
-        setLoading(false);
-      });
+      void searchBrazilPlaces(q)
+        .then((places) => {
+          if (req !== requestRef.current) return;
+          setResults(places);
+          setOpen(places.length > 0);
+          setLoading(false);
+        })
+        .catch(() => {
+          if (req !== requestRef.current) return;
+          setResults([]);
+          setOpen(false);
+          setLoading(false);
+        });
     }, 280);
   };
 

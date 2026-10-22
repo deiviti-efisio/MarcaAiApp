@@ -212,6 +212,7 @@ export async function searchBrazilPlaces(query: string): Promise<BrazilPlace[]> 
   const raw = query.trim();
   if (raw.length < 2) return [];
 
+  try {
   const digits = raw.replace(/\D/g, '');
   const [cities, cepPlaces, photon] = await Promise.all([
     searchMunicipios(raw, 8),
@@ -228,4 +229,7 @@ export async function searchBrazilPlaces(query: string): Promise<BrazilPlace[]> 
     merged.push(place);
   }
   return merged.slice(0, 12);
+  } catch {
+    return [];
+  }
 }

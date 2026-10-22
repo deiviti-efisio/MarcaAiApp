@@ -19,7 +19,7 @@ import GoogleGLogo from '../components/GoogleGLogo';
 import MeuShowWordmark from '../components/MeuShowWordmark';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { checkArtistsAndRedirect } from '../services/supabase/authService';
+import { navigateAfterAuth } from '../lib/continueAfterAuth';
 import {
     createOrUpdateUserFromApple,
     createOrUpdateUserFromGoogle,
@@ -145,18 +145,9 @@ export default function RegisterScreen() {
           );
 
           if (result.isNewUser) {
-            router.replace({ pathname: '/(tabs)/agenda', params: { showNewUserModal: '1' } });
+            router.replace('/cadastro-usuario');
           } else {
-            // Usuário existente - verificar artistas e redirecionar
-            const { shouldRedirectToSelection } = await checkArtistsAndRedirect();
-            
-            setTimeout(() => {
-              if (shouldRedirectToSelection) {
-                router.replace('/selecionar-artista');
-              } else {
-                router.replace('/(tabs)/agenda');
-              }
-            }, 100);
+            await navigateAfterAuth(undefined, data.user.id);
           }
         }
       }
@@ -237,20 +228,11 @@ export default function RegisterScreen() {
       }
 
       if (isNewUser) {
-        router.replace({ pathname: '/(tabs)/agenda', params: { showNewUserModal: '1' } });
+        router.replace('/cadastro-usuario');
         return;
       }
 
-      // Usuário existente - verificar artistas e redirecionar
-      const { shouldRedirectToSelection } = await checkArtistsAndRedirect();
-
-      setTimeout(() => {
-        if (shouldRedirectToSelection) {
-          router.replace('/selecionar-artista');
-        } else {
-          router.replace('/(tabs)/agenda');
-        }
-      }, 100);
+      await navigateAfterAuth(undefined, user.id);
     } catch (error: any) {
       console.error('Erro no login com Apple:', error);
       Alert.alert('Erro', error?.message || 'Erro ao fazer login com Apple');

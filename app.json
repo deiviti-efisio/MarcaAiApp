@@ -2,7 +2,7 @@
   "expo": {
     "name": "MeuShow",
     "slug": "APP_MOBILE_MARCA_AI",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icone_app_1024.png",
     "scheme": "marcaai",
@@ -20,7 +20,7 @@
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "bundleIdentifier": "com.marcaai.app",
-      "buildNumber": "109",
+      "buildNumber": "110",
       "icon": "./assets/images/icone_app_1024.png",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Este app precisa acessar sua galeria de fotos para permitir que você selecione uma foto de perfil.",
@@ -43,7 +43,7 @@
     },
     "android": {
       "package": "com.marcaaipro.app",
-      "versionCode": 55,
+      "versionCode": 56,
       "googleServicesFile": "./android/app/google-services.json",
       "icon": "./assets/images/icone_512x512.png",
       "adaptiveIcon": {

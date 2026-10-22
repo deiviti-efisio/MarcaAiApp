@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,11 +26,17 @@ import {
   parseArtistStringArrayFromJson,
 } from '../constants/artistProfileLists';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
+import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import PermissionModal from '../components/PermissionModal';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { parseArtistSocialLinks, socialLinksToJson, isLikelyHttpUrl } from '../lib/socialLinks';
+import {
+  collectSocialPreviewItems,
+  parseArtistSocialLinks,
+  socialLinksToJson,
+  isLikelyHttpUrl,
+} from '../lib/socialLinks';
 import { artistImageUpdateService } from '../services/artistImageUpdateService';
 import { getArtistById, updateArtist } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
@@ -399,17 +405,14 @@ export default function EditarArtistaScreen() {
       return;
     }
 
-      if (isAvailableForGigs) {
+    if (!city.trim() || !state.trim()) {
+      Alert.alert('Atenção', 'Informe cidade e estado. A busca de artistas usa o estado do perfil.');
+      return;
+    }
+
+    if (isAvailableForGigs) {
       if (!whatsapp.trim()) {
         Alert.alert('Atenção', 'Informe o WhatsApp para aparecer na busca de convites.');
-        return;
-      }
-      if (!city.trim()) {
-        Alert.alert('Atenção', 'Informe a cidade para aparecer na busca de convites.');
-        return;
-      }
-      if (!state.trim()) {
-        Alert.alert('Atenção', 'Informe o estado para aparecer na busca de convites.');
         return;
       }
     }
@@ -476,8 +479,8 @@ export default function EditarArtistaScreen() {
         name: name.trim(),
         musical_style: musicalStyle.trim() || undefined,
         whatsapp: isAvailableForGigs ? whatsapp.trim() || null : null,
-        city: isAvailableForGigs ? city.trim() || null : city.trim() || null,
-        state: isAvailableForGigs ? state.trim() || null : state.trim() || null,
+        city: city.trim() || null,
+        state: state.trim() || null,
         is_available_for_gigs: isAvailableForGigs,
         show_whatsapp: isAvailableForGigs && showWhatsappInSearch,
         average_cache_value: isAvailableForGigs ? parsedAverageCacheValue : null,
@@ -533,6 +536,23 @@ export default function EditarArtistaScreen() {
       setIsUploadingImage(false);
     }
   };
+
+  const youtubePreviews = useMemo(
+    () =>
+      collectSocialPreviewItems({
+        youtube: youtubeUrl,
+        videos: extraVideos
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean),
+      }).filter((item) => item.kind === 'youtube'),
+    [extraVideos, youtubeUrl]
+  );
+
+  const instagramPreview = useMemo(
+    () => collectSocialPreviewItems({ instagram: instagramUrl }).find((item) => item.kind === 'instagram'),
+    [instagramUrl]
+  );
 
   const renderInput = (
     label: string,
@@ -727,7 +747,10 @@ export default function EditarArtistaScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Apresentação</Text>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Bio</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8, lineHeight: 18 }}>
+              Um pouco sobre a carreira: história, palco e o que te define.
+            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -736,16 +759,29 @@ export default function EditarArtistaScreen() {
               ]}
               value={bio}
               onChangeText={setBio}
-              placeholder="Conte um pouco da sua história, estilo e palco."
+              placeholder="Ex.: Músico e compositor com 20 anos de estrada, voz e violão, shows autorais e repertório de MPB."
               placeholderTextColor={colors.textSecondary}
               multiline
               maxLength={600}
             />
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 6, textAlign: 'right' }}>
+              {bio.length}/600
+            </Text>
           </View>
 
           {renderInput('YouTube', youtubeUrl, setYoutubeUrl, 'https://youtube.com/...', 'url', false)}
+          {youtubePreviews[0] ? (
+            <View style={styles.youtubePreview}>
+              <SocialMediaPreviewCard item={youtubePreviews[0]} featured subtitle={bio} />
+            </View>
+          ) : null}
           {renderInput('Spotify', spotifyUrl, setSpotifyUrl, 'https://open.spotify.com/...', 'url', false)}
           {renderInput('Instagram', instagramUrl, setInstagramUrl, 'https://instagram.com/...', 'url', false)}
+          {instagramPreview ? (
+            <View style={styles.youtubePreview}>
+              <SocialMediaPreviewCard item={instagramPreview} featured />
+            </View>
+          ) : null}
 
           <View style={styles.inputContainer}>
             <Text style={[styles.inputLabel, { color: colors.text }]}>Outros vídeos ou músicas</Text>
@@ -763,11 +799,16 @@ export default function EditarArtistaScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {youtubePreviews.slice(1).map((item) => (
+              <View key={item.url} style={styles.youtubePreview}>
+                <SocialMediaPreviewCard item={item} featured />
+              </View>
+            ))}
           </View>
 
           <View style={styles.inputContainer}>
             <Text style={[styles.inputLabel, { color: colors.text }]}>
-              Cidade {isAvailableForGigs ? <Text style={styles.required}>*</Text> : null}
+              Cidade <Text style={styles.required}>*</Text>
             </Text>
             <BrazilPlaceSearchField
               value={city}
@@ -782,7 +823,7 @@ export default function EditarArtistaScreen() {
 
           <View style={styles.inputContainer}>
             <Text style={[styles.inputLabel, { color: colors.text }]}>
-              Estado {isAvailableForGigs ? <Text style={styles.required}>*</Text> : null}
+              Estado <Text style={styles.required}>*</Text>
             </Text>
             <TouchableOpacity
               style={[
@@ -1245,6 +1286,9 @@ const styles = StyleSheet.create({
     elevation: Platform.OS === 'android' ? 0 : 5,
   },
   inputContainer: {
+    marginBottom: 20,
+  },
+  youtubePreview: {
     marginBottom: 20,
   },
   inputLabel: {

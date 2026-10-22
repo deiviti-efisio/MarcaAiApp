@@ -16,6 +16,7 @@ import {
     View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import OptimizedImage from '../../components/OptimizedImage';
 import PermissionModal from '../../components/PermissionModal';
 import PremiumTrialUpsellModal from '../../components/PremiumTrialUpsellModal';
 import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
@@ -43,7 +44,6 @@ import { getEventsByMonth, getEventsByYear } from '../../services/supabase/event
 import {
   deleteStandaloneExpense,
   getExpenseTotalsByEventIds,
-  getExpensesByEvent,
   getExpensesGroupedByEventIds,
   getStandaloneExpensesByArtist,
   getStandaloneExpensesByArtistYear,
@@ -54,6 +54,7 @@ import {
   getFinancialTrialStatus,
 } from '../../services/supabase/userService';
 import { maybeShowConnectionError } from '../../utils/maybeShowConnectionError';
+import { useNotifications } from '../../services/useNotifications';
 // import * as FileSystem from 'expo-file-system';
 
 interface EventWithExpenses {
@@ -148,6 +149,7 @@ export default function FinanceiroScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { activeArtist, refreshActiveArtist } = useActiveArtistContext();
+  const { unreadCount, loadUnreadCount } = useNotifications();
   const [hasAnyArtist, setHasAnyArtist] = useState(false);
   
   // Estados para controle de acesso
@@ -304,19 +306,18 @@ export default function FinanceiroScreen() {
         return;
       }
 
-      const eventsWithExpenses = await Promise.all(
-        (monthEvents || []).map(async (event) => {
-          const { success, expenses } = await getExpensesByEvent(event.id);
+      const ids = (monthEvents || []).map((event) => event.id);
+      const { byEventId } = await getExpensesGroupedByEventIds(ids);
 
-          const totalExpenses = expenses?.reduce((sum, expense) => sum + expense.value, 0) || 0;
-
-          return {
-            ...event,
-            expenses: expenses || [],
-            totalExpenses,
-          };
-        })
-      );
+      const eventsWithExpenses = (monthEvents || []).map((event) => {
+        const expenses = byEventId?.[event.id] || [];
+        const totalExpenses = expenses.reduce((sum, expense) => sum + expense.value, 0);
+        return {
+          ...event,
+          expenses,
+          totalExpenses,
+        };
+      });
 
       setEvents(eventsWithExpenses);
 
@@ -418,28 +419,11 @@ export default function FinanceiroScreen() {
     }
   }, [activeArtist, annualSummaryYear]);
 
-  // ✅ Carregar dados financeiros (mês ou ano)
-  useEffect(() => {
-    if (!activeArtist || hasAccess === null) return;
-    if (financeViewMode === 'month') {
-      void loadFinancialData();
-    } else {
-      void loadAnnualFinancialData();
-    }
-  }, [
-    activeArtist,
-    hasAccess,
-    financeViewMode,
-    currentMonth,
-    currentYear,
-    annualSummaryYear,
-    loadFinancialData,
-    loadAnnualFinancialData,
-  ]);
-
-  // Recarregar ao voltar para a aba (ex.: após adicionar evento, despesa ou receita)
+  // Só carrega com a aba aberta. No mount das tabs isso competia com o Feed
+  // (dezenas de requests de despesa por evento e a busca de artistas ficava na fila).
   useFocusEffect(
     React.useCallback(() => {
+      void loadUnreadCount();
       if (!activeArtist || hasAccess === null) return;
       if (financeViewMode === 'month') {
         void loadFinancialData();
@@ -460,6 +444,7 @@ export default function FinanceiroScreen() {
       loadMonthRevenueGoal,
       loadFinancialData,
       loadAnnualFinancialData,
+      loadUnreadCount,
     ])
   );
 
@@ -1102,17 +1087,176 @@ export default function FinanceiroScreen() {
     </View>
   );
 
+  const notificationBtn = (
+    <TouchableOpacity
+      style={styles.notificationButton}
+      onPress={() => router.push('/notificacoes')}
+    >
+      <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+      {unreadCount > 0 ? (
+        <View style={styles.notificationBadge}>
+          <Text style={styles.badgeText}>
+            {unreadCount > 99 ? '99+' : unreadCount.toString()}
+          </Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+
+  const renderProfileHeader = (showTools: boolean) => (
+    <View
+      style={[
+        styles.header,
+        {
+          backgroundColor: colors.surface,
+          borderBottomColor: colors.border,
+          paddingTop: insets.top + 20,
+        },
+      ]}
+    >
+      {activeArtist ? (
+        <View style={[styles.artistHeader, !showTools && { marginBottom: 0 }]}>
+          <TouchableOpacity onPress={() => router.push('/selecionar-artista')} activeOpacity={0.8}>
+            <OptimizedImage
+              imageUrl={activeArtist.profile_url || ''}
+              style={[styles.headerAvatar, { borderColor: colors.border }]}
+              cacheKey={`artist_${activeArtist.id}`}
+              fallbackText={activeArtist.name || 'Artista'}
+              fallbackIcon="musical-notes"
+              fallbackIconSize={24}
+              fallbackIconColor={colors.primary}
+              showLoadingIndicator={false}
+            />
+          </TouchableOpacity>
+          <View style={styles.headerArtistDetails}>
+            <View style={styles.headerNameRow}>
+              <Text style={[styles.headerArtistName, { color: colors.text }]} numberOfLines={2}>
+                {activeArtist.name}
+              </Text>
+              <View style={styles.headerActions}>
+                {showTools &&
+                hasAccess &&
+                ((financeViewMode === 'month' && events.length > 0) ||
+                  (financeViewMode === 'year' && yearHasExportableData)) ? (
+                  <TouchableOpacity
+                    style={styles.notificationButton}
+                    onPress={handleExportFinancialReport}
+                  >
+                    <Ionicons name="share-outline" size={22} color={colors.primary} />
+                  </TouchableOpacity>
+                ) : null}
+                {showTools && financeViewMode === 'month' && hasAccess ? (
+                  <TouchableOpacity
+                    style={styles.notificationButton}
+                    onPress={() => setShowAddModal(true)}
+                  >
+                    <Ionicons name="add" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                ) : null}
+                {notificationBtn}
+              </View>
+            </View>
+            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>Financeiro</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.noArtistHeaderRow, !showTools && { marginBottom: 0 }]}>
+          <Text style={[styles.headerArtistName, { color: colors.text }]}>Financeiro</Text>
+          {notificationBtn}
+        </View>
+      )}
+      {showTools ? (
+        <View style={[styles.modeToggleRow, { backgroundColor: colors.background }]}>
+          <TouchableOpacity
+            style={[
+              styles.modeTogglePill,
+              financeViewMode === 'month' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setFinanceViewMode('month')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={18}
+              color={financeViewMode === 'month' ? '#fff' : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.modeToggleLabel,
+                { color: financeViewMode === 'month' ? '#fff' : colors.textSecondary },
+              ]}
+            >
+              Mês
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.modeTogglePill,
+              financeViewMode === 'year' && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => {
+              setAnnualSummaryYear(selectedDate.getFullYear());
+              setFinanceViewMode('year');
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="albums-outline"
+              size={18}
+              color={financeViewMode === 'year' ? '#fff' : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.modeToggleLabel,
+                { color: financeViewMode === 'year' ? '#fff' : colors.textSecondary },
+              ]}
+            >
+              Ano
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {showTools ? (
+        <View style={[styles.monthNavigation, { backgroundColor: colors.background }]}>
+          {financeViewMode === 'month' ? (
+            <>
+              <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.navButton}>
+                <Ionicons name="chevron-back" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              <Text style={[styles.monthText, { color: colors.text }]}>
+                {months[currentMonth]} {currentYear}
+              </Text>
+              <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
+                <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={() => setAnnualSummaryYear((y) => y - 1)}
+                style={styles.navButton}
+              >
+                <Ionicons name="chevron-back" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              <Text style={[styles.monthText, { color: colors.text }]}>{annualSummaryYear}</Text>
+              <TouchableOpacity
+                onPress={() => setAnnualSummaryYear((y) => y + 1)}
+                style={styles.navButton}
+              >
+                <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+
   // Se ainda está verificando acesso, mostrar loading
   if (isCheckingAccess) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border,
-          paddingTop: insets.top + 20
-        }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Financeiro</Text>
-        </View>
+        {renderProfileHeader(false)}
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Verificando permissões...</Text>
         </View>
@@ -1124,13 +1268,7 @@ export default function FinanceiroScreen() {
   if (!activeArtist) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { 
-          backgroundColor: colors.surface, 
-          borderBottomColor: colors.border,
-          paddingTop: insets.top + 20
-        }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Financeiro</Text>
-        </View>
+        {renderProfileHeader(false)}
         <View style={styles.noArtistContainer}>
           <View style={[styles.noArtistCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.noArtistIcon, { backgroundColor: colors.background }]}>
@@ -1206,123 +1344,7 @@ export default function FinanceiroScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { 
-        backgroundColor: colors.surface, 
-        borderBottomColor: colors.border,
-        paddingTop: insets.top + 20
-      }]}>
-        <View style={styles.headerTop}>
-          <Text style={[styles.title, { color: colors.text }]}>Financeiro</Text>
-          
-          <View style={styles.headerButtons}>
-            {hasAccess &&
-              ((financeViewMode === 'month' && events.length > 0) ||
-                (financeViewMode === 'year' && yearHasExportableData)) && (
-              <TouchableOpacity
-                style={styles.headerIconButton}
-                onPress={handleExportFinancialReport}
-              >
-                <Ionicons 
-                  name="share-outline" 
-                  size={26} 
-                  color={colors.text} 
-                />
-              </TouchableOpacity>
-            )}
-
-            {financeViewMode === 'month' && hasAccess && (
-              <TouchableOpacity
-                style={styles.headerIconButton}
-                onPress={() => setShowAddModal(true)}
-              >
-                <Ionicons name="add" size={28} color={colors.text} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        <View style={[styles.modeToggleRow, { backgroundColor: colors.background }]}>
-          <TouchableOpacity
-            style={[
-              styles.modeTogglePill,
-              financeViewMode === 'month' && { backgroundColor: colors.primary },
-            ]}
-            onPress={() => setFinanceViewMode('month')}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={18}
-              color={financeViewMode === 'month' ? '#fff' : colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.modeToggleLabel,
-                { color: financeViewMode === 'month' ? '#fff' : colors.textSecondary },
-              ]}
-            >
-              Mês
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.modeTogglePill,
-              financeViewMode === 'year' && { backgroundColor: colors.primary },
-            ]}
-            onPress={() => {
-              setAnnualSummaryYear(selectedDate.getFullYear());
-              setFinanceViewMode('year');
-            }}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="albums-outline"
-              size={18}
-              color={financeViewMode === 'year' ? '#fff' : colors.textSecondary}
-            />
-            <Text
-              style={[
-                styles.modeToggleLabel,
-                { color: financeViewMode === 'year' ? '#fff' : colors.textSecondary },
-              ]}
-            >
-              Ano
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={[styles.monthNavigation, { backgroundColor: colors.background }]}>
-          {financeViewMode === 'month' ? (
-            <>
-              <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.navButton}>
-                <Ionicons name="chevron-back" size={24} color={colors.primary} />
-              </TouchableOpacity>
-              <Text style={[styles.monthText, { color: colors.text }]}>
-                {months[currentMonth]} {currentYear}
-              </Text>
-              <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navButton}>
-                <Ionicons name="chevron-forward" size={24} color={colors.primary} />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                onPress={() => setAnnualSummaryYear((y) => y - 1)}
-                style={styles.navButton}
-              >
-                <Ionicons name="chevron-back" size={24} color={colors.primary} />
-              </TouchableOpacity>
-              <Text style={[styles.monthText, { color: colors.text }]}>{annualSummaryYear}</Text>
-              <TouchableOpacity
-                onPress={() => setAnnualSummaryYear((y) => y + 1)}
-                style={styles.navButton}
-              >
-                <Ionicons name="chevron-forward" size={24} color={colors.primary} />
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
+      {renderProfileHeader(true)}
 
       <ScrollView style={[styles.content, { backgroundColor: colors.background }]}>
         {financeViewMode === 'year' ? (
@@ -2130,19 +2152,48 @@ const styles = StyleSheet.create({
     paddingBottom: 15,
     borderBottomWidth: 1,
   },
-  headerTop: {
+  artistHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  headerAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+    borderWidth: 2,
+  },
+  headerArtistDetails: { flex: 1, minWidth: 0 },
+  headerNameRow: { flexDirection: 'row', alignItems: 'center' },
+  headerArtistName: { fontSize: 16, fontWeight: 'bold', flex: 1, marginRight: 4 },
+  headerSubtitle: { fontSize: 14 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', marginRight: -8 },
+  noArtistHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 14,
   },
-  headerButtons: {
-    flexDirection: 'row',
+  notificationButton: { position: 'relative', padding: 8 },
+  notificationBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  headerIconButton: {
-    padding: 8,
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   title: {
     fontSize: 24,

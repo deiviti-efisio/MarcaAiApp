@@ -73,12 +73,9 @@ export default function FeedComoFuncionaModal({ visible, onClose }: Props) {
             </View>
             <View style={styles.titleRow}>
               <Text style={[styles.title, { color: colors.text }]}>Como funciona o Feed</Text>
-              <View style={[styles.betaBadge, { backgroundColor: `${colors.primary}18` }]}>
-                <Text style={[styles.betaBadgeText, { color: colors.primary }]}>Beta</Text>
-              </View>
             </View>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Um mural para oferecer ou procurar artista, banda, músico e serviço.
+              Um mural para oferecer ou procurar artista, banda, músico e serviço. Na aba Artistas você vê quem está perto.
             </Text>
 
             {STEPS.map((step) => (

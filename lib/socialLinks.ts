@@ -115,6 +115,44 @@ export function youtubeThumbnailUrl(videoId: string): string {
   return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 }
 
+export function extractInstagramUsername(url: string): string | null {
+  try {
+    const u = new URL(withHttps(url));
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    if (host !== 'instagram.com' && host !== 'instagr.am') return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    const reserved = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts']);
+    const first = parts[0] || '';
+    if (!first || reserved.has(first.toLowerCase())) return null;
+    if (!/^[a-zA-Z0-9._]+$/.test(first)) return null;
+    return first;
+  } catch {
+    return null;
+  }
+}
+
+export function extractInstagramShortcode(url: string): string | null {
+  try {
+    const u = new URL(withHttps(url));
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    if (host !== 'instagram.com' && host !== 'instagr.am') return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    const kind = (parts[0] || '').toLowerCase();
+    if ((kind === 'p' || kind === 'reel' || kind === 'tv') && parts[1]) return parts[1];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function instagramThumbnailUrl(url: string): string | undefined {
+  const code = extractInstagramShortcode(url);
+  if (code) return `https://www.instagram.com/p/${code}/media/?size=l`;
+  const user = extractInstagramUsername(url);
+  if (user) return `https://unavatar.io/instagram/${encodeURIComponent(user)}`;
+  return undefined;
+}
+
 export function collectSocialPreviewItems(links: ArtistSocialLinks): SocialPreviewItem[] {
   const seen = new Set<string>();
   const items: SocialPreviewItem[] = [];
@@ -141,7 +179,13 @@ export function collectSocialPreviewItems(links: ArtistSocialLinks): SocialPrevi
       items.push({ kind, url, title: 'Spotify' });
       return;
     }
-    items.push({ kind, url, title: 'Instagram' });
+    const user = extractInstagramUsername(url);
+    items.push({
+      kind,
+      url,
+      title: user ? `@${user}` : 'Instagram',
+      thumbnailUrl: instagramThumbnailUrl(url),
+    });
   };
 
   if (links.youtube) push(links.youtube);

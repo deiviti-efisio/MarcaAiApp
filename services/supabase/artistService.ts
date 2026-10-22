@@ -130,13 +130,14 @@ export const createArtist = async (artistData: CreateArtistData): Promise<{ succ
         musical_style: artistData.musical_style || null,
         profile_url: artistData.profile_url || null,
         whatsapp: available ? (artistData.whatsapp?.trim() || null) : null,
-        city: available ? (artistData.city?.trim() || null) : null,
-        state: available ? (artistData.state?.trim() || null) : null,
+        city: artistData.city?.trim() || null,
+        state: artistData.state?.trim() || null,
         is_available_for_gigs: available,
         show_whatsapp: available ? Boolean(artistData.show_whatsapp) : false,
         average_cache_value: available ? (artistData.average_cache_value ?? null) : null,
         work_roles: available ? (artistData.work_roles || []) : [],
         show_formats: available ? (artistData.show_formats || []) : [],
+        bio: artistData.bio?.trim() || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -144,6 +145,42 @@ export const createArtist = async (artistData: CreateArtistData): Promise<{ succ
       .single();
 
     if (artistError) {
+      const msg = (artistError.message || '').toLowerCase();
+      if (msg.includes('bio') && (msg.includes('column') || msg.includes('schema'))) {
+        const retry = await supabase
+          .from('artists')
+          .insert({
+            name: artistData.name,
+            musical_style: artistData.musical_style || null,
+            profile_url: artistData.profile_url || null,
+            whatsapp: available ? (artistData.whatsapp?.trim() || null) : null,
+            city: artistData.city?.trim() || null,
+            state: artistData.state?.trim() || null,
+            is_available_for_gigs: available,
+            show_whatsapp: available ? Boolean(artistData.show_whatsapp) : false,
+            average_cache_value: available ? (artistData.average_cache_value ?? null) : null,
+            work_roles: available ? (artistData.work_roles || []) : [],
+            show_formats: available ? (artistData.show_formats || []) : [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+        if (!retry.error && retry.data) {
+          const { error: memberRetryError } = await supabase.from('artist_members').insert({
+            user_id: artistData.user_id,
+            artist_id: retry.data.id,
+            role: 'admin',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          if (memberRetryError) {
+            await supabase.from('artists').delete().eq('id', retry.data.id);
+            return { success: false, error: mapCreateArtistError(memberRetryError.message) };
+          }
+          return { success: true, error: null, artist: retry.data };
+        }
+      }
       console.error('❌ Erro ao criar artista:', artistError.message);
       return { success: false, error: mapCreateArtistError(artistError.message) };
     }

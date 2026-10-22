@@ -18,11 +18,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../../contexts/ThemeContext';
+import BrazilPlaceSearchField from '../../../components/BrazilPlaceSearchField';
 import MeuShowWordmark from '../../../components/MeuShowWordmark';
 import { dispatchResetToLogin } from '../../../lib/resetToLoginStack';
 import { getCurrentUser } from '../../../services/supabase/authService';
 import { uploadUserImage } from '../../../services/supabase/imageUploadService';
-import { createUserProfile, getUserProfile } from '../../../services/supabase/userService';
+import { getUserProfile, saveUserCadastro } from '../../../services/supabase/userService';
 
 const estadosBrasil = [
   'Acre', 'Alagoas', 'Amapá', 'Amazonas', 'Bahia', 'Ceará',
@@ -164,15 +165,14 @@ export default function UserProfileScreen() {
         setIsUploadingImage(false);
       }
 
-      // Salvar os dados do usuário usando o serviço
-      const { success, error } = await createUserProfile({
+      const { success, error } = await saveUserCadastro({
         id: user.id,
         name: (name.trim() || user.user_metadata?.full_name || user.user_metadata?.name || 'Usuário').trim() || 'Usuário',
         email: user.email || '',
         city: city.trim(),
         state: state,
         phone: phone.trim(),
-        profile_url: finalProfileUrl
+        profile_url: finalProfileUrl || undefined,
       });
 
       if (!success) {
@@ -195,7 +195,11 @@ export default function UserProfileScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
@@ -271,17 +275,19 @@ export default function UserProfileScreen() {
               {/* Cidade */}
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.text }]}>Cidade *</Text>
-                <View style={[styles.inputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                  <Ionicons name="location-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.input, { color: colors.text }]}
-                    value={city}
-                    onChangeText={setCity}
-                    placeholder="Digite sua cidade"
-                    placeholderTextColor={colors.textSecondary}
-                    autoCapitalize="words"
-                  />
-                </View>
+                <BrazilPlaceSearchField
+                  value={city}
+                  onChangeText={setCity}
+                  onSelectPlace={(place) => {
+                    setCity(place.city);
+                    setState(place.stateName);
+                    setShowEstados(false);
+                  }}
+                  placeholder="Buscar cidade"
+                />
+                <Text style={[styles.hint, { color: colors.textSecondary }]}>
+                  Se a busca não aparecer, digite a cidade e escolha o estado.
+                </Text>
               </View>
 
               {/* Estado */}
@@ -435,6 +441,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 8,
+  },
+  hint: {
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 16,
   },
   inputContainer: {
     flexDirection: 'row',

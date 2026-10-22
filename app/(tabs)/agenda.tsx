@@ -2073,18 +2073,6 @@ export default function AgendaScreen() {
                     ) : null}
                     <TouchableOpacity
                       style={styles.notificationButton}
-                      onPress={() => router.push("/feed")}
-                      accessibilityLabel="Feed"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons
-                        name="newspaper-outline"
-                        size={22}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.notificationButton}
                       onPress={() => router.push("/notificacoes")}
                     >
                       <Ionicons
@@ -2121,18 +2109,6 @@ export default function AgendaScreen() {
               Agenda de Shows
             </Text>
             <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.notificationButton}
-                onPress={() => router.push("/feed")}
-                accessibilityLabel="Feed"
-                accessibilityRole="button"
-              >
-                <Ionicons
-                  name="newspaper-outline"
-                  size={24}
-                  color={colors.primary}
-                />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.notificationButton}
                 onPress={() => router.push("/notificacoes")}

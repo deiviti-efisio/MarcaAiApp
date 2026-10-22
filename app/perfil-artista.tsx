@@ -18,16 +18,10 @@ import OptimizedImage from '../components/OptimizedImage';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatEventLocationSlash } from '../lib/brazilGeo';
-import { formatCalendarDate } from '../lib/dateUtils';
+import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
-import { listarFeedMarketplace, type FeedAnuncio } from '../services/supabase/feedMarketplaceService';
-import { listarFeedSocialArtista, type SocialPost } from '../services/supabase/socialFeedService';
-
-function digitsPhone(value: string | null | undefined): string {
-  return (value || '').replace(/\D/g, '');
-}
+import { listarAgendaPublicaArtista, type PublicAgendaEvent } from '../services/supabase/eventService';
 
 function styleChips(artist: Artist | null): string[] {
   if (!artist) return [];
@@ -54,8 +48,7 @@ export default function PerfilArtistaScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [artist, setArtist] = useState<Artist | null>(null);
-  const [posts, setPosts] = useState<SocialPost[]>([]);
-  const [shows, setShows] = useState<FeedAnuncio[]>([]);
+  const [publicEvents, setPublicEvents] = useState<PublicAgendaEvent[]>([]);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
   const previews = useMemo(
@@ -68,21 +61,13 @@ export default function PerfilArtistaScreen() {
       setLoading(false);
       return;
     }
-    const [profileRes, postsRes, feedRes] = await Promise.all([
+    const [profileRes, agendaRes] = await Promise.all([
       getArtistPublicProfile(artistId),
-      listarFeedSocialArtista({ artistId, artistaAtualId: activeArtist?.id }),
-      listarFeedMarketplace({ filtro: 'todos', artistaAtualId: activeArtist?.id }),
+      listarAgendaPublicaArtista(artistId),
     ]);
     setArtist(profileRes.artist);
-    setPosts(postsRes.posts.filter((post) => post.media_url));
-    const today = new Date().toISOString().slice(0, 10);
-    setShows(
-      feedRes.anuncios
-        .filter((item) => item.artist_id === artistId && item.event_date >= today)
-        .sort((a, b) => a.event_date.localeCompare(b.event_date))
-        .slice(0, 12)
-    );
-  }, [activeArtist?.id, artistId]);
+    setPublicEvents(agendaRes.events);
+  }, [artistId]);
 
   useEffect(() => {
     void (async () => {
@@ -99,16 +84,25 @@ export default function PerfilArtistaScreen() {
   };
 
   const handleConversar = () => {
-    const phone = digitsPhone(artist?.whatsapp);
-    if (!phone) {
-      Alert.alert(
-        'Contato',
-        'Este artista não deixou WhatsApp visível no perfil. Use o feed para negociar um show.'
-      );
+    if (!activeArtist?.id) {
+      Alert.alert('Conversa', 'Selecione um artista para iniciar o bate-papo.');
       return;
     }
-    void Linking.openURL(`https://wa.me/55${phone.replace(/^55/, '')}`);
+    if (!artistId || isOwn) return;
+    router.push({
+      pathname: '/conversa',
+      params: {
+        artistId,
+        artistName: artist?.name || '',
+        artistImage: artist?.profile_url || '',
+      },
+    });
   };
+
+  const youtubePreviews = previews.filter((item) => item.kind === 'youtube');
+  const instagramPreviews = previews.filter((item) => item.kind === 'instagram');
+  const otherPreviews = previews.filter((item) => item.kind !== 'youtube' && item.kind !== 'instagram');
+  const videoSubtitle = (artist?.bio || '').trim();
 
   const locationLine = artist
     ? [artist.city, artist.state].filter(Boolean).join(' · ')
@@ -203,17 +197,22 @@ export default function PerfilArtistaScreen() {
               </ScrollView>
             ) : null}
             {artist.bio ? (
-              <Text style={[styles.bio, { color: colors.text }]}>{artist.bio}</Text>
+              <View style={styles.bioBlock}>
+                <Text style={[styles.bioLabel, { color: colors.textSecondary }]}>Sobre a carreira</Text>
+                <Text style={[styles.bio, { color: colors.text }]}>{artist.bio}</Text>
+              </View>
             ) : null}
 
             <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                onPress={handleConversar}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
-                <Text style={styles.primaryBtnText}>Conversar</Text>
-              </TouchableOpacity>
+              {!isOwn ? (
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+                  onPress={handleConversar}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
+                  <Text style={styles.primaryBtnText}>Conversar</Text>
+                </TouchableOpacity>
+              ) : null}
               {previews.map((item) => (
                 <TouchableOpacity
                   key={item.kind + item.url}
@@ -236,53 +235,52 @@ export default function PerfilArtistaScreen() {
             </View>
           </View>
 
-          {previews.length ? (
-            <View style={styles.section}>
+          {youtubePreviews.length ? (
+            <View style={[styles.section, styles.sectionPad]}>
               <View style={styles.sectionHead}>
                 <Ionicons name="play-circle-outline" size={18} color={colors.primary} />
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Vídeos e músicas</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Vídeos</Text>
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.previewRow}
-              >
-                {previews.map((item) => (
-                  <SocialMediaPreviewCard key={item.url} item={item} />
+              <View style={styles.videoStack}>
+                {youtubePreviews.map((item, index) => (
+                  <SocialMediaPreviewCard
+                    key={item.url}
+                    item={item}
+                    featured
+                    subtitle={index === 0 ? videoSubtitle : undefined}
+                  />
                 ))}
-              </ScrollView>
+              </View>
             </View>
           ) : null}
 
-          {posts.length ? (
+          {instagramPreviews.length ? (
+            <View style={[styles.section, styles.sectionPad]}>
+              <View style={styles.sectionHead}>
+                <Ionicons name="logo-instagram" size={18} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Instagram</Text>
+              </View>
+              <View style={styles.videoStack}>
+                {instagramPreviews.map((item) => (
+                  <SocialMediaPreviewCard key={item.url} item={item} featured />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {otherPreviews.length ? (
             <View style={styles.section}>
               <View style={styles.sectionHead}>
-                <Ionicons name="images-outline" size={18} color={colors.primary} />
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>No feed</Text>
+                <Ionicons name="musical-notes-outline" size={18} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Músicas e redes</Text>
               </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.previewRow}
               >
-                {posts.slice(0, 8).map((post) => (
-                  <TouchableOpacity
-                    key={post.id}
-                    style={[styles.postThumb, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                    onPress={() => router.push('/feed')}
-                    activeOpacity={0.88}
-                  >
-                    <Image
-                      source={{ uri: post.thumbnail_url || post.media_url || '' }}
-                      style={styles.postThumbImg}
-                      contentFit="cover"
-                    />
-                    {post.media_type === 'video' ? (
-                      <View style={styles.postPlay}>
-                        <Ionicons name="play" size={16} color="#fff" />
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
+                {otherPreviews.map((item) => (
+                  <SocialMediaPreviewCard key={item.url} item={item} />
                 ))}
               </ScrollView>
             </View>
@@ -293,35 +291,7 @@ export default function PerfilArtistaScreen() {
               <Ionicons name="calendar-outline" size={18} color={colors.primary} />
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Agenda pública</Text>
             </View>
-            {shows.length === 0 ? (
-              <Text style={[styles.emptyAgenda, { color: colors.textSecondary }]}>
-                Nenhuma data pública no feed por enquanto.
-              </Text>
-            ) : (
-              shows.map((item) => (
-                <View
-                  key={item.id}
-                  style={[styles.showRow, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                >
-                  <View>
-                    <Text style={[styles.showDate, { color: colors.primary }]}>
-                      {formatCalendarDate(item.event_date)}
-                    </Text>
-                    <Text style={[styles.showTime, { color: colors.textSecondary }]}>
-                      {String(item.start_time).slice(0, 5)}–{String(item.end_time).slice(0, 5)}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.showName, { color: colors.text }]} numberOfLines={1}>
-                      {item.evento_nome || (item.feed_tipo === 'demanda' ? 'Procurando' : 'Disponível')}
-                    </Text>
-                    <Text style={[styles.showLoc, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {formatEventLocationSlash(item) || 'Local a combinar'}
-                    </Text>
-                  </View>
-                </View>
-              ))
-            )}
+            <PublicAgendaCalendar events={publicEvents} colors={colors} />
           </View>
         </ScrollView>
       )}
@@ -377,7 +347,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   chipText: { fontSize: 12, fontWeight: '600' },
-  bio: { fontSize: 15, lineHeight: 22, marginTop: 4 },
+  bioBlock: { marginTop: 12 },
+  bioLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' },
+  bio: { fontSize: 15, lineHeight: 22, marginTop: 6 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
   primaryBtn: {
     flexDirection: 'row',
@@ -397,42 +369,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   section: { marginTop: 24, paddingLeft: 20 },
+  sectionPad: { paddingRight: 20 },
+  videoStack: { gap: 12 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingRight: 20 },
   sectionTitle: { fontSize: 17, fontWeight: '700' },
   previewRow: { paddingRight: 20 },
-  postThumb: {
-    width: 168,
-    height: 110,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginRight: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  postThumbImg: { width: '100%', height: '100%' },
-  postPlay: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyAgenda: { paddingRight: 20, fontSize: 14, lineHeight: 20 },
-  showRow: {
-    marginRight: 20,
-    marginBottom: 8,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  showDate: { fontSize: 13, fontWeight: '700' },
-  showTime: { fontSize: 12, marginTop: 2 },
-  showName: { fontSize: 15, fontWeight: '600' },
-  showLoc: { fontSize: 12, marginTop: 2 },
 });

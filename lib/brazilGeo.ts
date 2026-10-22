@@ -58,6 +58,14 @@ export function brazilUfFromStateName(name: string | null | undefined): string |
   return brazilStateByName(name)?.uf ?? null;
 }
 
+/** Nome completo do estado para filtrar `artists.state` (coluna guarda o nome, não a UF). */
+export function estadoNomeCompletoParaBusca(raw: string | null | undefined): string | null {
+  const t = (raw || '').trim();
+  if (!t) return null;
+  const found = t.length === 2 ? brazilStateByUf(t) : brazilStateByName(t);
+  return found?.name || t;
+}
+
 export function formatBrazilStateChoice(uf: string | null | undefined): string {
   const s = brazilStateByUf(uf);
   if (!s) return '';

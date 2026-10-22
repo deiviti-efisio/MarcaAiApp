@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -18,7 +18,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ESTADOS_BRASIL } from '../../../constants/estadosBrasil';
+import { ESTADOS_BRASIL, normalizeEstadoParaListaExibicao } from '../../../constants/estadosBrasil';
 import {
     ARTIST_SHOW_FORMAT_PRESETS,
     ARTIST_WORK_ROLE_PRESETS,
@@ -29,8 +29,9 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { createArtist } from '../../../services/supabase/artistService';
 import { getCurrentUser } from '../../../services/supabase/authService';
 import { uploadImageToSupabase } from '../../../services/supabase/imageUploadService';
-import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES } from '../../../services/supabase/userService';
+import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES, getUserProfile } from '../../../services/supabase/userService';
 import { ChipMultiSelectField } from '../../../components/ChipMultiSelectField';
+import BrazilPlaceSearchField from '../../../components/BrazilPlaceSearchField';
 
 const estilosMusicais = [
   'Alternative',
@@ -115,6 +116,7 @@ export default function ArtistProfileScreen() {
     typeof params.nome === 'string' ? params.nome.trim() : ''
   );
   const [musicalStyle, setMusicalStyle] = useState('');
+  const [bio, setBio] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
@@ -167,6 +169,23 @@ export default function ArtistProfileScreen() {
       prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]
     );
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { user } = await getCurrentUser();
+      if (!user || cancelled) return;
+      const { profile } = await getUserProfile(user.id);
+      if (!profile || cancelled) return;
+      if (profile.city?.trim()) setCity((prev) => prev || profile.city!.trim());
+      if (profile.state?.trim()) {
+        setState((prev) => prev || normalizeEstadoParaListaExibicao(profile.state));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const addCustomWorkRole = () => {
     const t = workRoleDraft.trim();
@@ -269,17 +288,14 @@ export default function ArtistProfileScreen() {
       return;
     }
 
+    if (!city.trim() || !state.trim()) {
+      Alert.alert('Atenção', 'Informe cidade e estado. A busca de artistas usa o estado do perfil.');
+      return;
+    }
+
     if (isAvailableForGigs) {
       if (!whatsapp.trim()) {
         Alert.alert('Atenção', 'Informe o WhatsApp para aparecer na busca de convites.');
-        return;
-      }
-      if (!city.trim()) {
-        Alert.alert('Atenção', 'Informe a cidade para aparecer na busca de convites.');
-        return;
-      }
-      if (!state.trim()) {
-        Alert.alert('Atenção', 'Informe o estado para aparecer na busca de convites.');
         return;
       }
     }
@@ -339,11 +355,12 @@ export default function ArtistProfileScreen() {
       const { success, error, artist } = await createArtist({
         name: name.trim(),
         musical_style: musicalStyle || undefined,
+        bio: bio.trim() || null,
         profile_url: finalProfileUrl || undefined,
         user_id: user.id,
         whatsapp: isAvailableForGigs ? whatsapp.trim() || undefined : undefined,
-        city: isAvailableForGigs ? city.trim() || undefined : undefined,
-        state: isAvailableForGigs ? state.trim() || undefined : undefined,
+        city: city.trim() || undefined,
+        state: state.trim() || undefined,
         is_available_for_gigs: isAvailableForGigs,
         show_whatsapp: isAvailableForGigs && showWhatsappInSearch,
         average_cache_value: isAvailableForGigs ? parsedAverageCacheValue : null,
@@ -405,7 +422,11 @@ export default function ArtistProfileScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
@@ -498,6 +519,84 @@ export default function ArtistProfileScreen() {
               </View>
 
               <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Bio</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8, lineHeight: 18 }}>
+                  Um pouco sobre a carreira, o palco e o que te define.
+                </Text>
+                <TextInput
+                  style={[
+                    styles.bioInput,
+                    { backgroundColor: colors.background, borderColor: colors.border, color: colors.text },
+                  ]}
+                  value={bio}
+                  onChangeText={setBio}
+                  placeholder="Ex.: Músico e compositor com 20 anos de estrada, voz e violão, repertório de MPB."
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                  maxLength={600}
+                />
+                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 6, textAlign: 'right' }}>
+                  {bio.length}/600
+                </Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Cidade *</Text>
+                <BrazilPlaceSearchField
+                  value={city}
+                  onChangeText={setCity}
+                  onSelectPlace={(place) => {
+                    setCity(place.city);
+                    setState(place.stateName);
+                    setShowEstados(false);
+                  }}
+                  placeholder="Buscar cidade"
+                />
+                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 16 }}>
+                  Se a busca não aparecer, digite a cidade e escolha o estado.
+                </Text>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Estado *</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.estadoSelector,
+                    { borderColor: colors.border, backgroundColor: colors.background },
+                  ]}
+                  onPress={() => setShowEstados(!showEstados)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.estadoText, { color: state ? colors.text : colors.textSecondary }]}>
+                    {state || 'Selecione seu estado'}
+                  </Text>
+                  <Ionicons
+                    name={showEstados ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+                {showEstados && (
+                  <View style={[styles.estadosList, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <ScrollView style={styles.estadosScroll} nestedScrollEnabled>
+                      {ESTADOS_BRASIL.map((estadoItem) => (
+                        <TouchableOpacity
+                          key={estadoItem}
+                          style={[styles.estadoItem, { borderBottomColor: colors.border }]}
+                          onPress={() => {
+                            setState(estadoItem);
+                            setShowEstados(false);
+                          }}
+                        >
+                          <Text style={[styles.estadoItemText, { color: colors.text }]}>{estadoItem}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.text }]}>Disponível para trabalhos</Text>
                 <View
                   style={[
@@ -571,60 +670,6 @@ export default function ArtistProfileScreen() {
                         ? 'Ligado: organizadores veem seu WhatsApp ao buscar artistas para convite.'
                         : 'Desligado: o número continua salvo, mas não aparece na busca de convites.'}
                     </Text>
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Cidade *</Text>
-                    <View style={[styles.inputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                      <Ionicons name="location-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
-                      <TextInput
-                        style={[styles.input, { color: colors.text }]}
-                        value={city}
-                        onChangeText={setCity}
-                        placeholder="Digite a cidade"
-                        placeholderTextColor={colors.textSecondary}
-                        autoCapitalize="words"
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: colors.text }]}>Estado *</Text>
-                    <TouchableOpacity
-                      style={[
-                        styles.estadoSelector,
-                        { borderColor: colors.border, backgroundColor: colors.background },
-                      ]}
-                      onPress={() => setShowEstados(!showEstados)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.estadoText, { color: state ? colors.text : colors.textSecondary }]}>
-                        {state || 'Selecione seu estado'}
-                      </Text>
-                      <Ionicons
-                        name={showEstados ? 'chevron-up' : 'chevron-down'}
-                        size={20}
-                        color={colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                    {showEstados && (
-                      <View style={[styles.estadosList, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                        <ScrollView style={styles.estadosScroll} nestedScrollEnabled>
-                          {ESTADOS_BRASIL.map((estadoItem) => (
-                            <TouchableOpacity
-                              key={estadoItem}
-                              style={[styles.estadoItem, { borderBottomColor: colors.border }]}
-                              onPress={() => {
-                                setState(estadoItem);
-                                setShowEstados(false);
-                              }}
-                            >
-                              <Text style={[styles.estadoItemText, { color: colors.text }]}>{estadoItem}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
                   </View>
 
                   <View style={styles.inputGroup}>
@@ -947,6 +992,15 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
+  },
+  bioInput: {
+    minHeight: 110,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    textAlignVertical: 'top',
   },
   currencyPrefix: {
     fontSize: 16,

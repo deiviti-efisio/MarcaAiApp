@@ -50,6 +50,8 @@ export interface ArtistaBuscaConvite {
   profile_url: string | null;
   /** URL para exibir na busca: foto do artista ou, se vazia, foto de um membro (ex.: admin). */
   image_url?: string | null;
+  cover_url?: string | null;
+  bio?: string | null;
   musical_style?: string | null;
   work_roles?: unknown;
   show_formats?: unknown;
@@ -58,6 +60,8 @@ export interface ArtistaBuscaConvite {
   state?: string | null;
   /** Só exibir WhatsApp no app quando true (privacidade). */
   show_whatsapp?: boolean;
+  same_city?: boolean;
+  same_state?: boolean;
 }
 
 export interface ResumoAvaliacaoArtistaConvite {
@@ -114,6 +118,62 @@ export async function buscarArtistasParaConvite(
     return { artists, error: null };
   } catch {
     return { artists: [], error: 'Erro de conexão' };
+  }
+}
+
+function mapArtistaBuscaRow(row: Record<string, unknown>): ArtistaBuscaConvite {
+  const image =
+    row.image_url != null && String(row.image_url).trim()
+      ? String(row.image_url)
+      : row.profile_url != null && String(row.profile_url).trim()
+        ? String(row.profile_url)
+        : null;
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    profile_url: image,
+    image_url: image,
+    musical_style: row.musical_style != null ? String(row.musical_style) : undefined,
+    work_roles: row.work_roles,
+    city: row.city != null ? String(row.city) : null,
+    state: row.state != null ? String(row.state) : null,
+  };
+}
+
+export const ARTISTAS_BUSCA_PAGE_SIZE = 20;
+
+export async function listarArtistasProximos(params: {
+  artistaAtualId?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  termo?: string | null;
+  funcao?: string | null;
+  limit?: number;
+  offset?: number;
+}): Promise<{ artists: ArtistaBuscaConvite[]; hasMore: boolean; error: string | null }> {
+  const limit = Math.min(Math.max(params.limit ?? ARTISTAS_BUSCA_PAGE_SIZE, 1), 40);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const termo = (params.termo || '').trim();
+  const cidade = (params.cidade || '').trim();
+  const funcao = (params.funcao || '').trim();
+  const estado = (params.estado || '').trim();
+
+  try {
+    const { data, error } = await supabase.rpc('listar_artistas_feed', {
+      p_artista_atual_id: params.artistaAtualId ?? null,
+      p_cidade: cidade.length >= 2 ? cidade : null,
+      p_estado: estado || null,
+      p_termo: termo.length >= 2 ? termo : null,
+      p_funcao: funcao.length >= 2 ? funcao : null,
+      p_limit: limit,
+      p_offset: offset,
+    });
+
+    if (error) return { artists: [], hasMore: false, error: error.message };
+    const artists = ((data || []) as Record<string, unknown>[]).map(mapArtistaBuscaRow);
+    return { artists, hasMore: artists.length >= limit, error: null };
+  } catch {
+    return { artists: [], hasMore: false, error: 'Erro de conexão' };
   }
 }
 

@@ -24,6 +24,11 @@ export interface CreateUserProfileData {
   plan_is_active?: boolean;
 }
 
+function isDuplicateKeyError(message: string | null | undefined): boolean {
+  const m = (message || '').toLowerCase();
+  return m.includes('duplicate') || m.includes('unique') || m.includes('23505');
+}
+
 // Verificar se o usuário existe na tabela users
 export const checkUserExists = async (userId: string): Promise<{ exists: boolean; error: string | null }> => {
   try {
@@ -81,6 +86,16 @@ export const createUserProfile = async (userData: CreateUserProfileData): Promis
       });
 
     if (error) {
+      if (isDuplicateKeyError(error.message)) {
+        return updateUserProfile(userData.id, {
+          name: userData.name,
+          email: userData.email,
+          city: userData.city,
+          state: userData.state,
+          phone: userData.phone,
+          profile_url: userData.profile_url,
+        });
+      }
       return { success: false, error: error.message };
     }
 
@@ -88,6 +103,26 @@ export const createUserProfile = async (userData: CreateUserProfileData): Promis
   } catch (error) {
     return { success: false, error: 'Erro de conexão' };
   }
+};
+
+export const saveUserCadastro = async (
+  userData: CreateUserProfileData
+): Promise<{ success: boolean; error: string | null }> => {
+  const { exists, error: checkError } = await checkUserExists(userData.id);
+  if (checkError) {
+    return { success: false, error: checkError };
+  }
+  if (exists) {
+    return updateUserProfile(userData.id, {
+      name: userData.name,
+      email: userData.email,
+      city: userData.city,
+      state: userData.state,
+      phone: userData.phone,
+      profile_url: userData.profile_url,
+    });
+  }
+  return createUserProfile(userData);
 };
 
 // Criar ou atualizar usuário com dados do Google
@@ -140,6 +175,9 @@ const upsertSocialUserProfile = async (
       });
 
     if (insertError) {
+      if (isDuplicateKeyError(insertError.message)) {
+        return { success: true, error: null, isNewUser: false };
+      }
       console.error('❌ [Social User] Erro ao criar usuário:', insertError);
       return { success: false, error: insertError.message };
     }

@@ -64,6 +64,8 @@ export interface Event {
   state_uf?: string | null;
   contractor_phone?: string;
   confirmed: boolean;
+  /** Data visível no calendário público do perfil (sem cachê). */
+  is_public?: boolean;
   tag: "ensaio" | "evento" | "reunião";
   ativo?: boolean;
   update_ativo?: string | null;
@@ -113,6 +115,7 @@ export interface CreateEventData {
   state_uf?: string | null;
   contractor_phone?: string;
   confirmed?: boolean;
+  is_public?: boolean;
   tag?: "ensaio" | "evento" | "reunião";
   expenses?: CreateExpenseData[];
   contract_url?: string | null;
@@ -139,6 +142,7 @@ export interface UpdateEventData {
   start_time?: string;
   end_time?: string;
   confirmed?: boolean;
+  is_public?: boolean;
   tag?: "ensaio" | "evento" | "reunião";
   contract_url?: string | null;
   contract_file_name?: string | null;
@@ -156,38 +160,47 @@ export const createEvent = async (
       name: eventData.name,
     });
 
-    // Criar o evento
-    const { data: event, error: eventError } = await supabase
+    const insertPayload: Record<string, unknown> = {
+      artist_id: eventData.artist_id,
+      created_by: eventData.user_id, // Quem criou o evento
+      updated_by: eventData.user_id,
+      name: eventData.name,
+      description: eventData.description || null,
+      viewer_description: eventData.viewer_description || null,
+      event_date: eventData.event_date,
+      start_time: eventData.start_time,
+      end_time: eventData.end_time,
+      // Preservar R$ 0,00 (0 é um valor válido; `|| null` convertia 0 em null)
+      value: eventData.value ?? null,
+      paid_amount: eventData.paid_amount ?? null,
+      city: eventData.city || null,
+      state_uf:
+        eventData.state_uf != null && String(eventData.state_uf).trim()
+          ? String(eventData.state_uf).trim().toUpperCase().slice(0, 2)
+          : null,
+      contractor_phone: eventData.contractor_phone || null,
+      confirmed: eventData.confirmed || false,
+      is_public: Boolean(eventData.confirmed) && Boolean(eventData.is_public),
+      tag: eventData.tag || "evento", // Default para 'evento' se não especificado
+      contract_url: eventData.contract_url ?? null,
+      contract_file_name: eventData.contract_file_name ?? null,
+      convite_participacao_id: eventData.convite_participacao_id ?? null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: event, error: eventError } = await supabase
       .from("events")
-      .insert({
-        artist_id: eventData.artist_id,
-        created_by: eventData.user_id, // Quem criou o evento
-        updated_by: eventData.user_id,
-        name: eventData.name,
-        description: eventData.description || null,
-        viewer_description: eventData.viewer_description || null,
-        event_date: eventData.event_date,
-        start_time: eventData.start_time,
-        end_time: eventData.end_time,
-        // Preservar R$ 0,00 (0 é um valor válido; `|| null` convertia 0 em null)
-        value: eventData.value ?? null,
-        paid_amount: eventData.paid_amount ?? null,
-        city: eventData.city || null,
-        state_uf:
-          eventData.state_uf != null && String(eventData.state_uf).trim()
-            ? String(eventData.state_uf).trim().toUpperCase().slice(0, 2)
-            : null,
-        contractor_phone: eventData.contractor_phone || null,
-        confirmed: eventData.confirmed || false,
-        tag: eventData.tag || "evento", // Default para 'evento' se não especificado
-        contract_url: eventData.contract_url ?? null,
-        contract_file_name: eventData.contract_file_name ?? null,
-        convite_participacao_id: eventData.convite_participacao_id ?? null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .insert(insertPayload)
       .select()
       .single();
+
+    if (eventError && /is_public|PGRST204/i.test(eventError.message || "")) {
+      const { is_public: _omitPublic, ...withoutPublic } = insertPayload;
+      const retry = await supabase.from("events").insert(withoutPublic).select().single();
+      event = retry.data;
+      eventError = retry.error;
+    }
 
     if (eventError) {
       console.error("❌ Erro ao criar evento:", eventError);
@@ -551,16 +564,35 @@ export const updateEvent = async (
       return { success: false, error: "Sem permissão para editar este evento" };
     }
 
-    const { data, error } = await supabase
+    const patch: Record<string, unknown> = {
+      ...eventData,
+      updated_by: userId ?? eventData.updated_by ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    if (eventData.confirmed === false) {
+      patch.is_public = false;
+    } else if (eventData.confirmed === true && eventData.is_public != null) {
+      patch.is_public = Boolean(eventData.is_public);
+    }
+
+    let { data, error } = await supabase
       .from("events")
-      .update({
-        ...eventData,
-        updated_by: userId ?? eventData.updated_by ?? null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("id", eventId)
       .select()
       .single();
+
+    if (error && /is_public|PGRST204/i.test(error.message || "")) {
+      const { is_public: _omitPublic, ...withoutPublic } = patch;
+      const retry = await supabase
+        .from("events")
+        .update(withoutPublic)
+        .eq("id", eventId)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       if (error.message?.includes("JSON object")) {
@@ -988,5 +1020,39 @@ export const getEventByIdWithRole = async (
   } catch (error) {
     console.error("❌ Erro ao buscar evento:", error);
     return { event: null, error: "Erro ao buscar evento" };
+  }
+};
+
+export interface PublicAgendaEvent {
+  id: string;
+  name: string;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  city?: string | null;
+  state_uf?: string | null;
+  tag?: string | null;
+}
+
+export const listarAgendaPublicaArtista = async (
+  artistId: string,
+): Promise<{ events: PublicAgendaEvent[]; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.rpc("listar_agenda_publica_artista", {
+      p_artist_id: artistId,
+    });
+    if (error) {
+      console.warn("Agenda pública indisponível:", error.message);
+      return { events: [], error: error.message };
+    }
+    const events = ((data ?? []) as PublicAgendaEvent[]).map((item) => ({
+      ...item,
+      event_date: String(item.event_date || "").split("T")[0],
+      start_time: String(item.start_time || "").slice(0, 5),
+      end_time: String(item.end_time || "").slice(0, 5),
+    }));
+    return { events, error: null };
+  } catch (error: any) {
+    return { events: [], error: error?.message || "Erro ao carregar agenda pública" };
   }
 };

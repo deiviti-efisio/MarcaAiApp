@@ -13,6 +13,7 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -47,9 +48,12 @@ import BrazilStatePickerModal, { BrazilStateFieldButton } from '../components/Br
 import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import EventPaymentProgress, { parseOptionalPaidAmount } from '../components/EventPaymentProgress';
 
+const ZERO_BRL = formatCurrencyBRLInput('0');
+
 interface EventoForm {
   nome: string;
   valor: string;
+  isFree: boolean;
   valorPago: string;
   cidade: string;
   estadoUf: string;
@@ -58,6 +62,7 @@ interface EventoForm {
   horarioInicio: Date;
   horarioFim: Date;
   status: 'confirmado' | 'a_confirmar';
+  isPublic: boolean;
   descricao: string;
   descricaoViewer: string;
   tag: 'ensaio' | 'evento' | 'reunião';
@@ -350,7 +355,13 @@ export default function AdicionarEventoScreen() {
 
   const [form, setForm] = useState<EventoForm>({
     nome: voiceNome,
-    valor: voiceValor ? formatCurrencyBRLFromAmount(Number(voiceValor)) : '',
+    valor:
+      voiceValor != null && voiceValor !== '' && Number(voiceValor) === 0
+        ? ZERO_BRL
+        : voiceValor
+          ? formatCurrencyBRLFromAmount(Number(voiceValor))
+          : '',
+    isFree: voiceValor != null && voiceValor !== '' && Number(voiceValor) === 0,
     valorPago: voiceValorPago ? formatCurrencyBRLFromAmount(Number(voiceValorPago)) : '',
     cidade: voiceCidade,
     estadoUf: voiceUf,
@@ -361,6 +372,7 @@ export default function AdicionarEventoScreen() {
       : createDefaultTime(0, 0),
     horarioFim: voiceEnd ? timeFromHHmm(voiceEnd, 0, 0) : createDefaultTime(0, 0),
     status: voiceConfirmed === '0' ? 'a_confirmar' : 'confirmado',
+    isPublic: false,
     descricao: voiceDesc,
     descricaoViewer: '',
     tag: voiceTag === 'ensaio' || voiceTag === 'reunião' || voiceTag === 'evento' ? voiceTag : 'evento',
@@ -500,19 +512,19 @@ export default function AdicionarEventoScreen() {
       Alert.alert('Erro', 'Nome do evento é obrigatório');
       return;
     }
-    if (!form.valor.trim()) {
+    if (!form.isFree && !form.valor.trim()) {
       Alert.alert('Erro', 'Valor é obrigatório');
       return;
     }
 
     // Extrair valor numérico do texto formatado
-    const numericValue = extractNumericValueString(form.valor);
-    if (!numericValue || isNaN(parseFloat(numericValue))) {
+    const numericValue = form.isFree ? '0' : extractNumericValueString(form.valor);
+    if (!form.isFree && (!numericValue || isNaN(parseFloat(numericValue)))) {
       Alert.alert('Erro', 'Valor deve ser um número válido');
       return;
     }
 
-    const paidAmount = parseOptionalPaidAmount(form.valorPago);
+    const paidAmount = form.isFree ? null : parseOptionalPaidAmount(form.valorPago);
     if (paidAmount != null && paidAmount > parseFloat(numericValue)) {
       Alert.alert('Valor pago antecipado', 'O valor pago antecipado não pode ser maior que o valor do evento.');
       return;
@@ -585,7 +597,7 @@ export default function AdicionarEventoScreen() {
         event_date: `${form.data.getFullYear()}-${String(form.data.getMonth() + 1).padStart(2, '0')}-${String(form.data.getDate()).padStart(2, '0')}`, // YYYY-MM-DD
         start_time: form.horarioInicio.toTimeString().split(' ')[0].substring(0, 5), // HH:MM
         end_time: form.horarioFim.toTimeString().split(' ')[0].substring(0, 5), // HH:MM
-        value: numericValue !== '' ? parseFloat(numericValue) : undefined,
+        value: form.isFree ? 0 : numericValue !== '' ? parseFloat(numericValue) : undefined,
         paid_amount: paidAmount,
         city: form.cidade.trim() || undefined,
         state_uf: form.estadoUf.trim()
@@ -593,6 +605,7 @@ export default function AdicionarEventoScreen() {
           : null,
         contractor_phone: form.telefoneContratante.trim() || undefined,
         confirmed: form.status === 'confirmado',
+        is_public: form.status === 'confirmado' && form.isPublic,
         tag: form.tag,
         contract_url: contractUrl ?? null,
         contract_file_name: contractFileName ?? null,
@@ -655,8 +668,16 @@ export default function AdicionarEventoScreen() {
         }
       }
       if (hit("valor")) {
-        if (draft.valor != null) next.valor = formatCurrencyBRLFromAmount(draft.valor);
-        else if (only) next.valor = "";
+        if (draft.valor != null && draft.valor === 0) {
+          next.valor = ZERO_BRL;
+          next.isFree = true;
+        } else if (draft.valor != null) {
+          next.valor = formatCurrencyBRLFromAmount(draft.valor);
+          next.isFree = false;
+        } else if (only) {
+          next.valor = "";
+          next.isFree = false;
+        }
       }
       if (hit("valorPago")) {
         if (draft.valorPago != null) {
@@ -708,12 +729,17 @@ export default function AdicionarEventoScreen() {
   };
 
   const applyRecentSuggestion = (suggestion: RecentEventSuggestion) => {
-    const valorFromEvent =
-      suggestion.value != null ? formatCurrencyBRLFromAmount(suggestion.value) : '';
+    const isFree = suggestion.value != null && Number(suggestion.value) === 0;
+    const valorFromEvent = isFree
+      ? ZERO_BRL
+      : suggestion.value != null
+        ? formatCurrencyBRLFromAmount(suggestion.value)
+        : '';
     setForm((prev) => ({
       ...prev,
       nome: suggestion.name,
       valor: valorFromEvent || prev.valor,
+      isFree: suggestion.value != null ? isFree : prev.isFree,
     }));
     closePreviousEventsModal();
   };
@@ -870,23 +896,62 @@ export default function AdicionarEventoScreen() {
         {/* Valor */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: colors.text }]}>Valor do evento *</Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
-            value={form.valor}
-            onChangeText={(text) => {
-              const formatted = formatCurrencyBRLInput(text);
-              updateForm('valor', formatted);
-            }}
-            placeholder="R$ 0,00"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="numeric"
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="done"
-            blurOnSubmit={true}
-          />
+          <View style={styles.valueRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.valueInput,
+                {
+                  backgroundColor: form.isFree ? colors.background : colors.surface,
+                  borderColor: colors.border,
+                  color: colors.text,
+                  opacity: form.isFree ? 0.7 : 1,
+                },
+              ]}
+              value={form.isFree ? ZERO_BRL : form.valor}
+              editable={!form.isFree}
+              onChangeText={(text) => {
+                const formatted = formatCurrencyBRLInput(text);
+                setForm((prev) => ({
+                  ...prev,
+                  valor: formatted,
+                  isFree: false,
+                }));
+              }}
+              placeholder="R$ 0,00"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numeric"
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
+            <TouchableOpacity
+              style={[
+                styles.freeChip,
+                { borderColor: form.isFree ? colors.success : colors.border, backgroundColor: form.isFree ? colors.success : colors.surface },
+              ]}
+              onPress={() => {
+                setForm((prev) => {
+                  const nextFree = !prev.isFree;
+                  return {
+                    ...prev,
+                    isFree: nextFree,
+                    valor: nextFree ? ZERO_BRL : '',
+                    valorPago: nextFree ? '' : prev.valorPago,
+                  };
+                });
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.freeChipText, { color: form.isFree ? '#fff' : colors.text }]}>
+                Gratuito
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
+        {!form.isFree ? (
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: colors.text }]}>Valor pago antecipado (Opcional)</Text>
           <TextInput
@@ -909,6 +974,7 @@ export default function AdicionarEventoScreen() {
             textColor={colors.textSecondary}
           />
         </View>
+        ) : null}
 
         {/* Data */}
         <View style={styles.inputGroup}>
@@ -1028,7 +1094,7 @@ export default function AdicionarEventoScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
                 form.status === 'a_confirmar' && [styles.statusButtonActive, { backgroundColor: colors.warning, borderColor: colors.warning }]
               ]}
-              onPress={() => updateForm('status', 'a_confirmar')}
+              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false }))}
             >
               <Ionicons 
                 name="time" 
@@ -1067,6 +1133,33 @@ export default function AdicionarEventoScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {form.status === 'confirmado' ? (
+          <View style={styles.inputGroup}>
+            <View
+              style={[
+                styles.publicSwitchRow,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={[styles.label, { color: colors.text, marginBottom: 4 }]}>
+                  Mostrar no perfil público
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                  A data aparece no calendário do perfil. Cachê e contrato continuam privados.
+                </Text>
+              </View>
+              <Switch
+                value={form.isPublic}
+                onValueChange={(value) => updateForm('isPublic', value)}
+                trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                thumbColor={Platform.OS === 'android' ? (form.isPublic ? colors.primary : '#f4f3f4') : undefined}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+          </View>
+        ) : null}
 
         <Text style={[styles.moreDetailsTitle, { color: colors.textSecondary }]}>
           Mais detalhes
@@ -1544,6 +1637,14 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 20,
   },
+  publicSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   label: {
     fontSize: 16,
     fontWeight: '600',
@@ -1684,6 +1785,26 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     borderWidth: 1,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  valueInput: {
+    flex: 1,
+  },
+  freeChip: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  freeChipText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   dateButton: {
     borderRadius: 12,

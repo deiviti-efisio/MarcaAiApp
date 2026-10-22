@@ -9,6 +9,7 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -30,9 +31,12 @@ import EventPaymentProgress, { parseOptionalPaidAmount } from '../components/Eve
 import { parseCityUf } from '../lib/brazilGeo';
 import { setPendingEventUpdatedToast } from '../lib/pendingEventUpdatedToast';
 
+const ZERO_BRL = formatCurrencyBRLInput('0');
+
 interface EventoForm {
   nome: string;
   valor: string;
+  isFree: boolean;
   valorPago: string;
   cidade: string;
   estadoUf: string;
@@ -41,6 +45,7 @@ interface EventoForm {
   horarioInicio: Date;
   horarioFim: Date;
   status: 'confirmado' | 'a_confirmar';
+  isPublic: boolean;
   descricao: string;
   descricaoViewer: string;
   tag: 'ensaio' | 'evento' | 'reunião';
@@ -271,6 +276,7 @@ export default function EditarEventoScreen() {
   const [form, setForm] = useState<EventoForm>({
     nome: '',
     valor: '',
+    isFree: false,
     valorPago: '',
     cidade: '',
     estadoUf: '',
@@ -280,6 +286,7 @@ export default function EditarEventoScreen() {
     horarioInicio: createDefaultTime(0, 0),
     horarioFim: createDefaultTime(0, 0),
     status: 'a_confirmar',
+    isPublic: false,
     descricao: '',
     descricaoViewer: '',
     tag: 'evento', // Valor padrão
@@ -363,7 +370,13 @@ export default function EditarEventoScreen() {
 
         setForm({
           nome: event.name,
-          valor: event.value != null ? formatCurrencyBRLInput((event.value * 100).toString()) : '',
+          valor:
+            event.value != null && Number(event.value) === 0
+              ? ZERO_BRL
+              : event.value != null
+                ? formatCurrencyBRLInput((event.value * 100).toString())
+                : '',
+          isFree: event.value != null && Number(event.value) === 0,
           valorPago: formatCurrencyBRLFromAmount(Number(event.paid_amount) || 0),
           cidade,
           estadoUf,
@@ -372,6 +385,7 @@ export default function EditarEventoScreen() {
           horarioInicio: startTime,
           horarioFim: endTime,
           status: (event.confirmed ? 'confirmado' : 'a_confirmar') as 'confirmado' | 'a_confirmar',
+          isPublic: Boolean(event.confirmed && event.is_public),
           descricao: event.description || '',
           descricaoViewer: event.viewer_description || '',
           tag: event.tag || 'evento', // Carregar tag existente ou usar padrão
@@ -439,18 +453,18 @@ export default function EditarEventoScreen() {
       Alert.alert('Erro', 'Nome do evento é obrigatório');
       return;
     }
-    if (!isInviteParticipationEvent && !form.valor.trim()) {
+    if (!isInviteParticipationEvent && !form.isFree && !form.valor.trim()) {
       Alert.alert('Erro', 'Valor é obrigatório');
       return;
     }
 
-    const numericValue = extractNumericValueString(form.valor);
-    if (!isInviteParticipationEvent && (!numericValue || isNaN(parseFloat(numericValue)))) {
+    const numericValue = form.isFree ? '0' : extractNumericValueString(form.valor);
+    if (!isInviteParticipationEvent && !form.isFree && (!numericValue || isNaN(parseFloat(numericValue)))) {
       Alert.alert('Erro', 'Valor deve ser um número válido');
       return;
     }
 
-    const paidAmount = parseOptionalPaidAmount(form.valorPago);
+    const paidAmount = form.isFree ? null : parseOptionalPaidAmount(form.valorPago);
     if (
       paidAmount != null &&
       numericValue &&
@@ -469,7 +483,7 @@ export default function EditarEventoScreen() {
         name: form.nome.trim(),
         description: form.descricao.trim() || undefined,
         viewer_description: form.descricaoViewer.trim() || undefined,
-        ...(isInviteParticipationEvent ? {} : { value: parseFloat(numericValue) }),
+        ...(isInviteParticipationEvent ? {} : { value: form.isFree ? 0 : parseFloat(numericValue) }),
         paid_amount: paidAmount,
         city: form.cidade.trim() || undefined,
         state_uf: form.estadoUf.trim()
@@ -481,6 +495,7 @@ export default function EditarEventoScreen() {
         start_time: form.horarioInicio.toTimeString().split(' ')[0].substring(0, 5),
         end_time: form.horarioFim.toTimeString().split(' ')[0].substring(0, 5),
         confirmed: form.status === 'confirmado',
+        is_public: form.status === 'confirmado' && form.isPublic,
         tag: form.tag,
       };
 
@@ -616,34 +631,69 @@ export default function EditarEventoScreen() {
         {/* Valor */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { color: colors.text }]}>Valor do evento *</Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isInviteParticipationEvent ? colors.background : colors.surface,
-                borderColor: colors.border,
-                color: colors.text,
-                opacity: isInviteParticipationEvent ? 0.8 : 1,
-              },
-            ]}
-            value={form.valor}
-            editable={!isInviteParticipationEvent}
-            onChangeText={(text) => {
-              if (isInviteParticipationEvent) return;
-              const formatted = formatCurrencyBRLInput(text);
-              updateForm('valor', formatted);
-            }}
-            placeholder="R$ 0,00"
-            placeholderTextColor={colors.textSecondary}
-            keyboardType="numeric"
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="done"
-            blurOnSubmit={true}
-          />
+          <View style={styles.valueRow}>
+            <TextInput
+              style={[
+                styles.input,
+                styles.valueInput,
+                {
+                  backgroundColor:
+                    isInviteParticipationEvent || form.isFree ? colors.background : colors.surface,
+                  borderColor: colors.border,
+                  color: colors.text,
+                  opacity: isInviteParticipationEvent || form.isFree ? 0.8 : 1,
+                },
+              ]}
+              value={form.isFree ? ZERO_BRL : form.valor}
+              editable={!isInviteParticipationEvent && !form.isFree}
+              onChangeText={(text) => {
+                if (isInviteParticipationEvent) return;
+                const formatted = formatCurrencyBRLInput(text);
+                setForm((prev) => ({
+                  ...prev,
+                  valor: formatted,
+                  isFree: false,
+                }));
+              }}
+              placeholder="R$ 0,00"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numeric"
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="done"
+              blurOnSubmit={true}
+            />
+            {!isInviteParticipationEvent ? (
+              <TouchableOpacity
+                style={[
+                  styles.freeChip,
+                  {
+                    borderColor: form.isFree ? colors.success : colors.border,
+                    backgroundColor: form.isFree ? colors.success : colors.surface,
+                  },
+                ]}
+                onPress={() => {
+                  setForm((prev) => {
+                    const nextFree = !prev.isFree;
+                    return {
+                      ...prev,
+                      isFree: nextFree,
+                      valor: nextFree ? ZERO_BRL : '',
+                      valorPago: nextFree ? '' : prev.valorPago,
+                    };
+                  });
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.freeChipText, { color: form.isFree ? '#fff' : colors.text }]}>
+                  Gratuito
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
-        {!isInviteParticipationEvent ? (
+        {!isInviteParticipationEvent && !form.isFree ? (
           <View style={[styles.inputGroup, { marginBottom: 32 }]}>
             <Text style={[styles.label, { color: colors.text }]}>Valor pago antecipado (Opcional)</Text>
             <TextInput
@@ -795,7 +845,7 @@ export default function EditarEventoScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
                 form.status === 'a_confirmar' && [styles.statusButtonActive, { backgroundColor: colors.warning, borderColor: colors.warning }]
               ]}
-              onPress={() => updateForm('status', 'a_confirmar')}
+              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false }))}
             >
               <Ionicons 
                 name="time" 
@@ -834,6 +884,33 @@ export default function EditarEventoScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {form.status === 'confirmado' ? (
+          <View style={styles.inputGroup}>
+            <View
+              style={[
+                styles.publicSwitchRow,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={[styles.label, { color: colors.text, marginBottom: 4 }]}>
+                  Mostrar no perfil público
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                  A data aparece no calendário do perfil. Cachê e contrato continuam privados.
+                </Text>
+              </View>
+              <Switch
+                value={form.isPublic}
+                onValueChange={(value) => updateForm('isPublic', value)}
+                trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                thumbColor={Platform.OS === 'android' ? (form.isPublic ? colors.primary : '#f4f3f4') : undefined}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+          </View>
+        ) : null}
 
         {/* Tipo de Evento (Tag) */}
         <View style={styles.inputGroup}>
@@ -1207,6 +1284,14 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 20,
   },
+  publicSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   inputHint: {
     marginTop: 8,
     fontSize: 12,
@@ -1222,6 +1307,26 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     borderWidth: 1,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  valueInput: {
+    flex: 1,
+  },
+  freeChip: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  freeChipText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   dateButton: {
     borderRadius: 12,

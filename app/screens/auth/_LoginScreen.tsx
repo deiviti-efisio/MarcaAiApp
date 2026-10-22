@@ -25,7 +25,7 @@ import MeuShowWordmark from '../../../components/MeuShowWordmark';
 import { useActiveArtistContext } from '../../../contexts/ActiveArtistContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { supabase } from '../../../lib/supabase';
-import { checkArtistsAndRedirect, getCurrentUser, loginUser, logoutUser, resendConfirmationEmail, sendPasswordResetEmail } from '../../../services/supabase/authService';
+import { getCurrentUser, loginUser, logoutUser, resendConfirmationEmail, sendPasswordResetEmail } from '../../../services/supabase/authService';
 import {
     checkUserExists,
     createOrUpdateUserFromApple,
@@ -33,6 +33,7 @@ import {
     saveFCMToken,
 } from '../../../services/supabase/userService';
 import { sanitizeLoginParentStackIfNeeded } from '../../../lib/resetToLoginStack';
+import { navigateAfterAuth } from '../../../lib/continueAfterAuth';
 import { maybeShowConnectionError } from '../../../utils/maybeShowConnectionError';
 
 // Configurar Google Sign-In: webClientId obrigatório (Android + Supabase). iosClientId só no iOS.
@@ -293,7 +294,7 @@ export default function LoginScreen() {
 
       if (isNewUser) {
         getFCMToken().catch(() => {});
-        router.replace({ pathname: '/(tabs)/agenda', params: { showNewUserModal: '1' } });
+        router.replace('/cadastro-usuario');
         return;
       }
 
@@ -301,17 +302,7 @@ export default function LoginScreen() {
         console.error('Erro ao buscar token FCM:', error);
       });
 
-      // Verificar artistas e redirecionar adequadamente
-      const { shouldRedirectToSelection, activeArtist: artistToSet } = await checkArtistsAndRedirect();
-      if (artistToSet) await setActiveArtist(artistToSet);
-
-      setTimeout(() => {
-        if (shouldRedirectToSelection) {
-          router.replace('/selecionar-artista');
-        } else {
-          router.replace('/(tabs)/agenda');
-        }
-      }, 100);
+      await navigateAfterAuth(setActiveArtist, user.id);
     } finally {
       setLoading(false);
     }
@@ -351,23 +342,12 @@ export default function LoginScreen() {
 
           if (result.isNewUser) {
             getFCMToken().catch(() => {});
-            router.replace({ pathname: '/(tabs)/agenda', params: { showNewUserModal: '1' } });
+            router.replace('/cadastro-usuario');
           } else {
             getFCMToken().catch((error) => {
               console.error('Erro ao buscar token FCM:', error);
             });
-            
-            // Verificar artistas e redirecionar adequadamente
-            const { shouldRedirectToSelection, activeArtist: artistToSet } = await checkArtistsAndRedirect();
-            if (artistToSet) await setActiveArtist(artistToSet);
-            
-            setTimeout(() => {
-              if (shouldRedirectToSelection) {
-                router.replace('/selecionar-artista');
-              } else {
-                router.replace('/(tabs)/agenda');
-              }
-            }, 100);
+            await navigateAfterAuth(setActiveArtist, data.user.id);
           }
         }
       }
@@ -442,22 +422,7 @@ export default function LoginScreen() {
               console.error('Erro ao buscar token FCM:', error);
             });
             
-            // Verificar artistas e redirecionar adequadamente
-            const { shouldRedirectToSelection, activeArtist: artistToSet } = await checkArtistsAndRedirect();
-            
-            // Se tinha apenas 1 artista, já foi salvo no AsyncStorage; atualizar o contexto para a agenda usar
-            if (artistToSet) {
-              await setActiveArtist(artistToSet);
-            }
-            
-            // Navegar após um pequeno delay para garantir que o modal apareça
-            setTimeout(() => {
-              if (shouldRedirectToSelection) {
-                router.replace('/selecionar-artista');
-              } else {
-                router.replace('/(tabs)/agenda');
-              }
-            }, 100);
+            await navigateAfterAuth(setActiveArtist);
           }
         } else {
           Alert.alert('Atenção', 'Erro ao verificar dados do usuário');
