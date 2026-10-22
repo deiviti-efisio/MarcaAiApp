@@ -1,3 +1,4 @@
+import { isAbortError } from '../../lib/abortError';
 import { supabase } from '../../lib/supabase';
 
 export type FeedTipo = 'disponivel' | 'demanda';
@@ -179,7 +180,7 @@ export async function listarFeedMarketplace(params: {
   artistaAtualId?: string | null;
   eventoDetalheId?: string | null;
   abortSignal?: AbortSignal;
-}): Promise<{ anuncios: FeedAnuncio[]; error: string | null }> {
+}): Promise<{ anuncios: FeedAnuncio[]; error: string | null; aborted?: boolean }> {
   try {
     const tipoRpc =
       params.filtro === 'todos' ? null : params.filtro;
@@ -193,22 +194,34 @@ export async function listarFeedMarketplace(params: {
     });
     if (params.abortSignal) query = query.abortSignal(params.abortSignal);
     const { data, error } = await query;
+    if (params.abortSignal?.aborted || isAbortError(error)) {
+      return { anuncios: [], error: null, aborted: true };
+    }
     if (error) return { anuncios: [], error: error.message };
     const rows = (data || []) as Record<string, unknown>[];
     const anuncios = rows.map(mapAnuncio).filter((item) => isAnuncioFeedAtivo(item.event_date));
     return { anuncios, error: null };
-  } catch {
+  } catch (error) {
+    if (params.abortSignal?.aborted || isAbortError(error)) {
+      return { anuncios: [], error: null, aborted: true };
+    }
     return { anuncios: [], error: 'Erro de conexão' };
   }
 }
 
 export async function listarPropostasFeedMarketplace(
-  artistaAtualId: string
-): Promise<{ propostas: FeedProposta[]; error: string | null }> {
+  artistaAtualId: string,
+  abortSignal?: AbortSignal
+): Promise<{ propostas: FeedProposta[]; error: string | null; aborted?: boolean }> {
   try {
-    const { data, error } = await supabase.rpc('listar_propostas_feed_marketplace', {
+    let query = supabase.rpc('listar_propostas_feed_marketplace', {
       p_artista_atual_id: artistaAtualId,
     });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { propostas: [], error: null, aborted: true };
+    }
     if (error) return { propostas: [], error: error.message };
     const rows = (data || []) as Record<string, unknown>[];
     return {
@@ -225,7 +238,10 @@ export async function listarPropostasFeedMarketplace(
       })),
       error: null,
     };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { propostas: [], error: null, aborted: true };
+    }
     return { propostas: [], error: 'Erro de conexão' };
   }
 }

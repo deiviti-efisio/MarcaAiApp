@@ -1,3 +1,4 @@
+import { isAbortError } from "../../lib/abortError";
 import { supabase } from "../../lib/supabase";
 import { cacheService } from "../cacheService";
 import { getUserPermissions, hasPermission } from "./permissionsService";
@@ -408,7 +409,8 @@ export const getEventsByMonth = async (
   artistId: string,
   year: number,
   month: number,
-): Promise<{ success: boolean; error: string | null; events?: Event[] }> => {
+  abortSignal?: AbortSignal,
+): Promise<{ success: boolean; error: string | null; events?: Event[]; aborted?: boolean }> => {
   try {
     const startDate = new Date(year, month, 1).toISOString().split("T")[0];
     const endDate = new Date(year, month + 1, 0).toISOString().split("T")[0];
@@ -422,7 +424,7 @@ export const getEventsByMonth = async (
       endDate,
     );
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("events")
       .select("*")
       .eq("artist_id", artistId)
@@ -431,15 +433,23 @@ export const getEventsByMonth = async (
       .gte("event_date", startDate)
       .lte("event_date", endDate)
       .order("event_date", { ascending: true });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
 
     console.log("getEventsByMonth: Resultado da query:", { data, error });
 
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     if (error) {
       return { success: false, error: error.message };
     }
 
     return { success: true, error: null, events: excludeFeedMarketplaceEvents(data) };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: "Erro de conexão" };
   }
 };
@@ -448,12 +458,13 @@ export const getEventsByMonth = async (
 export const getEventsByYear = async (
   artistId: string,
   year: number,
-): Promise<{ success: boolean; error: string | null; events?: Event[] }> => {
+  abortSignal?: AbortSignal,
+): Promise<{ success: boolean; error: string | null; events?: Event[]; aborted?: boolean }> => {
   try {
     const startDate = new Date(year, 0, 1).toISOString().split("T")[0];
     const endDate = new Date(year, 11, 31).toISOString().split("T")[0];
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("events")
       .select("*")
       .eq("artist_id", artistId)
@@ -462,13 +473,21 @@ export const getEventsByYear = async (
       .gte("event_date", startDate)
       .lte("event_date", endDate)
       .order("event_date", { ascending: true });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
 
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     if (error) {
       return { success: false, error: error.message };
     }
 
     return { success: true, error: null, events: excludeFeedMarketplaceEvents(data) };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: "Erro de conexão" };
   }
 };
@@ -914,10 +933,12 @@ export interface EventWithRole {
 // Buscar eventos de um artista com filtragem automática por role
 export const getEventsByArtistWithRole = async (
   artistId: string,
+  abortSignal?: AbortSignal,
 ): Promise<{
   events: EventWithRole[] | null;
   error: string | null;
   errorCode?: string;
+  aborted?: boolean;
 }> => {
   try {
     console.log(
@@ -925,10 +946,15 @@ export const getEventsByArtistWithRole = async (
       artistId,
     );
 
-    const { data, error } = await supabase.rpc("get_events_by_role", {
+    let query = supabase.rpc("get_events_by_role", {
       p_artist_id: artistId,
     });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
 
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { events: null, error: null, aborted: true };
+    }
     if (error) {
       console.error("❌ Erro ao buscar eventos com role:", error);
       return {
@@ -941,6 +967,9 @@ export const getEventsByArtistWithRole = async (
     console.log("✅ Eventos carregados com filtragem:", data?.length || 0);
     return { events: excludeFeedMarketplaceEvents(data as EventWithRole[]), error: null };
   } catch (error: any) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { events: null, error: null, aborted: true };
+    }
     console.error("❌ Erro ao buscar eventos com role:", error);
     return {
       events: null,
@@ -955,11 +984,13 @@ export const getEventsByMonthWithRole = async (
   artistId: string,
   year: number,
   month: number,
+  abortSignal?: AbortSignal,
 ): Promise<{
   success: boolean;
   error: string | null;
   events?: EventWithRole[];
   errorCode?: string;
+  aborted?: boolean;
 }> => {
   try {
     const startDate = new Date(year, month, 1).toISOString().split("T")[0];
@@ -973,10 +1004,12 @@ export const getEventsByMonthWithRole = async (
       endDate,
     });
 
-    // Buscar todos os eventos do artista com filtragem por role
-    const { events, error, errorCode } =
-      await getEventsByArtistWithRole(artistId);
+    const { events, error, errorCode, aborted } =
+      await getEventsByArtistWithRole(artistId, abortSignal);
 
+    if (aborted || abortSignal?.aborted) {
+      return { success: false, error: null, aborted: true };
+    }
     if (error) {
       return { success: false, error, errorCode };
     }
@@ -990,6 +1023,9 @@ export const getEventsByMonthWithRole = async (
     console.log("✅ Eventos filtrados por mês:", filteredEvents.length);
     return { success: true, error: null, events: filteredEvents };
   } catch (error: any) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     console.error("❌ Erro ao buscar eventos por mês:", error);
     return {
       success: false,

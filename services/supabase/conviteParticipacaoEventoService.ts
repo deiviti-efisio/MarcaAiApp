@@ -1,3 +1,4 @@
+import { isAbortError } from '../../lib/abortError';
 import { supabase } from '../../lib/supabase';
 
 export type StatusConviteParticipacao = 'pendente' | 'aceito' | 'recusado' | 'cancelado';
@@ -150,7 +151,8 @@ export async function listarArtistasProximos(params: {
   funcao?: string | null;
   limit?: number;
   offset?: number;
-}): Promise<{ artists: ArtistaBuscaConvite[]; hasMore: boolean; error: string | null }> {
+  abortSignal?: AbortSignal;
+}): Promise<{ artists: ArtistaBuscaConvite[]; hasMore: boolean; error: string | null; aborted?: boolean }> {
   const limit = Math.min(Math.max(params.limit ?? ARTISTAS_BUSCA_PAGE_SIZE, 1), 40);
   const offset = Math.max(params.offset ?? 0, 0);
   const termo = (params.termo || '').trim();
@@ -159,7 +161,7 @@ export async function listarArtistasProximos(params: {
   const estado = (params.estado || '').trim();
 
   try {
-    const { data, error } = await supabase.rpc('buscar_artistas_proximos', {
+    let query = supabase.rpc('buscar_artistas_proximos', {
       p_artista_atual_id: params.artistaAtualId ?? null,
       p_cidade: cidade.length >= 2 ? cidade : null,
       p_estado: estado || null,
@@ -168,11 +170,18 @@ export async function listarArtistasProximos(params: {
       p_limit: limit,
       p_offset: offset,
     });
-
+    if (params.abortSignal) query = query.abortSignal(params.abortSignal);
+    const { data, error } = await query;
+    if (params.abortSignal?.aborted || isAbortError(error)) {
+      return { artists: [], hasMore: false, error: null, aborted: true };
+    }
     if (error) return { artists: [], hasMore: false, error: error.message };
     const artists = ((data || []) as Record<string, unknown>[]).map(mapArtistaBuscaRow);
     return { artists, hasMore: artists.length >= limit, error: null };
-  } catch {
+  } catch (error) {
+    if (params.abortSignal?.aborted || isAbortError(error)) {
+      return { artists: [], hasMore: false, error: null, aborted: true };
+    }
     return { artists: [], hasMore: false, error: 'Erro de conexão' };
   }
 }

@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useState, useEffect, useRef } from 'react';
 import { setAppIconBadge } from './appIconBadge';
 import { getUnreadNotificationCount } from './supabase/notificationService';
@@ -5,15 +6,18 @@ import { getCurrentUser } from './supabase/authService';
 import { subscribeToNotifications, RealtimeSubscription } from './realtimeService';
 
 export const useNotifications = () => {
+  const isFocused = useIsFocused();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const subscriptionsRef = useRef<RealtimeSubscription[]>([]);
 
   const loadUnreadCount = async () => {
+    if (!isFocused) return;
     try {
       setIsLoading(true);
       
       const { user, error: userError } = await getCurrentUser();
+      if (!isFocused) return;
       
       if (userError || !user) {
         setUnreadCount(0);
@@ -21,8 +25,8 @@ export const useNotifications = () => {
         return;
       }
 
-      // Contar APENAS notificações não lidas (sem convites pendentes)
       const { count, error } = await getUnreadNotificationCount(user.id);
+      if (!isFocused) return;
       
       if (error) {
         setUnreadCount(0);
@@ -32,10 +36,11 @@ export const useNotifications = () => {
         await setAppIconBadge(count);
       }
     } catch (error) {
+      if (!isFocused) return;
       setUnreadCount(0);
       await setAppIconBadge(0);
     } finally {
-      setIsLoading(false);
+      if (isFocused) setIsLoading(false);
     }
   };
 
@@ -51,17 +56,13 @@ export const useNotifications = () => {
         return;
       }
 
-      // Limpar subscriptions existentes
       subscriptionsRef.current.forEach(sub => sub.unsubscribe());
       subscriptionsRef.current = [];
 
-      // Subscription para notificações
       const notificationSubscription = subscribeToNotifications(
         user.id,
-        (notification) => {
-          // Sempre recarregar contagem total ao receber mudanças na tabela notifications
-          // Isso atualiza o badge quando read == false
-          loadUnreadCount();
+        () => {
+          void loadUnreadCount();
         }
       );
 
@@ -73,14 +74,19 @@ export const useNotifications = () => {
   };
 
   useEffect(() => {
-    loadUnreadCount();
-    setupRealtimeSubscriptions();
+    if (!isFocused) {
+      subscriptionsRef.current.forEach(sub => sub.unsubscribe());
+      subscriptionsRef.current = [];
+      return;
+    }
+    void loadUnreadCount();
+    void setupRealtimeSubscriptions();
 
-    // Cleanup ao desmontar
     return () => {
       subscriptionsRef.current.forEach(sub => sub.unsubscribe());
+      subscriptionsRef.current = [];
     };
-  }, []);
+  }, [isFocused]);
 
   return {
     unreadCount,

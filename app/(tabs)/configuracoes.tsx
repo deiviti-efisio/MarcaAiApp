@@ -4,7 +4,7 @@ import { setStringAsync } from 'expo-clipboard';
 import Constants from 'expo-constants';
 import appJson from '../../app.json';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -27,10 +27,9 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { artistImageUpdateService } from '../../services/artistImageUpdateService';
 import { cacheService } from '../../services/cacheService';
 import { RealtimeSubscription, subscribeToUsers } from '../../services/realtimeService';
-import { fetchArtistsForDeleteAccountModal, getArtists } from '../../services/supabase/artistService';
+import { fetchArtistsForDeleteAccountModal } from '../../services/supabase/artistService';
 import { deleteAccount, getCurrentUser, logoutUser, updatePassword } from '../../services/supabase/authService';
 import { createFeedback } from '../../services/supabase/feedbackService';
-import { getUserPermissions } from '../../services/supabase/permissionsService';
 import {
   canCreateArtist,
   FREE_PLAN_MAX_OWNED_ARTIST_PROFILES,
@@ -61,7 +60,6 @@ export default function ConfiguracoesScreen() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [hasArtist, setHasArtist] = useState(false);
   const [currentArtist, setCurrentArtist] = useState<any>(null);
-  const [userPermissions, setUserPermissions] = useState<any>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -112,6 +110,8 @@ export default function ConfiguracoesScreen() {
           ? String(Constants.expoConfig.android.versionCode)
           : undefined;
   const appVersionDisplay = nativeBuild ? `${appVersion} (${nativeBuild})` : appVersion;
+  const settingsFocusedRef = useRef(false);
+  const settingsLoadGenRef = useRef(0);
 
   const formatDate = (value?: string) => {
     if (!value) return 'Não informado';
@@ -127,28 +127,18 @@ export default function ConfiguracoesScreen() {
   };
 
   useEffect(() => {
-    loadUserProfile();
-    setupRealtimeSubscriptions();
-    
-    // Cleanup function
     return () => {
       cleanupRealtimeSubscriptions();
     };
   }, []);
 
-  // Sincronizar com o artista ativo quando mudar
   useEffect(() => {
     if (activeArtist) {
-      // Atualizar estado local com o artista ativo
       setCurrentArtist(activeArtist);
       setHasArtist(true);
-      
-      // Recarregar permissões para o novo artista
-      loadPermissionsForArtist(activeArtist.id);
     } else {
       setCurrentArtist(null);
       setHasArtist(false);
-      setUserPermissions(null);
       setShowArtistProfileModal(false);
     }
   }, [activeArtist]);
@@ -171,18 +161,26 @@ export default function ConfiguracoesScreen() {
   // Recarregar dados quando a tela ganhar foco
   useFocusEffect(
     React.useCallback(() => {
-      loadArtistData(true);
-      void loadUserProfile(true);
+      settingsFocusedRef.current = true;
+      const gen = ++settingsLoadGenRef.current;
+      setupRealtimeSubscriptions();
+      void loadUserProfile(false, gen);
       void (async () => {
         const { user } = await getCurrentUser();
+        if (gen !== settingsLoadGenRef.current || !settingsFocusedRef.current) return;
         if (!user?.id) {
           setPremiumEntitlementActive(false);
           return;
         }
         const { active } = await userSubscriptionIsActive(user.id);
+        if (gen !== settingsLoadGenRef.current || !settingsFocusedRef.current) return;
         setPremiumEntitlementActive(active);
       })();
-      // Não recarregar activeArtist aqui para evitar recarregar eventos na agenda
+      return () => {
+        settingsFocusedRef.current = false;
+        settingsLoadGenRef.current += 1;
+        cleanupRealtimeSubscriptions();
+      };
     }, [])
   );
 
@@ -214,28 +212,16 @@ export default function ConfiguracoesScreen() {
     setRealtimeSubscriptions([]);
   };
 
-  // Carregar permissões para um artista específico
-  const loadPermissionsForArtist = async (artistId: string) => {
-    try {
-      const { user } = await getCurrentUser();
-      if (!user) return;
-      
-      const permissions = await getUserPermissions(user.id, artistId);
-      
-      if (permissions) {
-        setUserPermissions(permissions);
-        await cacheService.setPermissionsData(user.id, artistId, permissions);
-      }
-    } catch (error) {
-      // Erro ao carregar permissões
-    }
-  };
+  const stillOnSettings = (gen?: number) =>
+    settingsFocusedRef.current && (gen == null || gen === settingsLoadGenRef.current);
 
-  const loadUserProfile = async (forceRefresh = false) => {
+  const loadUserProfile = async (forceRefresh = false, gen?: number) => {
+    if (!stillOnSettings(gen)) return;
     try {
       setIsLoadingProfile(true);
       
       const { user, error: userError } = await getCurrentUser();
+      if (!stillOnSettings(gen)) return;
       
       if (userError || !user) {
         setShowUserProfileModal(false);
@@ -245,6 +231,7 @@ export default function ConfiguracoesScreen() {
       // Se não forçar refresh, verificar cache primeiro
       if (!forceRefresh) {
         const cachedProfile = await cacheService.getUserData<UserProfile>(user.id);
+        if (!stillOnSettings(gen)) return;
         
         if (cachedProfile) {
           setUserProfile(cachedProfile);
@@ -255,6 +242,7 @@ export default function ConfiguracoesScreen() {
 
       // Carregar do servidor (sempre frescos)
       const { profile, error: profileError } = await getUserProfile(user.id);
+      if (!stillOnSettings(gen)) return;
       
       if (profileError) {
         setShowUserProfileModal(false);
@@ -269,50 +257,7 @@ export default function ConfiguracoesScreen() {
     } catch (error) {
       // Erro ao carregar perfil
     } finally {
-      setIsLoadingProfile(false);
-    }
-  };
-
-  const loadArtistData = async (forceRefresh = false) => {
-    try {
-      const { user, error: userError } = await getCurrentUser();
-      
-      if (userError || !user) {
-        return;
-      }
-
-      // Carregar do servidor (sempre frescos quando forceRefresh=true)
-      const { artists, error: artistsError } = await getArtists(user.id);
-      
-      if (!artistsError && artists && artists.length > 0) {
-        const artistFromDb = artists[0];
-        
-        // Não atualizar currentArtist aqui se já temos activeArtist
-        // O useEffect de sincronização vai cuidar disso
-        if (!activeArtist) {
-          setHasArtist(true);
-          setCurrentArtist(artistFromDb);
-        }
-        
-        // Salvar no cache para próxima vez (COM profile_url)
-        await cacheService.setUserData(`artists_${user.id}`, artists);
-        
-        // Carregar permissões
-        const permissions = await getUserPermissions(user.id, artistFromDb.id);
-        if (permissions) {
-          setUserPermissions(permissions);
-          await cacheService.setPermissionsData(user.id, artistFromDb.id, permissions);
-        }
-      } else {
-        setHasArtist(false);
-        setCurrentArtist(null);
-        setUserPermissions(null);
-      }
-    } catch (error) {
-      // Erro ao carregar artista
-      setHasArtist(false);
-      setCurrentArtist(null);
-      setUserPermissions(null);
+      if (stillOnSettings(gen)) setIsLoadingProfile(false);
     }
   };
 

@@ -129,6 +129,13 @@ export default function FeedScreen() {
 
   const loadGenerationRef = useRef(0);
   const marketplaceAbortRef = useRef<AbortController | null>(null);
+  const artistasAbortRef = useRef<AbortController | null>(null);
+  const feedFocusedRef = useRef(true);
+
+  const cancelFeedRequests = useCallback(() => {
+    marketplaceAbortRef.current?.abort();
+    artistasAbortRef.current?.abort();
+  }, []);
 
   const funcaoFilterOptions = useMemo(
     () => [...ARTIST_WORK_ROLE_PRESETS],
@@ -136,7 +143,7 @@ export default function FeedScreen() {
   );
 
   const load = useCallback(async (silent = false) => {
-    if (verArtistas) return;
+    if (verArtistas || !feedFocusedRef.current) return;
     const generation = ++loadGenerationRef.current;
     marketplaceAbortRef.current?.abort();
     const abort = new AbortController();
@@ -156,7 +163,7 @@ export default function FeedScreen() {
         artistaAtualId: artistId,
         abortSignal: abort.signal,
       });
-      if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
+      if (marketplaceRes.aborted || abort.signal.aborted || generation !== loadGenerationRef.current) return;
 
       if (generation !== loadGenerationRef.current) return;
 
@@ -172,8 +179,8 @@ export default function FeedScreen() {
 
       if (artistId) {
         void (async () => {
-          const { propostas } = await listarPropostasFeedMarketplace(artistId);
-          if (generation !== loadGenerationRef.current) return;
+          const { propostas, aborted } = await listarPropostasFeedMarketplace(artistId, abort.signal);
+          if (aborted || abort.signal.aborted || generation !== loadGenerationRef.current) return;
 
           const meusIds = new Set(
             visiveis.filter((item) => item.artist_id === artistId).map((item) => item.id)
@@ -208,6 +215,7 @@ export default function FeedScreen() {
   }, [cidade]);
 
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
+    if (!verArtistas || !feedFocusedRef.current) return;
     const append = Boolean(opts.append);
     if (append) {
       if (!artistasHasMoreRef.current || loadingMoreArtistasRef.current) return;
@@ -219,9 +227,16 @@ export default function FeedScreen() {
       setLoadingArtistas(true);
     }
     const generation = ++artistasGenerationRef.current;
+    if (!append) {
+      artistasAbortRef.current?.abort();
+      artistasAbortRef.current = new AbortController();
+    } else if (!artistasAbortRef.current || artistasAbortRef.current.signal.aborted) {
+      artistasAbortRef.current = new AbortController();
+    }
+    const abort = artistasAbortRef.current;
     const offset = append ? artistasLenRef.current : 0;
     try {
-      const { artists, hasMore, error: artistsError } = await listarArtistasProximos({
+      const { artists, hasMore, error: artistsError, aborted } = await listarArtistasProximos({
         artistaAtualId: activeArtist?.id ?? null,
         cidade: cidadeDebounced,
         estado: estadoUf,
@@ -229,8 +244,9 @@ export default function FeedScreen() {
         funcao: filtroFuncao,
         limit: ARTISTAS_BUSCA_PAGE_SIZE,
         offset,
+        abortSignal: abort.signal,
       });
-      if (generation !== artistasGenerationRef.current) return;
+      if (aborted || abort.signal.aborted || generation !== artistasGenerationRef.current) return;
       if (append) {
         setArtistasProximos((prev) => {
           const seen = new Set(prev.map((item) => item.id));
@@ -260,7 +276,7 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [activeArtist?.id, cidadeDebounced, estadoUf, buscaArtistaDebounced, filtroFuncao]);
+  }, [activeArtist?.id, cidadeDebounced, estadoUf, buscaArtistaDebounced, filtroFuncao, verArtistas]);
 
   useEffect(() => {
     if (artistasProntoGeo) return;
@@ -272,18 +288,24 @@ export default function FeedScreen() {
     }
     seededNearRef.current = true;
     let cancelled = false;
+    const geoAbort = new AbortController();
     void (async () => {
       try {
         const [cached, artistRow, userRes] = await Promise.all([
           AsyncStorage.getItem(FEED_ARTISTAS_UF_KEY),
           activeArtist?.id
-            ? supabase.from('artists').select('state').eq('id', activeArtist.id).maybeSingle()
+            ? supabase
+                .from('artists')
+                .select('state')
+                .eq('id', activeArtist.id)
+                .abortSignal(geoAbort.signal)
+                .maybeSingle()
             : Promise.resolve({ data: null as { state?: string } | null }),
           getCurrentUser().then(async ({ user }) =>
             user?.id ? getUserProfile(user.id) : { profile: null }
           ),
         ]);
-        if (cancelled) return;
+        if (cancelled || geoAbort.signal.aborted) return;
         const fromCache = (cached || '').trim().toUpperCase();
         const fromArtist = String(artistRow.data?.state || '');
         const fromUser = String(userRes.profile?.state || '');
@@ -303,6 +325,7 @@ export default function FeedScreen() {
     })();
     return () => {
       cancelled = true;
+      geoAbort.abort();
     };
   }, [activeArtist?.id, cidade, estadoUf, artistasProntoGeo]);
 
@@ -360,19 +383,26 @@ export default function FeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      feedFocusedRef.current = true;
       void loadUnreadCount();
       void refreshUnreadChats();
       if (skipNextFocusLoadRef.current) {
         skipNextFocusLoadRef.current = false;
-        return;
+        return () => {
+          feedFocusedRef.current = false;
+          cancelFeedRequests();
+        };
       }
       if (verArtistas) {
-        if (!artistasProntoGeo) return;
-        void loadArtistas({ silent: true });
-        return;
+        if (artistasProntoGeo) void loadArtistas({ silent: true });
+      } else {
+        void load(true);
       }
-      void load(true);
-    }, [activeArtist?.id, load, loadArtistas, verArtistas, artistasProntoGeo, loadUnreadCount, refreshUnreadChats])
+      return () => {
+        feedFocusedRef.current = false;
+        cancelFeedRequests();
+      };
+    }, [activeArtist?.id, load, loadArtistas, verArtistas, artistasProntoGeo, loadUnreadCount, refreshUnreadChats, cancelFeedRequests])
   );
 
   const emptyCopy = useMemo(() => {
@@ -1070,7 +1100,10 @@ export default function FeedScreen() {
               styles.mainSegBtn,
               !verArtistas && { backgroundColor: colors.primary },
             ]}
-            onPress={() => setVerArtistas(false)}
+            onPress={() => {
+              artistasAbortRef.current?.abort();
+              setVerArtistas(false);
+            }}
             activeOpacity={0.85}
           >
             <Text style={[styles.mainSegText, { color: !verArtistas ? '#fff' : colors.text }]}>

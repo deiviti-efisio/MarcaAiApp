@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     Clipboard,
@@ -20,6 +20,7 @@ import OptimizedImage from '../../components/OptimizedImage';
 import PermissionModal from '../../components/PermissionModal';
 import PremiumTrialUpsellModal from '../../components/PremiumTrialUpsellModal';
 import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
+import { usePermissions } from '../../contexts/PermissionsContext';
 import { useSharedTabMonth } from '../../contexts/SharedTabMonthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatCalendarDate } from '../../lib/dateUtils';
@@ -149,12 +150,11 @@ export default function FinanceiroScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { activeArtist, refreshActiveArtist } = useActiveArtistContext();
+  const { isAdmin, permissionsLoaded } = usePermissions();
   const { unreadCount, loadUnreadCount } = useNotifications();
   const [hasAnyArtist, setHasAnyArtist] = useState(false);
-  
-  // Estados para controle de acesso
-  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
-  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const hasAccess = permissionsLoaded ? isAdmin : null;
+  const isCheckingAccess = Boolean(activeArtist) && !permissionsLoaded;
   const [monthRevenueGoal, setMonthRevenueGoal] = useState<number | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [goalInputText, setGoalInputText] = useState('');
@@ -167,6 +167,8 @@ export default function FinanceiroScreen() {
   const [financeViewMode, setFinanceViewMode] = useState<FinanceViewMode>('month');
   const [annualSummaryYear, setAnnualSummaryYear] = useState(() => selectedDate.getFullYear());
   const [yearMonthSummaries, setYearMonthSummaries] = useState<YearMonthSummary[]>(emptyYearSummaries);
+  const financeFocusedRef = useRef(false);
+  const financeAbortRef = useRef<AbortController | null>(null);
 
   const currentMonth = selectedDate.getMonth();
   const currentYear = selectedDate.getFullYear();
@@ -216,57 +218,6 @@ export default function FinanceiroScreen() {
     }
   };
 
-  // ✅ Verificar permissões quando artista mudar
-  useEffect(() => {
-    checkUserAccess();
-  }, [activeArtist]);
-
-  const checkUserAccess = async () => {
-    if (!activeArtist) {
-      setHasAccess(null);
-      setIsCheckingAccess(false);
-      return;
-    }
-
-    try {
-      setIsCheckingAccess(true);
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setHasAccess(false);
-        setIsCheckingAccess(false);
-        return;
-      }
-
-      // Buscar role diretamente na tabela artist_members
-      const { data: memberData, error } = await supabase
-        .from('artist_members')
-        .select('role')
-        .eq('user_id', user.id)
-        .eq('artist_id', activeArtist.id)
-        .single();
-
-      if (error) {
-        setHasAccess(false);
-        setIsCheckingAccess(false);
-        return;
-      }
-
-      const userRole = memberData?.role;
-
-      // ✅ Financeiro é exclusivo de admin. Viewer e vendedor NUNCA têm acesso aqui
-      // (vendedor vê o valor do próprio evento na tela de detalhes do evento, não aqui).
-      const hasPermission = userRole === 'admin';
-
-      setHasAccess(hasPermission);
-      setIsCheckingAccess(false);
-    } catch (error) {
-      // Erro ao verificar acesso
-      setHasAccess(false);
-      setIsCheckingAccess(false);
-    }
-  };
-
   const loadMonthRevenueGoal = React.useCallback(async () => {
     if (!activeArtist?.id || !currentUserId) {
       setMonthRevenueGoal(null);
@@ -282,18 +233,24 @@ export default function FinanceiroScreen() {
 
 
   const loadFinancialData = React.useCallback(async () => {
-    if (!activeArtist) {
+    if (!activeArtist || !financeFocusedRef.current) {
       return;
     }
+
+    financeAbortRef.current?.abort();
+    const abort = new AbortController();
+    financeAbortRef.current = abort;
 
     try {
       setIsLoading(true);
 
-      const { events: monthEvents, error: eventsError } = await getEventsByMonth(
+      const { events: monthEvents, error: eventsError, aborted } = await getEventsByMonth(
         activeArtist.id,
         currentYear,
-        currentMonth
+        currentMonth,
+        abort.signal
       );
+      if (aborted || abort.signal.aborted) return;
 
       if (eventsError) {
         if (!maybeShowConnectionError(null, eventsError)) {
@@ -303,7 +260,8 @@ export default function FinanceiroScreen() {
       }
 
       const ids = (monthEvents || []).map((event) => event.id);
-      const { byEventId } = await getExpensesGroupedByEventIds(ids);
+      const { byEventId, aborted: expensesAborted } = await getExpensesGroupedByEventIds(ids, abort.signal);
+      if (expensesAborted || abort.signal.aborted) return;
 
       const eventsWithExpenses = (monthEvents || []).map((event) => {
         const expenses = byEventId?.[event.id] || [];
@@ -317,11 +275,13 @@ export default function FinanceiroScreen() {
 
       setEvents(eventsWithExpenses);
 
-      const { success: expensesSuccess, expenses: standalone } = await getStandaloneExpensesByArtist(
+      const { success: expensesSuccess, expenses: standalone, aborted: standaloneAborted } = await getStandaloneExpensesByArtist(
         activeArtist.id,
         currentMonth,
-        currentYear
+        currentYear,
+        abort.signal
       );
+      if (standaloneAborted || abort.signal.aborted) return;
 
       if (expensesSuccess && standalone) {
         setStandaloneExpenses(standalone);
@@ -340,19 +300,28 @@ export default function FinanceiroScreen() {
         );
       }
     } finally {
-      setIsLoading(false);
+      if (!abort.signal.aborted) setIsLoading(false);
     }
   }, [activeArtist, currentYear, currentMonth]);
 
   const loadAnnualFinancialData = React.useCallback(async () => {
-    if (!activeArtist) {
+    if (!activeArtist || !financeFocusedRef.current) {
       return;
     }
+
+    financeAbortRef.current?.abort();
+    const abort = new AbortController();
+    financeAbortRef.current = abort;
 
     try {
       setIsLoading(true);
 
-      const { events: yearEvents, error: eventsError } = await getEventsByYear(activeArtist.id, annualSummaryYear);
+      const { events: yearEvents, error: eventsError, aborted } = await getEventsByYear(
+        activeArtist.id,
+        annualSummaryYear,
+        abort.signal
+      );
+      if (aborted || abort.signal.aborted) return;
 
       if (eventsError) {
         if (!maybeShowConnectionError(null, eventsError)) {
@@ -362,7 +331,11 @@ export default function FinanceiroScreen() {
       }
 
       const ids = (yearEvents || []).map((e) => e.id);
-      const { success: totOk, totalsByEventId, error: totErr } = await getExpenseTotalsByEventIds(ids);
+      const { success: totOk, totalsByEventId, error: totErr, aborted: totAborted } = await getExpenseTotalsByEventIds(
+        ids,
+        abort.signal
+      );
+      if (totAborted || abort.signal.aborted) return;
 
       if (!totOk || !totalsByEventId) {
         if (!maybeShowConnectionError(null, totErr)) {
@@ -371,10 +344,12 @@ export default function FinanceiroScreen() {
         return;
       }
 
-      const { success: stOk, expenses: standaloneYear } = await getStandaloneExpensesByArtistYear(
+      const { success: stOk, expenses: standaloneYear, aborted: stAborted } = await getStandaloneExpensesByArtistYear(
         activeArtist.id,
-        annualSummaryYear
+        annualSummaryYear,
+        abort.signal
       );
+      if (stAborted || abort.signal.aborted) return;
 
       const buckets = emptyYearSummaries();
 
@@ -411,7 +386,7 @@ export default function FinanceiroScreen() {
         );
       }
     } finally {
-      setIsLoading(false);
+      if (!abort.signal.aborted) setIsLoading(false);
     }
   }, [activeArtist, annualSummaryYear]);
 
@@ -419,8 +394,14 @@ export default function FinanceiroScreen() {
   // (dezenas de requests de despesa por evento e a busca de artistas ficava na fila).
   useFocusEffect(
     React.useCallback(() => {
+      financeFocusedRef.current = true;
       void loadUnreadCount();
-      if (!activeArtist || hasAccess === null) return;
+      if (!activeArtist || !permissionsLoaded || !isAdmin) {
+        return () => {
+          financeFocusedRef.current = false;
+          financeAbortRef.current?.abort();
+        };
+      }
       if (financeViewMode === 'month') {
         void loadFinancialData();
         if (activeArtist.id && currentUserId) {
@@ -429,9 +410,14 @@ export default function FinanceiroScreen() {
       } else {
         void loadAnnualFinancialData();
       }
+      return () => {
+        financeFocusedRef.current = false;
+        financeAbortRef.current?.abort();
+      };
     }, [
       activeArtist?.id,
-      hasAccess,
+      permissionsLoaded,
+      isAdmin,
       financeViewMode,
       currentMonth,
       currentYear,

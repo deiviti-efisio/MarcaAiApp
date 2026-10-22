@@ -28,8 +28,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const { activeArtist } = useActiveArtist();
 
-  // Carregar permissões
-  const loadPermissions = async () => {
+  const loadPermissions = async (forceNetwork = false) => {
     if (!activeArtist) {
       console.log('🔒 Permissões: Nenhum artista ativo');
       setUserPermissions(null);
@@ -38,8 +37,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
 
     try {
-      setPermissionsLoaded(false);
-      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.log('🔒 Permissões: Nenhum usuário logado');
@@ -48,11 +45,10 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
-      console.log('🔒 Permissões: Carregando para usuário:', user.id, 'artista:', activeArtist.id);
+      if (forceNetwork) {
+        clearPermissionsCache(user.id, activeArtist.id);
+      }
 
-      // Limpar cache para garantir dados frescos
-      clearPermissionsCache(user.id, activeArtist.id);
-      
       const permissions = await getUserPermissions(user.id, activeArtist.id);
 
       if (permissions) {
@@ -73,10 +69,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // Carregar permissões quando artista mudar
   useEffect(() => {
-    loadPermissions();
-  }, [activeArtist]);
+    void loadPermissions(false);
+  }, [activeArtist?.id]);
 
   // 🔥 ESCUTAR MUDANÇAS EM TEMPO REAL
   useEffect(() => {
@@ -101,7 +96,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
             if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
               const newData = payload.new as any;
               if (newData.artist_id === activeArtist.id) {
-                loadPermissions();
+                void loadPermissions(true);
               }
             } else if (payload.eventType === 'DELETE') {
               const oldData = payload.old as any;
@@ -157,7 +152,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isViewer,
         isAdmin,
         isVendedor,
-        reloadPermissions: loadPermissions,
+        reloadPermissions: () => loadPermissions(true),
       }}
     >
       {children}

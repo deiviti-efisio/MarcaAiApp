@@ -1,3 +1,4 @@
+import { isAbortError } from '../../lib/abortError';
 import { supabase } from '../../lib/supabase';
 
 export interface Expense {
@@ -194,7 +195,12 @@ export const createStandaloneExpense = async (expenseData: CreateStandaloneExpen
 };
 
 // Buscar despesas avulsas de um artista (sem evento)
-export const getStandaloneExpensesByArtist = async (artistId: string, month?: number, year?: number): Promise<{ success: boolean; error: string | null; expenses?: Expense[] }> => {
+export const getStandaloneExpensesByArtist = async (
+  artistId: string,
+  month?: number,
+  year?: number,
+  abortSignal?: AbortSignal
+): Promise<{ success: boolean; error: string | null; expenses?: Expense[]; aborted?: boolean }> => {
   try {
     let query = supabase
       .from('event_expenses')
@@ -203,20 +209,26 @@ export const getStandaloneExpensesByArtist = async (artistId: string, month?: nu
       .is('event_id', null); // Apenas despesas sem evento
 
     if (month !== undefined && year !== undefined) {
-      // Filtrar por mês/ano
       const startDate = new Date(year, month, 1).toISOString().split('T')[0];
       const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
       query = query.gte('date', startDate).lte('date', endDate);
     }
+    query = query.order('date', { ascending: false });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
 
-    const { data, error } = await query.order('date', { ascending: false });
-
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     if (error) {
       return { success: false, error: error.message };
     }
 
     return { success: true, error: null, expenses: data || [] };
   } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: 'Erro de conexão' };
   }
 };
@@ -224,13 +236,14 @@ export const getStandaloneExpensesByArtist = async (artistId: string, month?: nu
 /** Despesas e receitas avulsas (sem evento) em todo o ano civil informado. */
 export const getStandaloneExpensesByArtistYear = async (
   artistId: string,
-  year: number
-): Promise<{ success: boolean; error: string | null; expenses?: Expense[] }> => {
+  year: number,
+  abortSignal?: AbortSignal
+): Promise<{ success: boolean; error: string | null; expenses?: Expense[]; aborted?: boolean }> => {
   try {
     const startDate = new Date(year, 0, 1).toISOString().split('T')[0];
     const endDate = new Date(year, 11, 31).toISOString().split('T')[0];
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('event_expenses')
       .select('*')
       .eq('artist_id', artistId)
@@ -238,13 +251,21 @@ export const getStandaloneExpensesByArtistYear = async (
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: false });
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    const { data, error } = await query;
 
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     if (error) {
       return { success: false, error: error.message };
     }
 
     return { success: true, error: null, expenses: data || [] };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: 'Erro de conexão' };
   }
 };
@@ -279,8 +300,9 @@ const EXPENSE_IN_CHUNK = 90;
 
 /** Soma dos valores de despesas vinculadas a eventos, por `event_id`. */
 export const getExpenseTotalsByEventIds = async (
-  eventIds: string[]
-): Promise<{ success: boolean; error: string | null; totalsByEventId?: Record<string, number> }> => {
+  eventIds: string[],
+  abortSignal?: AbortSignal
+): Promise<{ success: boolean; error: string | null; totalsByEventId?: Record<string, number>; aborted?: boolean }> => {
   try {
     const unique = [...new Set(eventIds.filter(Boolean))];
     const totalsByEventId: Record<string, number> = {};
@@ -290,12 +312,20 @@ export const getExpenseTotalsByEventIds = async (
     }
 
     for (let i = 0; i < unique.length; i += EXPENSE_IN_CHUNK) {
+      if (abortSignal?.aborted) {
+        return { success: false, error: null, aborted: true };
+      }
       const chunk = unique.slice(i, i + EXPENSE_IN_CHUNK);
-      const { data, error } = await supabase
+      let query = supabase
         .from('event_expenses')
         .select('event_id, value')
         .in('event_id', chunk);
+      if (abortSignal) query = query.abortSignal(abortSignal);
+      const { data, error } = await query;
 
+      if (abortSignal?.aborted || isAbortError(error)) {
+        return { success: false, error: null, aborted: true };
+      }
       if (error) {
         return { success: false, error: error.message };
       }
@@ -309,15 +339,19 @@ export const getExpenseTotalsByEventIds = async (
     }
 
     return { success: true, error: null, totalsByEventId };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: 'Erro de conexão' };
   }
 };
 
 /** Todas as despesas vinculadas a eventos, agrupadas por `event_id` (para relatórios em lote). */
 export const getExpensesGroupedByEventIds = async (
-  eventIds: string[]
-): Promise<{ success: boolean; error: string | null; byEventId?: Record<string, Expense[]> }> => {
+  eventIds: string[],
+  abortSignal?: AbortSignal
+): Promise<{ success: boolean; error: string | null; byEventId?: Record<string, Expense[]>; aborted?: boolean }> => {
   try {
     const unique = [...new Set(eventIds.filter(Boolean))];
     const byEventId: Record<string, Expense[]> = {};
@@ -327,13 +361,21 @@ export const getExpensesGroupedByEventIds = async (
     }
 
     for (let i = 0; i < unique.length; i += EXPENSE_IN_CHUNK) {
+      if (abortSignal?.aborted) {
+        return { success: false, error: null, aborted: true };
+      }
       const chunk = unique.slice(i, i + EXPENSE_IN_CHUNK);
-      const { data, error } = await supabase
+      let query = supabase
         .from('event_expenses')
         .select('*')
         .in('event_id', chunk)
         .order('created_at', { ascending: false });
+      if (abortSignal) query = query.abortSignal(abortSignal);
+      const { data, error } = await query;
 
+      if (abortSignal?.aborted || isAbortError(error)) {
+        return { success: false, error: null, aborted: true };
+      }
       if (error) {
         return { success: false, error: error.message };
       }
@@ -347,7 +389,10 @@ export const getExpensesGroupedByEventIds = async (
     }
 
     return { success: true, error: null, byEventId };
-  } catch {
+  } catch (error) {
+    if (abortSignal?.aborted || isAbortError(error)) {
+      return { success: false, error: null, aborted: true };
+    }
     return { success: false, error: 'Erro de conexão' };
   }
 };

@@ -223,6 +223,7 @@ export default function AgendaScreen() {
   const isNavigatingToEventRef = useRef(false);
   const lastEventPressAtRef = useRef(0);
   const agendaFocusedRef = useRef(true);
+  const eventsAbortRef = useRef<AbortController | null>(null);
   const DEBOUNCE_MS = 800;
 
   // Ao entrar na tela Agenda, zerar o badge do ícone do app; ao sair, liberar toque de novo
@@ -997,6 +998,7 @@ export default function AgendaScreen() {
 
     const artistId = activeArtist.id;
     const refreshAgenda = () => {
+      if (!agendaFocusedRef.current) return;
       cacheService.invalidateEventsCache(artistId, currentMonth, currentYear);
       loadEvents(true);
     };
@@ -1045,6 +1047,7 @@ export default function AgendaScreen() {
       loadUnreadCount();
       return () => {
         agendaFocusedRef.current = false;
+        eventsAbortRef.current?.abort();
       };
     }, [activeArtist, currentMonth, currentYear]),
   );
@@ -1235,6 +1238,11 @@ export default function AgendaScreen() {
       setEvents([]);
       return true;
     }
+    if (!agendaFocusedRef.current) return false;
+
+    eventsAbortRef.current?.abort();
+    const abort = new AbortController();
+    eventsAbortRef.current = abort;
 
     const cacheKeyArtist = activeArtist.id;
     try {
@@ -1243,6 +1251,7 @@ export default function AgendaScreen() {
         currentYear,
         currentMonth,
       );
+      if (abort.signal.aborted || !agendaFocusedRef.current) return false;
 
       if (cachedEvents && !isInitialLoad) {
         setEvents(cachedEvents);
@@ -1253,7 +1262,9 @@ export default function AgendaScreen() {
         activeArtist.id,
         currentYear,
         currentMonth,
+        abort.signal,
       );
+      if (result.aborted || abort.signal.aborted || !agendaFocusedRef.current) return false;
 
       if (result.success) {
         const eventsData = result.events || [];
