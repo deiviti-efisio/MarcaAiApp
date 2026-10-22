@@ -178,11 +178,12 @@ export async function listarFeedMarketplace(params: {
   funcao?: string | null;
   artistaAtualId?: string | null;
   eventoDetalheId?: string | null;
+  abortSignal?: AbortSignal;
 }): Promise<{ anuncios: FeedAnuncio[]; error: string | null }> {
   try {
     const tipoRpc =
       params.filtro === 'todos' ? null : params.filtro;
-    const { data, error } = await supabase.rpc('listar_feed_marketplace', {
+    let query = supabase.rpc('listar_feed_marketplace', {
       p_tipo: tipoRpc,
       p_estado: params.estadoUf?.trim() ? params.estadoUf.trim() : null,
       p_cidade: params.cidade?.trim() ? params.cidade.trim() : null,
@@ -190,6 +191,8 @@ export async function listarFeedMarketplace(params: {
       p_funcao: params.funcao?.trim() ? params.funcao.trim() : null,
       p_evento_detalhe: params.eventoDetalheId ?? null,
     });
+    if (params.abortSignal) query = query.abortSignal(params.abortSignal);
+    const { data, error } = await query;
     if (error) return { anuncios: [], error: error.message };
     const rows = (data || []) as Record<string, unknown>[];
     const anuncios = rows.map(mapAnuncio).filter((item) => isAnuncioFeedAtivo(item.event_date));

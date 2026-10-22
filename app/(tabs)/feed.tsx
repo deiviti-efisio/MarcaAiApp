@@ -104,6 +104,7 @@ export default function FeedScreen() {
   const [filtroFuncao, setFiltroFuncao] = useState('');
   const [estadoUf, setEstadoUf] = useState('');
   const [cidade, setCidade] = useState('');
+  const [cidadeDebounced, setCidadeDebounced] = useState('');
   const [showEstados, setShowEstados] = useState(false);
   const [showFuncaoPicker, setShowFuncaoPicker] = useState(false);
   const [anuncios, setAnuncios] = useState<FeedAnuncio[]>([]);
@@ -127,6 +128,7 @@ export default function FeedScreen() {
   const [showFiltros, setShowFiltros] = useState(false);
 
   const loadGenerationRef = useRef(0);
+  const marketplaceAbortRef = useRef<AbortController | null>(null);
 
   const funcaoFilterOptions = useMemo(
     () => [...ARTIST_WORK_ROLE_PRESETS],
@@ -136,19 +138,25 @@ export default function FeedScreen() {
   const load = useCallback(async (silent = false) => {
     if (verArtistas) return;
     const generation = ++loadGenerationRef.current;
+    marketplaceAbortRef.current?.abort();
+    const abort = new AbortController();
+    marketplaceAbortRef.current = abort;
     if (!silent) {
       setAnuncios([]);
       setLoading(true);
     }
     const artistId = activeArtist?.id ?? null;
     try {
+      if (abort.signal.aborted) return;
       const marketplaceRes = await listarFeedMarketplace({
         filtro: verMinhas ? 'meus' : filtro,
         estadoUf,
-        cidade,
+        cidade: cidadeDebounced,
         funcao: filtroFuncao,
         artistaAtualId: artistId,
+        abortSignal: abort.signal,
       });
+      if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
 
       if (generation !== loadGenerationRef.current) return;
 
@@ -187,12 +195,17 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [filtro, verMinhas, verArtistas, estadoUf, cidade, filtroFuncao, activeArtist?.id]);
+  }, [filtro, verMinhas, verArtistas, estadoUf, cidadeDebounced, filtroFuncao, activeArtist?.id]);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaArtistaDebounced(buscaArtista.trim()), 280);
     return () => clearTimeout(t);
   }, [buscaArtista]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setCidadeDebounced(cidade.trim()), 450);
+    return () => clearTimeout(t);
+  }, [cidade]);
 
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
     const append = Boolean(opts.append);
@@ -201,10 +214,8 @@ export default function FeedScreen() {
       loadingMoreArtistasRef.current = true;
       setLoadingMoreArtistas(true);
     } else if (!opts.silent) {
-      artistasLenRef.current = 0;
       artistasHasMoreRef.current = true;
       setArtistasHasMore(true);
-      setArtistasProximos([]);
       setLoadingArtistas(true);
     }
     const generation = ++artistasGenerationRef.current;
@@ -212,7 +223,7 @@ export default function FeedScreen() {
     try {
       const { artists, hasMore, error: artistsError } = await listarArtistasProximos({
         artistaAtualId: activeArtist?.id ?? null,
-        cidade,
+        cidade: cidadeDebounced,
         estado: estadoUf,
         termo: buscaArtistaDebounced,
         funcao: filtroFuncao,
@@ -249,7 +260,7 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [activeArtist?.id, cidade, estadoUf, buscaArtistaDebounced, filtroFuncao]);
+  }, [activeArtist?.id, cidadeDebounced, estadoUf, buscaArtistaDebounced, filtroFuncao]);
 
   useEffect(() => {
     if (artistasProntoGeo) return;
@@ -332,14 +343,14 @@ export default function FeedScreen() {
   useEffect(() => {
     if (!activeArtist?.id || verArtistas || !artistasProntoGeo) return;
     void load(false);
-  }, [filtro, verMinhas, estadoUf, cidade, filtroFuncao, activeArtist?.id, verArtistas, artistasProntoGeo, load]);
+  }, [filtro, verMinhas, estadoUf, cidadeDebounced, filtroFuncao, activeArtist?.id, verArtistas, artistasProntoGeo, load]);
 
   useEffect(() => {
     if (!activeArtist?.id || !verArtistas) return;
     void loadArtistas();
   }, [
     estadoUf,
-    cidade,
+    cidadeDebounced,
     filtroFuncao,
     buscaArtistaDebounced,
     verArtistas,
@@ -1072,9 +1083,10 @@ export default function FeedScreen() {
               verArtistas && { backgroundColor: colors.primary },
             ]}
             onPress={() => {
+              marketplaceAbortRef.current?.abort();
+              loadGenerationRef.current += 1;
               setVerMinhas(false);
               setVerArtistas(true);
-              void loadArtistas();
             }}
             activeOpacity={0.85}
           >
@@ -1171,6 +1183,9 @@ export default function FeedScreen() {
                   ? ` · ${[cidade.trim(), estadoUf].filter(Boolean).join(' - ')}`
                   : ''}
               </Text>
+              {(verArtistas ? loadingArtistas : loading) ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
+              ) : null}
               <TouchableOpacity
                 style={styles.filterToggle}
                 onPress={() => setShowFiltros((v) => !v)}
@@ -1218,10 +1233,12 @@ export default function FeedScreen() {
                   >
                     <BrazilPlaceSearchField
                       compact
+                      uf={estadoUf}
                       value={cidade}
                       onChangeText={setCidade}
                       onSelectPlace={(place) => {
                         setCidade(place.city);
+                        setCidadeDebounced(place.city);
                         if (place.uf) setEstadoUf(place.uf);
                       }}
                       placeholder="Cidade"

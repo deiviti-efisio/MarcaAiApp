@@ -159,7 +159,7 @@ export async function listarArtistasProximos(params: {
   const estado = (params.estado || '').trim();
 
   try {
-    const { data, error } = await supabase.rpc('listar_artistas_feed', {
+    const { data, error } = await supabase.rpc('buscar_artistas_proximos', {
       p_artista_atual_id: params.artistaAtualId ?? null,
       p_cidade: cidade.length >= 2 ? cidade : null,
       p_estado: estado || null,

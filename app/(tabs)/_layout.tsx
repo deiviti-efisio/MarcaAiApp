@@ -18,6 +18,8 @@ export default function TabLayout() {
             borderTopColor: colors.border,
           },
           headerShown: false,
+          freezeOnBlur: true,
+          lazy: true,
         }}>
         <Tabs.Screen
           name="agenda"

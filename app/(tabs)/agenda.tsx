@@ -222,6 +222,7 @@ export default function AgendaScreen() {
   // Bloquear segundo toque: por tempo (debounce) e por ref até sair da tela
   const isNavigatingToEventRef = useRef(false);
   const lastEventPressAtRef = useRef(0);
+  const agendaFocusedRef = useRef(true);
   const DEBOUNCE_MS = 800;
 
   // Ao entrar na tela Agenda, zerar o badge do ícone do app; ao sair, liberar toque de novo
@@ -962,6 +963,7 @@ export default function AgendaScreen() {
       setIsLoadingMonthEvents(false);
       return;
     }
+    if (!agendaFocusedRef.current) return;
 
     setImageLoadError(false);
 
@@ -1029,7 +1031,7 @@ export default function AgendaScreen() {
   // Recarregar eventos quando a tela receber foco (ex: voltar de adicionar/editar evento)
   useFocusEffect(
     React.useCallback(() => {
-      // Apenas invalidar cache e recarregar eventos se houver artista
+      agendaFocusedRef.current = true;
       if (activeArtist) {
         cacheService.invalidateEventsCache(
           activeArtist.id,
@@ -1038,10 +1040,12 @@ export default function AgendaScreen() {
         );
         loadEvents(true);
       } else {
-        // Verificar se criou novos artistas
         checkIfUserHasArtists();
       }
       loadUnreadCount();
+      return () => {
+        agendaFocusedRef.current = false;
+      };
     }, [activeArtist, currentMonth, currentYear]),
   );
 

@@ -18,6 +18,7 @@ type Props = {
   placeholder?: string;
   compact?: boolean;
   editable?: boolean;
+  uf?: string;
 };
 
 export default function BrazilPlaceSearchField({
@@ -27,6 +28,7 @@ export default function BrazilPlaceSearchField({
   placeholder = 'Buscar cidade, rua ou CEP',
   compact = false,
   editable = true,
+  uf,
 }: Props) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
@@ -53,7 +55,7 @@ export default function BrazilPlaceSearchField({
     setLoading(true);
     timerRef.current = setTimeout(() => {
       const req = ++requestRef.current;
-      void searchBrazilPlaces(q)
+      void searchBrazilPlaces(q, { uf })
         .then((places) => {
           if (req !== requestRef.current) return;
           setResults(places);

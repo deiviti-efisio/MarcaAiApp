@@ -24,8 +24,8 @@ type IbgeMunicipio = {
   };
 };
 
-let municipiosCache: BrazilPlace[] | null = null;
-let municipiosPromise: Promise<BrazilPlace[]> | null = null;
+const municipiosByUf = new Map<string, BrazilPlace[]>();
+const municipiosByUfPromise = new Map<string, Promise<BrazilPlace[]>>();
 
 function fold(value: string): string {
   return value
@@ -43,38 +43,41 @@ function stateFromUfOrName(uf?: string | null, name?: string | null): BrazilStat
   return brazilStateByName(name);
 }
 
-async function loadMunicipios(): Promise<BrazilPlace[]> {
-  if (municipiosCache) return municipiosCache;
-  if (municipiosPromise) return municipiosPromise;
+async function loadMunicipiosByUf(uf: string): Promise<BrazilPlace[]> {
+  const key = uf.trim().toUpperCase();
+  if (key.length !== 2) return [];
+  const cached = municipiosByUf.get(key);
+  if (cached) return cached;
+  const pending = municipiosByUfPromise.get(key);
+  if (pending) return pending;
 
-  municipiosPromise = (async () => {
+  const request = (async () => {
     const res = await fetch(
-      'https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome'
+      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios?orderBy=nome`
     );
     if (!res.ok) throw new Error('IBGE indisponível');
     const rows = (await res.json()) as IbgeMunicipio[];
-    const places: BrazilPlace[] = [];
-    for (const row of rows) {
-      const ufObj = row.microrregiao?.mesorregiao?.UF;
-      const state = stateFromUfOrName(ufObj?.sigla, ufObj?.nome);
-      if (!state || !row.nome) continue;
-      places.push({
+    const state = stateFromUfOrName(key, null);
+    if (!state) return [];
+    const places: BrazilPlace[] = rows
+      .map((row) => ({
         id: `ibge-${row.id}`,
-        kind: 'city',
+        kind: 'city' as const,
         label: `${row.nome} — ${state.uf}`,
         city: row.nome,
         uf: state.uf,
         stateName: state.name,
-      });
-    }
-    municipiosCache = places;
+      }))
+      .filter((place) => Boolean(place.city));
+    municipiosByUf.set(key, places);
     return places;
   })();
 
+  municipiosByUfPromise.set(key, request);
   try {
-    return await municipiosPromise;
+    return await request;
   } catch (err) {
-    municipiosPromise = null;
+    municipiosByUfPromise.delete(key);
     throw err;
   }
 }
@@ -88,13 +91,15 @@ function rankCityMatch(query: string, place: BrazilPlace): number {
   return 9;
 }
 
-async function searchMunicipios(query: string, limit: number): Promise<BrazilPlace[]> {
+async function searchMunicipios(query: string, limit: number, uf?: string): Promise<BrazilPlace[]> {
   const q = fold(query);
   if (q.length < 2) return [];
+  const ufKey = (uf || '').trim().toUpperCase();
+  if (ufKey.length !== 2) return [];
   try {
-    const all = await loadMunicipios();
+    const all = await loadMunicipiosByUf(ufKey);
     return all
-      .filter((place) => fold(place.city).includes(q) || fold(place.uf) === q)
+      .filter((place) => fold(place.city).includes(q))
       .sort((a, b) => rankCityMatch(query, a) - rankCityMatch(query, b))
       .slice(0, limit);
   } catch {
@@ -208,14 +213,17 @@ function looksLikeStreetQuery(query: string): boolean {
     || q.split(' ').length >= 3;
 }
 
-export async function searchBrazilPlaces(query: string): Promise<BrazilPlace[]> {
+export async function searchBrazilPlaces(
+  query: string,
+  opts?: { uf?: string }
+): Promise<BrazilPlace[]> {
   const raw = query.trim();
   if (raw.length < 2) return [];
 
   try {
   const digits = raw.replace(/\D/g, '');
   const [cities, cepPlaces, photon] = await Promise.all([
-    searchMunicipios(raw, 8),
+    searchMunicipios(raw, 8, opts?.uf),
     digits.length === 8 ? searchViaCep(digits) : Promise.resolve([] as BrazilPlace[]),
     looksLikeStreetQuery(raw) ? searchPhoton(raw, 6) : Promise.resolve([] as BrazilPlace[]),
   ]);

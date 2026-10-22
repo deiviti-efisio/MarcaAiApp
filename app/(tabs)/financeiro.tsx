@@ -280,10 +280,6 @@ export default function FinanceiroScreen() {
     setMonthRevenueGoal(goal);
   }, [activeArtist?.id, currentUserId, currentYear, currentMonth]);
 
-  // Meta de receita do mês (Supabase — mesma meta para todos os membros do artista)
-  useEffect(() => {
-    void loadMonthRevenueGoal();
-  }, [loadMonthRevenueGoal]);
 
   const loadFinancialData = React.useCallback(async () => {
     if (!activeArtist) {
