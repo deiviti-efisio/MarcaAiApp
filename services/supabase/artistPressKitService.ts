@@ -29,6 +29,22 @@ export interface ArtistPressKitItem {
   updated_at: string;
 }
 
+export async function listarPressKitPublicoArtista(
+  artistId: string
+): Promise<{ items: ArtistPressKitItem[]; error: string | null }> {
+  try {
+    const { data, error } = await supabase.rpc('listar_press_kit_publico_artista', {
+      p_artist_id: artistId,
+    });
+    if (error) {
+      return listArtistPressKitItems(artistId);
+    }
+    return { items: (data as ArtistPressKitItem[]) ?? [], error: null };
+  } catch {
+    return listArtistPressKitItems(artistId);
+  }
+}
+
 export async function listArtistPressKitItems(
   artistId: string
 ): Promise<{ items: ArtistPressKitItem[]; error: string | null }> {

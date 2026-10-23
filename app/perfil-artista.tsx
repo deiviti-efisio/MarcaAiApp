@@ -36,6 +36,10 @@ import {
   type FeaturedShow,
   type PublicAgendaEvent,
 } from '../services/supabase/eventService';
+import {
+  listarPressKitPublicoArtista,
+  type ArtistPressKitItem,
+} from '../services/supabase/artistPressKitService';
 import { maskBrazilMobile, openWhatsAppConversation } from '../utils/brazilPhone';
 
 function styleChips(artist: Artist | null): string[] {
@@ -69,6 +73,8 @@ export default function PerfilArtistaScreen() {
   const [featuredMenuOpen, setFeaturedMenuOpen] = useState(false);
   const [savingFeatured, setSavingFeatured] = useState(false);
   const [favorito, setFavorito] = useState(false);
+  const [pressKitItems, setPressKitItems] = useState<ArtistPressKitItem[]>([]);
+  const [pressKitMenuOpen, setPressKitMenuOpen] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
   const canManagePublicProfile = isOwn && isAdmin;
@@ -83,15 +89,17 @@ export default function PerfilArtistaScreen() {
       setLoading(false);
       return;
     }
-    const [profileRes, agendaRes, featuredRes, favoriteIds] = await Promise.all([
+    const [profileRes, agendaRes, featuredRes, pressKitRes, favoriteIds] = await Promise.all([
       getArtistPublicProfile(artistId),
       listarAgendaPublicaArtista(artistId),
       listarShowsDestaqueArtista(artistId),
+      listarPressKitPublicoArtista(artistId),
       listarIdsArtistasFavoritos(),
     ]);
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
     setFeaturedShows(featuredRes.shows.filter((item) => !isEventDateAlreadyPast(item.event_date)));
+    setPressKitItems(pressKitRes.items);
     setFavorito(favoriteIds.has(artistId));
   }, [artistId]);
 
@@ -127,6 +135,16 @@ export default function PerfilArtistaScreen() {
         artistImage: artist?.profile_url || '',
       },
     });
+  };
+
+  const handleOpenPressKit = () => {
+    if (pressKitItems.length === 1) {
+      void Linking.openURL(pressKitItems[0].url);
+      return;
+    }
+    if (pressKitItems.length > 1) {
+      setPressKitMenuOpen(true);
+    }
   };
 
   const handleSetFeaturedPrincipal = async (show: FeaturedShow) => {
@@ -334,6 +352,15 @@ export default function PerfilArtistaScreen() {
                   <Ionicons name="mail-outline" size={18} color={colors.primary} />
                 </TouchableOpacity>
               ) : null}
+              {pressKitItems.length ? (
+                <TouchableOpacity
+                  style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                  onPress={handleOpenPressKit}
+                  accessibilityLabel="Abrir press kit"
+                >
+                  <Ionicons name="folder-open" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
               {previews.map((item) => (
                 <TouchableOpacity
                   key={item.kind + item.url}
@@ -501,6 +528,50 @@ export default function PerfilArtistaScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={pressKitMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPressKitMenuOpen(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setPressKitMenuOpen(false)} />
+          <View style={[styles.menuSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.menuHead}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Press kit</Text>
+              <TouchableOpacity onPress={() => setPressKitMenuOpen(false)} hitSlop={10}>
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {pressKitItems.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.menuItem, { borderColor: colors.border }]}
+                onPress={() => {
+                  setPressKitMenuOpen(false);
+                  void Linking.openURL(item.url);
+                }}
+              >
+                <Ionicons
+                  name={item.item_type === 'file' ? 'document-attach-outline' : 'link-outline'}
+                  size={18}
+                  color={colors.primary}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.menuItemTitle, { color: colors.text }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={[styles.menuItemSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {item.item_type === 'file' ? 'Arquivo' : 'Link'}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       </Modal>

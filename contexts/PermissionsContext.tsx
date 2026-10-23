@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useActiveArtistContext } from './ActiveArtistContext';
 import {
@@ -77,8 +78,27 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   useEffect(() => {
+    setUserPermissions(null);
+    setPermissionsLoaded(false);
     void loadPermissions(true);
-  }, [activeArtist?.id, activeArtist?.role]);
+  }, [activeArtist?.id]);
+
+  useEffect(() => {
+    if (!activeArtist?.id) return;
+    void loadPermissions(true);
+  }, [activeArtist?.role]);
+
+  const loadPermissionsRef = useRef(loadPermissions);
+  loadPermissionsRef.current = loadPermissions;
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void loadPermissionsRef.current(true);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // 🔥 ESCUTAR MUDANÇAS EM TEMPO REAL
   useEffect(() => {

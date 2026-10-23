@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getActiveArtist, setActiveArtist as saveToStorage, clearActiveArtist } from '../services/artistContext';
 import { getArtistById, getArtists } from '../services/supabase/artistService';
@@ -119,12 +119,11 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const setActiveArtist = async (artist: ActiveArtist) => {
     try {
-      // 1. Salvar no AsyncStorage
-      await saveToStorage(artist);
-      
-      // 2. Atualizar estado imediatamente
-      setActiveArtistState(artist);
-      artistIdRef.current = artist.id;
+      const role = await resolveMembershipRole(artist.id, artist.role);
+      const nextArtist: ActiveArtist = { ...artist, role };
+      await saveToStorage(nextArtist);
+      setActiveArtistState(nextArtist);
+      artistIdRef.current = nextArtist.id;
     } catch (error) {
       // Erro ao definir artista
     }
@@ -134,28 +133,27 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       const saved = await getActiveArtist();
       if (!saved) return;
+      if (artistIdRef.current && artistIdRef.current !== saved.id) return;
 
-      // Buscar dados atualizados do banco
+      const membershipRole = await resolveMembershipRole(saved.id, saved.role);
       const { artist, error } = await getArtistById(saved.id);
 
-      if (!error && artist) {
-        // Atualizar apenas se o ID for o mesmo (garantir que não troca)
-        if (artistIdRef.current === artist.id) {
-          const membershipRole = await resolveMembershipRole(artist.id, saved.role);
-          const updatedArtist: ActiveArtist = {
-            id: artist.id,
-            name: artist.name,
-            role: membershipRole,
-            profile_url: artist.profile_url,
-              musical_style: artist.musical_style || saved.musical_style,
-              created_at: artist.created_at || saved.created_at,
-          };
-          
-          await saveToStorage(updatedArtist);
-          setActiveArtistState(updatedArtist);
-          artistIdRef.current = updatedArtist.id;
-        }
-      }
+      if (artistIdRef.current && artistIdRef.current !== saved.id) return;
+
+      const updatedArtist: ActiveArtist = {
+        id: saved.id,
+        name: !error && artist ? artist.name : saved.name,
+        role: membershipRole,
+        profile_url: !error && artist ? artist.profile_url || saved.profile_url : saved.profile_url,
+        musical_style:
+          !error && artist ? artist.musical_style || saved.musical_style : saved.musical_style,
+        created_at:
+          !error && artist ? artist.created_at || saved.created_at : saved.created_at,
+      };
+
+      await saveToStorage(updatedArtist);
+      setActiveArtistState(updatedArtist);
+      artistIdRef.current = updatedArtist.id;
     } catch (error) {
       // Erro ao atualizar
     }
@@ -326,6 +324,18 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // Erro ao configurar realtime
     }
   };
+
+  const refreshActiveArtistRef = useRef(refreshActiveArtist);
+  refreshActiveArtistRef.current = refreshActiveArtist;
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void refreshActiveArtistRef.current();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   const cleanupRealtime = async () => {
     if (channelRef.current) {
