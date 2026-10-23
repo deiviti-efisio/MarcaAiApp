@@ -61,10 +61,12 @@ const COLLABORATOR_ROLES_CONFIG: {
     label: 'Vendedor',
     summary: 'Como o Visualizador, mas pode criar eventos e ver o valor dos que ele mesmo criou.',
     powers: [
-      'Criar eventos',
+      'Criar eventos na agenda',
       'Ver o valor (cachê) apenas dos eventos que ele mesmo criou',
+      'Favoritar oportunidades no feed',
     ],
     limitations: [
+      'Não publica oportunidades no feed (somente o administrador)',
       'Não edita nem exclui eventos',
       'Não vê valores de eventos criados por outros nem o financeiro do artista',
       'Não convida/remove colaboradores nem edita perfil do artista',

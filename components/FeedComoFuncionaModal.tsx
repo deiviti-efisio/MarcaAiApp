@@ -22,7 +22,7 @@ const STEPS: Step[] = [
   {
     icon: 'sparkles-outline',
     title: 'Você publica primeiro',
-    text: 'Está livre? Avise a região (cidade do perfil) e até quanto cobra. Quem busca perto de você vê o anúncio.',
+    text: 'Só o administrador publica. Informe região e até quanto cobra. Vendedor acompanha o mural e pode favoritar oportunidades.',
   },
   {
     icon: 'people-outline',
@@ -37,7 +37,7 @@ const STEPS: Step[] = [
   {
     icon: 'lock-closed-outline',
     title: 'Editar e encerrar',
-    text: 'Com candidatos, o anúncio não pode mais ser editado. Dá para encerrar e publicar de novo, se precisar mudar a data.',
+    text: 'Com candidatos, o anúncio não pode mais ser editado. No dia seguinte ao show, se ninguém aceitou, a oportunidade sai do feed automaticamente.',
   },
 ];
 

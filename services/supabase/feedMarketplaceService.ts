@@ -187,6 +187,7 @@ export async function listarFeedMarketplace(params: {
   abortSignal?: AbortSignal;
 }): Promise<{ anuncios: FeedAnuncio[]; error: string | null; aborted?: boolean }> {
   try {
+    void supabase.rpc('encerrar_anuncios_feed_vencidos');
     const tipoRpc =
       params.filtro === 'disponivel' || params.filtro === 'demanda'
         ? params.filtro

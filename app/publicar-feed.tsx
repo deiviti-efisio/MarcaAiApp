@@ -114,7 +114,7 @@ function hmToDate(hm: string): Date {
 export default function PublicarFeedScreen() {
   const { colors, isDarkMode } = useTheme();
   const { activeArtist } = useActiveArtist();
-  const { canCreateEvents } = usePermissions();
+  const { isAdmin } = usePermissions();
   const { tipo: tipoParam, eventId: eventIdParam } = useLocalSearchParams<{
     tipo?: string;
     eventId?: string;
@@ -460,8 +460,8 @@ export default function PublicarFeedScreen() {
       Alert.alert('Artista', 'Selecione um artista nas Configurações.');
       return;
     }
-    if (!canCreateEvents) {
-      Alert.alert('Sem permissão', 'Somente admin ou vendedor pode publicar no feed.');
+    if (!isAdmin) {
+      Alert.alert('Sem permissão', 'Somente o administrador pode publicar oportunidade no feed.');
       return;
     }
     if (!nomeEvento.trim()) {

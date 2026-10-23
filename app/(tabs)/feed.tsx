@@ -59,6 +59,10 @@ import {
   listarArtistasFavoritos,
   listarIdsArtistasFavoritos,
 } from '../../services/supabase/artistFavoritesService';
+import {
+  alternarEventoFavorito,
+  listarIdsEventosFavoritos,
+} from '../../services/supabase/eventFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
 import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../../lib/openArtistChat';
 import { getArtistById } from '../../services/supabase/artistService';
@@ -76,7 +80,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeArtist } = useActiveArtistContext();
-  const { canCreateEvents, isAdmin } = usePermissions();
+  const { canCreateEvents, isAdmin, isVendedor } = usePermissions();
   const { unreadCount, loadUnreadCount } = useNotifications();
   const { unreadChats, refreshUnreadChats } = useUnreadConversas();
   const [filtro, setFiltro] = useState<FeedFiltro>('todos');
@@ -96,7 +100,10 @@ export default function FeedScreen() {
   const [filtroFuncao, setFiltroFuncao] = useState('');
   const [filtroGenero, setFiltroGenero] = useState('');
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
+  const [filtroFavoritosFeed, setFiltroFavoritosFeed] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [favoriteEventIds, setFavoriteEventIds] = useState<Set<string>>(new Set());
+  const canFavoriteOportunidade = isAdmin || isVendedor;
   const [estadoUfFeed, setEstadoUfFeed] = useState('');
   const [cidadeFeed, setCidadeFeed] = useState('');
   const [cidadeFeedDebounced, setCidadeFeedDebounced] = useState('');
@@ -181,12 +188,19 @@ export default function FeedScreen() {
 
       if (generation !== loadGenerationRef.current) return;
 
-      const visiveis =
+      const favIds = await listarIdsEventosFavoritos();
+      if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
+      setFavoriteEventIds(favIds);
+
+      let visiveis =
         !marketplaceRes.error && verMinhas && artistId
           ? marketplaceRes.anuncios.filter((item) => item.artist_id === artistId)
           : !marketplaceRes.error
             ? marketplaceRes.anuncios
             : [];
+      if (filtroFavoritosFeed) {
+        visiveis = visiveis.filter((item) => favIds.has(item.id));
+      }
 
       setAnuncios(visiveis);
       setError(visiveis.length === 0 ? marketplaceRes.error : marketplaceRes.error);
@@ -216,7 +230,7 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [filtro, verMinhas, verArtistas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, activeArtist?.id]);
+  }, [filtro, verMinhas, verArtistas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, filtroFavoritosFeed, activeArtist?.id]);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaArtistaDebounced(buscaArtista.trim()), 280);
@@ -370,9 +384,13 @@ export default function FeedScreen() {
   }, [activeArtist?.id]);
 
   useEffect(() => {
+    if (!isAdmin && verMinhas) setVerMinhas(false);
+  }, [isAdmin, verMinhas]);
+
+  useEffect(() => {
     if (!activeArtist?.id || verArtistas) return;
     void load(false);
-  }, [filtro, verMinhas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, activeArtist?.id, verArtistas, load]);
+  }, [filtro, verMinhas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, filtroFavoritosFeed, activeArtist?.id, verArtistas, load]);
 
   useEffect(() => {
     if (!verArtistas || !artistasProntoGeo) return;
@@ -443,6 +461,31 @@ export default function FeedScreen() {
     }
   }, [favoriteIds, filtroFavoritos, isAdmin]);
 
+  const toggleFavoritoOportunidade = useCallback(async (eventId: string) => {
+    if (!canFavoriteOportunidade) return;
+    const wasFavorite = favoriteEventIds.has(eventId);
+    setFavoriteEventIds((prev) => {
+      const next = new Set(prev);
+      if (wasFavorite) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+    const { favorite, error } = await alternarEventoFavorito(eventId, wasFavorite);
+    if (error) {
+      setFavoriteEventIds((prev) => {
+        const next = new Set(prev);
+        if (wasFavorite) next.add(eventId);
+        else next.delete(eventId);
+        return next;
+      });
+      Alert.alert('Favoritos', error);
+      return;
+    }
+    if (filtroFavoritosFeed && !favorite) {
+      setAnuncios((prev) => prev.filter((item) => item.id !== eventId));
+    }
+  }, [canFavoriteOportunidade, favoriteEventIds, filtroFavoritosFeed]);
+
   const emptyCopy = useMemo(() => {
     if (verArtistas) {
       if (filtroFavoritos) {
@@ -462,11 +505,14 @@ export default function FeedScreen() {
     if (estadoUfFeed || cidadeFeed.trim()) {
       return 'Nenhuma oportunidade neste local. Limpe cidade ou estado para ver todas.';
     }
+    if (filtroFavoritosFeed) {
+      return 'Nenhuma oportunidade favorita neste filtro. Toque no coração para salvar.';
+    }
     if (verMinhas) {
       return 'Você ainda não publicou no feed.';
     }
     return 'Ainda não há oportunidades no feed.';
-  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFavoritos, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
+  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFavoritos, filtroFavoritosFeed, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
 
   const handlePublicar = () => {
     if (!activeArtist) {
@@ -480,7 +526,7 @@ export default function FeedScreen() {
       );
       return;
     }
-    if (!canCreateEvents) {
+    if (!isAdmin) {
       setShowPermissionModal(true);
       return;
     }
@@ -695,15 +741,34 @@ export default function FeedScreen() {
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
             <Text style={[styles.cardKind, { color: colors.primary }]}>Oportunidade</Text>
-            {meuAnuncio ? (
-              <TouchableOpacity
-                onPress={() => setAnuncioMenu(item)}
-                hitSlop={10}
-                accessibilityLabel="Mais opções"
-              >
-                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {canFavoriteOportunidade && !meuAnuncio ? (
+                <TouchableOpacity
+                  onPress={() => void toggleFavoritoOportunidade(item.id)}
+                  hitSlop={10}
+                  accessibilityLabel={
+                    favoriteEventIds.has(item.id)
+                      ? 'Remover dos favoritos'
+                      : 'Favoritar oportunidade'
+                  }
+                >
+                  <Ionicons
+                    name={favoriteEventIds.has(item.id) ? 'heart' : 'heart-outline'}
+                    size={20}
+                    color={favoriteEventIds.has(item.id) ? '#EF4444' : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
+              {meuAnuncio ? (
+                <TouchableOpacity
+                  onPress={() => setAnuncioMenu(item)}
+                  hitSlop={10}
+                  accessibilityLabel="Mais opções"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.cardHeaderRow}>
@@ -1227,7 +1292,7 @@ export default function FeedScreen() {
           </TouchableOpacity>
         </View>
 
-        {!verArtistas ? (
+        {!verArtistas && isAdmin ? (
           <View style={styles.subTabs}>
             <TouchableOpacity
               style={[styles.subTab, !verMinhas && { borderBottomColor: colors.primary }]}
@@ -1299,6 +1364,20 @@ export default function FeedScreen() {
                   />
                 </TouchableOpacity>
               ) : null}
+              {!verArtistas && canFavoriteOportunidade ? (
+                <TouchableOpacity
+                  style={styles.filterToggle}
+                  onPress={() => setFiltroFavoritosFeed((v) => !v)}
+                  hitSlop={8}
+                  accessibilityLabel="Filtrar oportunidades favoritas"
+                >
+                  <Ionicons
+                    name={filtroFavoritosFeed ? 'heart' : 'heart-outline'}
+                    size={18}
+                    color={filtroFavoritosFeed ? '#EF4444' : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={styles.filterToggle}
                 onPress={() => setShowFiltros((v) => !v)}
@@ -1312,7 +1391,7 @@ export default function FeedScreen() {
                       ? estadoUfArtistas || cidadeArtistas.trim() || filtroGenero || filtroFavoritos
                         ? colors.primary
                         : colors.textSecondary
-                      : cidadeFeed || estadoUfFeed || filtroFuncao
+                      : cidadeFeed || estadoUfFeed || filtroFuncao || filtroFavoritosFeed
                         ? colors.primary
                         : colors.textSecondary
                   }
@@ -1587,7 +1666,7 @@ export default function FeedScreen() {
         />
       )}
 
-      {activeArtist && !verArtistas ? (
+      {activeArtist && !verArtistas && isAdmin ? (
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.primary }]}
           onPress={handlePublicar}
@@ -1643,7 +1722,7 @@ export default function FeedScreen() {
         visible={showPermissionModal}
         onClose={() => setShowPermissionModal(false)}
         title="Sem permissão"
-        message="Somente admin ou vendedor pode publicar e iniciar negociação no feed."
+        message="Somente o administrador publica oportunidades. O vendedor pode favoritar e, se tiver permissão, iniciar negociação."
       />
       <PropostaEnviadaModal
         visible={showPropostaEnviada}
