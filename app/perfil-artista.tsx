@@ -21,7 +21,9 @@ import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import FeaturedShowCard from '../components/FeaturedShowCard';
+import PressKitAudioPlayer from '../components/PressKitAudioPlayer';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
+import { isPressKitAudio } from '../lib/pressKitMedia';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
 import {
@@ -75,6 +77,7 @@ export default function PerfilArtistaScreen() {
   const [favorito, setFavorito] = useState(false);
   const [pressKitItems, setPressKitItems] = useState<ArtistPressKitItem[]>([]);
   const [pressKitMenuOpen, setPressKitMenuOpen] = useState(false);
+  const [playingPressKit, setPlayingPressKit] = useState<ArtistPressKitItem | null>(null);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
   const canManagePublicProfile = isOwn && isAdmin;
@@ -137,9 +140,18 @@ export default function PerfilArtistaScreen() {
     });
   };
 
+  const openPressKitItem = (item: ArtistPressKitItem) => {
+    setPressKitMenuOpen(false);
+    if (isPressKitAudio(item)) {
+      setPlayingPressKit(item);
+      return;
+    }
+    void Linking.openURL(item.url);
+  };
+
   const handleOpenPressKit = () => {
     if (pressKitItems.length === 1) {
-      void Linking.openURL(pressKitItems[0].url);
+      openPressKitItem(pressKitItems[0]);
       return;
     }
     if (pressKitItems.length > 1) {
@@ -551,13 +563,16 @@ export default function PerfilArtistaScreen() {
               <TouchableOpacity
                 key={item.id}
                 style={[styles.menuItem, { borderColor: colors.border }]}
-                onPress={() => {
-                  setPressKitMenuOpen(false);
-                  void Linking.openURL(item.url);
-                }}
+                onPress={() => openPressKitItem(item)}
               >
                 <Ionicons
-                  name={item.item_type === 'file' ? 'document-attach-outline' : 'link-outline'}
+                  name={
+                    isPressKitAudio(item)
+                      ? 'musical-notes'
+                      : item.item_type === 'file'
+                        ? 'document-attach-outline'
+                        : 'link-outline'
+                  }
                   size={18}
                   color={colors.primary}
                 />
@@ -566,15 +581,28 @@ export default function PerfilArtistaScreen() {
                     {item.title}
                   </Text>
                   <Text style={[styles.menuItemSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {item.item_type === 'file' ? 'Arquivo' : 'Link'}
+                    {isPressKitAudio(item) ? 'Música' : item.item_type === 'file' ? 'Arquivo' : 'Link'}
                   </Text>
                 </View>
-                <Ionicons name="open-outline" size={16} color={colors.textSecondary} />
+                <Ionicons
+                  name={isPressKitAudio(item) ? 'play' : 'open-outline'}
+                  size={16}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
             ))}
           </View>
         </View>
       </Modal>
+
+      <PressKitAudioPlayer
+        visible={!!playingPressKit}
+        uri={playingPressKit?.url || null}
+        title={playingPressKit?.title || ''}
+        artistName={artist?.name}
+        colors={colors}
+        onClose={() => setPlayingPressKit(null)}
+      />
     </SafeAreaView>
   );
 }

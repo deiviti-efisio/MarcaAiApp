@@ -119,7 +119,9 @@
         {
           "microphonePermission": "O MeuShow usa o microfone para você criar eventos falando a data, o valor e o local.",
           "speechRecognitionPermission": "O MeuShow usa o reconhecimento de fala para preencher o evento a partir do que você disser.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ],
       "expo-web-browser"
