@@ -69,6 +69,7 @@ export async function listarArtistasFavoritos(params: {
   estado?: string | null;
   termo?: string | null;
   funcao?: string | null;
+  genero?: string | null;
   limit?: number;
   offset?: number;
   abortSignal?: AbortSignal;
@@ -79,6 +80,7 @@ export async function listarArtistasFavoritos(params: {
   const cidade = (params.cidade || '').trim();
   const funcao = (params.funcao || '').trim();
   const estado = (params.estado || '').trim();
+  const genero = (params.genero || '').trim();
 
   try {
     let query = supabase.rpc('listar_artistas_favoritos', {
@@ -87,6 +89,7 @@ export async function listarArtistasFavoritos(params: {
       p_estado: estado.length > 0 ? estado : null,
       p_termo: termo.length >= 2 ? termo : null,
       p_funcao: funcao.length >= 2 ? funcao : null,
+      p_genero: genero.length > 0 ? genero : null,
       p_limit: limit,
       p_offset: offset,
     });

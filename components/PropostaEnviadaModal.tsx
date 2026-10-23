@@ -55,9 +55,7 @@ export default function PropostaEnviadaModal({
           <Text style={[styles.message, { color: colors.textSecondary }]}>
             {confirmando
               ? 'Ela some para o anunciante e você pode enviar outra depois, se quiser.'
-              : isDemanda
-                ? 'Você já se candidatou. O anunciante pode aceitar, ou você confirma em Convites — não é preciso enviar outra.'
-                : 'O artista da oferta recebe o convite e precisa aceitar. Enquanto estiver pendente, você pode desfazer.'}
+              : 'Você já enviou interesse nesta oportunidade. O anunciante pode aceitar, ou você acompanha em Convites. Enquanto estiver pendente, dá para desfazer.'}
           </Text>
 
           {confirmando ? (

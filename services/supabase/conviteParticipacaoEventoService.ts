@@ -1,4 +1,5 @@
 import { isAbortError } from '../../lib/abortError';
+import { estadoNomeCompletoParaBusca } from '../../lib/brazilGeo';
 import { supabase } from '../../lib/supabase';
 
 export type StatusConviteParticipacao = 'pendente' | 'aceito' | 'recusado' | 'cancelado';
@@ -160,14 +161,22 @@ function abortedResult(signal?: AbortSignal, error?: unknown) {
   return Boolean(signal?.aborted || isAbortError(error));
 }
 
-/** Todos os artistas, sem filtro. Tenta RPC rápida e cai para outra se ainda não existir no banco. */
+/** Artistas do Feed: estado, cidade, gênero e nome. Sem filtro → todos. */
 export async function listarTodosArtistas(params: {
+  estado?: string | null;
+  cidade?: string | null;
+  genero?: string | null;
+  termo?: string | null;
   limit?: number;
   offset?: number;
   abortSignal?: AbortSignal;
 }): Promise<{ artists: ArtistaBuscaConvite[]; hasMore: boolean; error: string | null; aborted?: boolean }> {
   const limit = Math.min(Math.max(params.limit ?? ARTISTAS_BUSCA_PAGE_SIZE, 1), 40);
   const offset = Math.max(params.offset ?? 0, 0);
+  const estado = (params.estado || '').trim();
+  const cidade = (params.cidade || '').trim();
+  const genero = (params.genero || '').trim();
+  const termo = (params.termo || '').trim();
   const signal = params.abortSignal;
 
   const finish = (data: unknown[] | null) => {
@@ -176,7 +185,14 @@ export async function listarTodosArtistas(params: {
   };
 
   try {
-    let todos = supabase.rpc('listar_todos_artistas', { p_limit: limit, p_offset: offset });
+    let todos = supabase.rpc('listar_todos_artistas', {
+      p_estado: estado.length > 0 ? estado : null,
+      p_cidade: cidade.length >= 2 ? cidade : null,
+      p_genero: genero.length > 0 ? genero : null,
+      p_termo: termo.length >= 2 ? termo : null,
+      p_limit: limit,
+      p_offset: offset,
+    });
     if (signal) todos = todos.abortSignal(signal);
     const first = await todos;
     if (abortedResult(signal, first.error)) {
@@ -187,9 +203,9 @@ export async function listarTodosArtistas(params: {
     if (isMissingRpc(first.error)) {
       let prox = supabase.rpc('buscar_artistas_proximos', {
         p_artista_atual_id: null,
-        p_cidade: null,
-        p_estado: null,
-        p_termo: null,
+        p_cidade: cidade.length >= 2 ? cidade : null,
+        p_estado: estado.length > 0 ? estado : null,
+        p_termo: termo.length >= 2 ? termo : null,
         p_funcao: null,
         p_limit: limit,
         p_offset: offset,
@@ -199,7 +215,15 @@ export async function listarTodosArtistas(params: {
       if (abortedResult(signal, second.error)) {
         return { artists: [], hasMore: false, error: null, aborted: true };
       }
-      if (!second.error) return finish((second.data || []) as unknown[]);
+      if (!second.error) {
+        const mapped = finish((second.data || []) as unknown[]);
+        if (!genero) return mapped;
+        const g = genero.toLowerCase();
+        const filtered = mapped.artists.filter((item) =>
+          String(item.musical_style || '').toLowerCase().includes(g)
+        );
+        return { artists: filtered, hasMore: false, error: null };
+      }
       if (!isMissingRpc(second.error)) {
         return { artists: [], hasMore: false, error: second.error.message };
       }
@@ -207,11 +231,16 @@ export async function listarTodosArtistas(params: {
       return { artists: [], hasMore: false, error: first.error.message };
     }
 
+    const estadoNome = estadoNomeCompletoParaBusca(estado);
     let table = supabase
       .from('artists')
       .select('id, name, profile_url, musical_style, work_roles, city, state')
       .order('name', { ascending: true })
       .range(offset, offset + limit - 1);
+    if (estadoNome) table = table.eq('state', estadoNome);
+    if (cidade.length >= 2) table = table.ilike('city', `${cidade}%`);
+    if (genero.length > 0) table = table.ilike('musical_style', `${genero}%`);
+    if (termo.length >= 2) table = table.ilike('name', `${termo}%`);
     if (signal) table = table.abortSignal(signal);
     const third = await table;
     if (abortedResult(signal, third.error)) {

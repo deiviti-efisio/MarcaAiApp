@@ -23,6 +23,8 @@ export interface ChipMultiSelectFieldProps {
   addPlaceholder: string;
   /** Mesma lista de sugestões do convite (ex.: `ARTIST_WORK_ROLE_PRESETS`): carrossel no topo; a grade mostra só o que for extra. */
   presetStrip?: readonly string[];
+  /** Só carrossel horizontal + campo para digitar, sem grade. */
+  horizontalOnly?: boolean;
 }
 
 export function ChipMultiSelectField({
@@ -36,16 +38,29 @@ export function ChipMultiSelectField({
   addSectionLabel,
   addPlaceholder,
   presetStrip,
+  horizontalOnly = false,
 }: ChipMultiSelectFieldProps) {
   const { colors } = useTheme();
 
   const presetSet = presetStrip?.length ? new Set(presetStrip) : null;
-  const gridOptions = presetSet ? options.filter((o) => !presetSet.has(o)) : options;
+  const gridOptions = horizontalOnly
+    ? []
+    : presetSet
+      ? options.filter((o) => !presetSet.has(o))
+      : options;
+  const stripOptions = (() => {
+    const base = presetStrip?.length ? [...presetStrip] : [];
+    if (!horizontalOnly) return base;
+    selected.forEach((item) => {
+      if (!base.includes(item)) base.push(item);
+    });
+    return base;
+  })();
 
   const subtitle =
     selected.length === 0
-      ? presetStrip?.length
-        ? 'Deslize as sugestões no carrossel; funções extras ficam na grade abaixo.'
+      ? horizontalOnly || presetStrip?.length
+        ? 'Deslize na horizontal para escolher, ou digite outra função.'
         : 'Toque nos chips para selecionar — pode marcar várias opções'
       : `${selected.length} selecionado${selected.length !== 1 ? 's' : ''}`;
 
@@ -63,14 +78,14 @@ export function ChipMultiSelectField({
           },
         ]}
       >
-        {presetStrip && presetStrip.length > 0 ? (
+        {stripOptions.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.presetStripRow}
             keyboardShouldPersistTaps="handled"
           >
-            {presetStrip.map((opt) => {
+            {stripOptions.map((opt) => {
               const on = selected.includes(opt);
               return (
                 <TouchableOpacity

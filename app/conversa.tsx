@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import OptimizedImage from '../components/OptimizedImage';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -34,6 +34,7 @@ function formatMsgTime(iso: string): string {
 
 export default function ConversaScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { activeArtist } = useActiveArtistContext();
   const params = useLocalSearchParams<{
     conversationId?: string;
@@ -231,7 +232,16 @@ export default function ConversaScreen() {
             />
           )}
 
-          <View style={[styles.composer, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+          <View
+            style={[
+              styles.composer,
+              {
+                borderTopColor: colors.border,
+                backgroundColor: colors.background,
+                paddingBottom: Math.max(insets.bottom, 8) + 12,
+              },
+            ]}
+          >
             <TextInput
               style={[
                 styles.input,
@@ -293,7 +303,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   input: {

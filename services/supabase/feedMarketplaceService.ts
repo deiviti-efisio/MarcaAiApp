@@ -99,7 +99,12 @@ function asBoolean(value: unknown): boolean {
 
 export function isNomeAutomaticoFeed(name: string): boolean {
   const n = name.trim();
-  return n === 'Oferta' || n === 'Procurando' || /^(Oferta|Procurando)\s*[·\-–]\s*/i.test(n);
+  return (
+    n === 'Oferta' ||
+    n === 'Procurando' ||
+    n === 'Oportunidade' ||
+    /^(Oferta|Procurando|Oportunidade)\s*[·\-–]\s*/i.test(n)
+  );
 }
 
 /** Data do anúncio ainda é hoje ou futura (parte YYYY-MM-DD, fuso local do aparelho). */
@@ -183,17 +188,31 @@ export async function listarFeedMarketplace(params: {
 }): Promise<{ anuncios: FeedAnuncio[]; error: string | null; aborted?: boolean }> {
   try {
     const tipoRpc =
-      params.filtro === 'todos' ? null : params.filtro;
-    let query = supabase.rpc('listar_feed_marketplace', {
+      params.filtro === 'disponivel' || params.filtro === 'demanda'
+        ? params.filtro
+        : null;
+    const payload = {
       p_tipo: tipoRpc,
       p_estado: params.estadoUf?.trim() ? params.estadoUf.trim() : null,
       p_cidade: params.cidade?.trim() ? params.cidade.trim() : null,
       p_artista_atual_id: params.artistaAtualId ?? null,
       p_funcao: params.funcao?.trim() ? params.funcao.trim() : null,
       p_evento_detalhe: params.eventoDetalheId ?? null,
-    });
-    if (params.abortSignal) query = query.abortSignal(params.abortSignal);
-    const { data, error } = await query;
+    };
+    const runListar = async (args: Record<string, unknown>) => {
+      let query = supabase.rpc('listar_feed_marketplace', args);
+      if (params.abortSignal) query = query.abortSignal(params.abortSignal);
+      return query;
+    };
+    let { data, error } = await runListar(payload);
+    if (error && isRpcSignatureMissing(error.message)) {
+      const { p_evento_detalhe: _detalhe, ...semDetalhe } = payload;
+      ({ data, error } = await runListar(semDetalhe));
+    }
+    if (error && isRpcSignatureMissing(error.message)) {
+      const { p_evento_detalhe: _detalhe, p_funcao: _funcao, ...basico } = payload;
+      ({ data, error } = await runListar(basico));
+    }
     if (params.abortSignal?.aborted || isAbortError(error)) {
       return { anuncios: [], error: null, aborted: true };
     }

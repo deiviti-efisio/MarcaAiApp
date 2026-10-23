@@ -34,6 +34,7 @@ import { useNotifications } from '../../services/useNotifications';
 import { brazilUfFromStateName, formatEventLocationSlash } from '../../lib/brazilGeo';
 import { formatCalendarDate, formatCalendarDateLongParts, weekdayFromCalendarDate } from '../../lib/dateUtils';
 import {
+  ARTIST_MUSICAL_STYLE_PRESETS,
   ARTIST_WORK_ROLE_PRESETS,
   parseArtistStringArrayFromJson,
 } from '../../constants/artistProfileLists';
@@ -55,6 +56,7 @@ import {
 } from '../../services/supabase/conviteParticipacaoEventoService';
 import {
   alternarArtistaFavorito,
+  listarArtistasFavoritos,
   listarIdsArtistasFavoritos,
 } from '../../services/supabase/artistFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
@@ -66,20 +68,6 @@ function formatTime(t: string) {
 
 const FEED_COMO_FUNCIONA_SEEN_KEY = 'feed_marketplace_como_funciona_visto';
 const FEED_ARTISTAS_UF_KEY = 'feed_artistas_ultimo_uf';
-
-const FILTROS: { id: FeedFiltro; label: string; descricao: string }[] = [
-  { id: 'todos', label: 'Todos', descricao: 'Todas as publicações' },
-  {
-    id: 'disponivel',
-    label: 'Ofertas',
-    descricao: 'Quem está oferecendo artista, banda, músico, serviço, parceria etc.',
-  },
-  {
-    id: 'demanda',
-    label: 'Procuras',
-    descricao: 'Quem está buscando artista, músico, banda, serviço, parceria etc.',
-  },
-];
 
 export default function FeedScreen() {
   const { colors } = useTheme();
@@ -104,20 +92,24 @@ export default function FeedScreen() {
   const artistasGenerationRef = useRef(0);
   const [artistasProntoGeo, setArtistasProntoGeo] = useState(false);
   const [filtroFuncao, setFiltroFuncao] = useState('');
+  const [filtroGenero, setFiltroGenero] = useState('');
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
-  const [estadoUf, setEstadoUf] = useState('');
-  const [cidade, setCidade] = useState('');
-  const [cidadeDebounced, setCidadeDebounced] = useState('');
+  const [estadoUfFeed, setEstadoUfFeed] = useState('');
+  const [cidadeFeed, setCidadeFeed] = useState('');
+  const [cidadeFeedDebounced, setCidadeFeedDebounced] = useState('');
+  const [estadoUfArtistas, setEstadoUfArtistas] = useState('');
+  const [cidadeArtistas, setCidadeArtistas] = useState('');
+  const [cidadeArtistasDebounced, setCidadeArtistasDebounced] = useState('');
   const [showEstados, setShowEstados] = useState(false);
   const [showFuncaoPicker, setShowFuncaoPicker] = useState(false);
+  const [showGeneroPicker, setShowGeneroPicker] = useState(false);
   const [anuncios, setAnuncios] = useState<FeedAnuncio[]>([]);
   const [propostasPorEvento, setPropostasPorEvento] = useState<Record<string, FeedProposta[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [showPublicarOpcoes, setShowPublicarOpcoes] = useState(false);
   const [showPropostaEnviada, setShowPropostaEnviada] = useState(false);
   const [anuncioProposta, setAnuncioProposta] = useState<FeedAnuncio | null>(null);
   const [desfazendoProposta, setDesfazendoProposta] = useState(false);
@@ -141,6 +133,26 @@ export default function FeedScreen() {
     () => [...ARTIST_WORK_ROLE_PRESETS],
     []
   );
+  const generoFilterOptions = useMemo(
+    () => [...ARTIST_MUSICAL_STYLE_PRESETS],
+    []
+  );
+  const artistaFiltrosRef = useRef({
+    estadoUf: '',
+    cidade: '',
+    genero: '',
+    nome: '',
+    favoritos: false,
+  });
+  artistaFiltrosRef.current = {
+    estadoUf: estadoUfArtistas,
+    cidade: cidadeArtistasDebounced,
+    genero: filtroGenero,
+    nome: buscaArtistaDebounced,
+    favoritos: filtroFavoritos,
+  };
+  const activeArtistIdRef = useRef(activeArtist?.id ?? null);
+  activeArtistIdRef.current = activeArtist?.id ?? null;
 
   const load = useCallback(async (silent = false) => {
     if (verArtistas || !feedFocusedRef.current) return;
@@ -156,9 +168,9 @@ export default function FeedScreen() {
     try {
       if (abort.signal.aborted) return;
       const marketplaceRes = await listarFeedMarketplace({
-        filtro: verMinhas ? 'meus' : filtro,
-        estadoUf,
-        cidade: cidadeDebounced,
+        filtro: verMinhas ? 'meus' : 'todos',
+        estadoUf: estadoUfFeed,
+        cidade: cidadeFeedDebounced,
         funcao: filtroFuncao,
         artistaAtualId: artistId,
         abortSignal: abort.signal,
@@ -202,7 +214,7 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [filtro, verMinhas, verArtistas, estadoUf, cidadeDebounced, filtroFuncao, activeArtist?.id]);
+  }, [filtro, verMinhas, verArtistas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, activeArtist?.id]);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaArtistaDebounced(buscaArtista.trim()), 280);
@@ -210,9 +222,14 @@ export default function FeedScreen() {
   }, [buscaArtista]);
 
   useEffect(() => {
-    const t = setTimeout(() => setCidadeDebounced(cidade.trim()), 450);
+    const t = setTimeout(() => setCidadeFeedDebounced(cidadeFeed.trim()), 450);
     return () => clearTimeout(t);
-  }, [cidade]);
+  }, [cidadeFeed]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setCidadeArtistasDebounced(cidadeArtistas.trim()), 450);
+    return () => clearTimeout(t);
+  }, [cidadeArtistas]);
 
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
     if (!verArtistasRef.current) return;
@@ -237,7 +254,14 @@ export default function FeedScreen() {
     const abort = artistasAbortRef.current;
     const offset = append ? artistasLenRef.current : 0;
     try {
-      const { artists, hasMore, error: artistsError, aborted } = await listarTodosArtistas({
+      const { estadoUf: estado, cidade, genero, nome, favoritos } = artistaFiltrosRef.current;
+      const listar = favoritos ? listarArtistasFavoritos : listarTodosArtistas;
+      const { artists, hasMore, error: artistsError, aborted } = await listar({
+        artistaAtualId: activeArtistIdRef.current,
+        estado,
+        cidade,
+        genero,
+        termo: nome,
         limit: ARTISTAS_BUSCA_PAGE_SIZE,
         offset,
         abortSignal: abort.signal,
@@ -290,7 +314,7 @@ export default function FeedScreen() {
         const uf =
           brazilUfFromStateName(fromArtist) ||
           (fromArtist.trim().length === 2 ? fromArtist.trim().toUpperCase() : null);
-        if (uf) setEstadoUf(uf);
+        if (uf) setEstadoUfArtistas(uf);
       } finally {
         if (!cancelled) setArtistasProntoGeo(true);
       }
@@ -334,16 +358,29 @@ export default function FeedScreen() {
     artistasLenRef.current = 0;
     artistasHasMoreRef.current = true;
     setArtistasHasMore(true);
-    setEstadoUf('');
+    setEstadoUfFeed('');
+    setCidadeFeed('');
+    setCidadeFeedDebounced('');
+    setEstadoUfArtistas('');
+    setCidadeArtistas('');
+    setCidadeArtistasDebounced('');
     seededNearRef.current = false;
     setArtistasProntoGeo(false);
     skipNextFocusLoadRef.current = true;
   }, [activeArtist?.id]);
 
   useEffect(() => {
-    if (!activeArtist?.id || verArtistas || !artistasProntoGeo) return;
+    if (!activeArtist?.id || verArtistas) return;
     void load(false);
-  }, [filtro, verMinhas, estadoUf, cidadeDebounced, filtroFuncao, activeArtist?.id, verArtistas, artistasProntoGeo, load]);
+  }, [filtro, verMinhas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, activeArtist?.id, verArtistas, load]);
+
+  useEffect(() => {
+    if (!verArtistas || !artistasProntoGeo) return;
+    setLoadingArtistas(true);
+    setArtistasProximos([]);
+    artistasLenRef.current = 0;
+    void loadArtistas();
+  }, [verArtistas, estadoUfArtistas, cidadeArtistasDebounced, filtroGenero, filtroFavoritos, buscaArtistaDebounced, artistasProntoGeo, loadArtistas]);
 
   useFocusEffect(
     useCallback(() => {
@@ -413,25 +450,22 @@ export default function FeedScreen() {
       if (buscaArtistaDebounced) {
         return 'Nenhum artista encontrado com esse nome.';
       }
-      if (cidade.trim() || estadoUf) {
-        return 'Nenhum artista disponível nessa região. Amplie a cidade ou limpe o estado para ver todos.';
+      if (filtroGenero || estadoUfArtistas || cidadeArtistas.trim()) {
+        return 'Nenhum artista neste filtro. Limpe estado, cidade ou gênero para ver todos.';
       }
       return 'Nenhum artista disponível no momento.';
     }
     if (filtroFuncao) {
-      return `Nenhuma publicação com a função "${filtroFuncao}" neste filtro.`;
+      return `Nenhuma oportunidade com a função "${filtroFuncao}" neste filtro.`;
     }
-    if (filtro === 'disponivel') {
-      return 'Nenhuma oferta neste filtro.';
-    }
-    if (filtro === 'demanda') {
-      return 'Nenhuma procura neste filtro.';
+    if (estadoUfFeed || cidadeFeed.trim()) {
+      return 'Nenhuma oportunidade neste local. Limpe cidade ou estado para ver todas.';
     }
     if (verMinhas) {
       return 'Você ainda não publicou no feed.';
     }
-    return 'Ainda não há publicações no feed.';
-  }, [filtro, verMinhas, filtroFuncao, filtroFavoritos, verArtistas, buscaArtistaDebounced, cidade, estadoUf]);
+    return 'Ainda não há oportunidades no feed.';
+  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFavoritos, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
 
   const handlePublicar = () => {
     if (!activeArtist) {
@@ -445,17 +479,11 @@ export default function FeedScreen() {
       );
       return;
     }
-    setShowPublicarOpcoes(true);
-  };
-
-  const handleEscolherPublicacao = (tipo: 'disponivel' | 'demanda') => {
     if (!canCreateEvents) {
-      setShowPublicarOpcoes(false);
       setShowPermissionModal(true);
       return;
     }
-    setShowPublicarOpcoes(false);
-    router.push({ pathname: '/publicar-feed', params: { tipo } });
+    router.push('/publicar-feed');
   };
 
   const isMeuAnuncio = (item: FeedAnuncio) =>
@@ -525,21 +553,17 @@ export default function FeedScreen() {
       Alert.alert('Proposta aceita', 'Este artista já está na agenda deste evento.');
       return;
     }
-    if (item.feed_tipo === 'demanda') {
-      Alert.alert(
-        'Aceitar candidato',
-        `Confirmar ${proposta.artista_nome} neste evento?\n\nO cachê entra como despesa: ${nomeDespesaProposta(proposta)}.`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Aceitar',
-            onPress: () => void aceitarPropostaFeed(item, proposta),
-          },
-        ]
-      );
-      return;
-    }
-    router.push('/convites-participacao-evento');
+    Alert.alert(
+      'Aceitar interesse',
+      `Confirmar ${proposta.artista_nome} nesta oportunidade?\n\nO cachê entra como despesa: ${nomeDespesaProposta(proposta)}.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Aceitar',
+          onPress: () => void aceitarPropostaFeed(item, proposta),
+        },
+      ]
+    );
   };
 
   const handleEditar = (item: FeedAnuncio) => {
@@ -585,8 +609,7 @@ export default function FeedScreen() {
 
   const renderMarketplaceItem = (item: FeedAnuncio) => {
     const meuAnuncio = isMeuAnuncio(item);
-    const isDemanda = item.feed_tipo === 'demanda';
-    const badgeColor = isDemanda ? '#4F46E5' : '#0F766E';
+    const badgeColor = colors.primary;
     const location = formatEventLocationSlash({
       city: item.city,
       state_uf: item.state_uf,
@@ -622,15 +645,8 @@ export default function FeedScreen() {
     const artistLabel = meuAnuncio ? 'Você' : item.artist_name;
     const artistAvatarUrl = item.artist_image?.trim() || '';
     const artistInitial = artistDisplayName.trim().charAt(0).toUpperCase() || '?';
-    const tipoLabel = isDemanda ? 'Procurando' : 'Oferecendo';
     const funcoesTxt = item.feed_funcoes.length > 0 ? item.feed_funcoes.join(' · ') : '';
-    const offerLine = isDemanda
-      ? funcoesTxt
-        ? `Procura ${funcoesTxt}`
-        : 'Procura artista, músico ou serviço'
-      : funcoesTxt
-        ? `Oferece ${funcoesTxt}`
-        : 'Oferece disponibilidade nesta data';
+    const offerLine = funcoesTxt || 'Show nesta data';
 
     return (
       <View
@@ -642,29 +658,20 @@ export default function FeedScreen() {
           },
         ]}
       >
-        <View style={[styles.typeBanner, { backgroundColor: badgeColor }]}>
-          <View style={styles.typeBannerLeft}>
-            <Ionicons
-              name={isDemanda ? 'search-outline' : 'megaphone-outline'}
-              size={15}
-              color="#fff"
-            />
-            <Text style={styles.typeBannerText}>{tipoLabel}</Text>
-          </View>
-          <View style={styles.moreBtn}>
+        <View style={styles.cardBody}>
+          <View style={styles.cardTopRow}>
+            <Text style={[styles.cardKind, { color: colors.primary }]}>Oportunidade</Text>
             {meuAnuncio ? (
               <TouchableOpacity
                 onPress={() => setAnuncioMenu(item)}
                 hitSlop={10}
                 accessibilityLabel="Mais opções"
               >
-                <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             ) : null}
           </View>
-        </View>
 
-        <View style={styles.cardBody}>
           <View style={styles.cardHeaderRow}>
             <TouchableOpacity
               onPress={() =>
@@ -875,9 +882,7 @@ export default function FeedScreen() {
                   <Text style={[styles.propostaMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                     {proposta.status === 'aceito'
                       ? 'Aceita'
-                      : isDemanda
-                        ? 'Pendente · toque para aceitar'
-                        : 'Pendente · toque para aceitar o convite'}
+                      : 'Pendente · toque para aceitar'}
                     {proposta.funcao && proposta.funcao !== 'Interesse'
                       ? ` · ${proposta.funcao}`
                       : ''}
@@ -913,11 +918,7 @@ export default function FeedScreen() {
                   : styles.btnPrimaryText
               }
             >
-              {item.ja_proposei
-                ? 'Proposta enviada'
-                : isDemanda
-                  ? 'Candidatar'
-                  : 'Tenho interesse'}
+                {item.ja_proposei ? 'Proposta enviada' : 'Tenho interesse'}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -1137,11 +1138,11 @@ export default function FeedScreen() {
               setVerMinhas(false);
               verArtistasRef.current = true;
               feedFocusedRef.current = true;
+              setShowFiltros(true);
               setVerArtistas(true);
               setLoadingArtistas(true);
               setArtistasProximos([]);
               artistasLenRef.current = 0;
-              void loadArtistas();
             }}
             activeOpacity={0.85}
           >
@@ -1153,32 +1154,26 @@ export default function FeedScreen() {
 
         {!verArtistas ? (
           <View style={styles.subTabs}>
-            {FILTROS.map((item) => {
-              const active = !verMinhas && filtro === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.subTab, active && { borderBottomColor: colors.primary }]}
-                  onPress={() => {
-                    if (!verMinhas && filtro === item.id) {
-                      void load(false);
-                      return;
-                    }
-                    setVerMinhas(false);
-                    setFiltro(item.id);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.subTabText,
-                      { color: active ? colors.primary : colors.textSecondary },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            <TouchableOpacity
+              style={[styles.subTab, !verMinhas && { borderBottomColor: colors.primary }]}
+              onPress={() => {
+                if (!verMinhas) {
+                  void load(false);
+                  return;
+                }
+                setVerMinhas(false);
+                setFiltro('todos');
+              }}
+            >
+              <Text
+                style={[
+                  styles.subTabText,
+                  { color: !verMinhas ? colors.primary : colors.textSecondary },
+                ]}
+              >
+                Todas
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.subTab, verMinhas && { borderBottomColor: colors.primary }]}
               onPress={() => {
@@ -1232,11 +1227,12 @@ export default function FeedScreen() {
             <View style={styles.metaRow}>
               <Text style={[styles.nearHint, { color: colors.textSecondary }]} numberOfLines={1}>
                 {verArtistas
-                  ? `${artistasProximos.length} ${artistasProximos.length === 1 ? 'artista' : 'artistas'}`
-                  : `${anuncios.length} ${anuncios.length === 1 ? 'oportunidade' : 'oportunidades'}`}
-                {cidade.trim() || estadoUf
-                  ? ` · ${[cidade.trim(), estadoUf].filter(Boolean).join(' - ')}`
-                  : ''}
+                  ? [filtroGenero, cidadeArtistas.trim(), estadoUfArtistas].filter(Boolean).join(' · ')
+                  : `${anuncios.length} ${anuncios.length === 1 ? 'oportunidade' : 'oportunidades'}${
+                      cidadeFeed.trim() || estadoUfFeed
+                        ? ` · ${[cidadeFeed.trim(), estadoUfFeed].filter(Boolean).join(' - ')}`
+                        : ''
+                    }`}
               </Text>
               {(verArtistas ? loadingArtistas : loading) ? (
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
@@ -1262,64 +1258,134 @@ export default function FeedScreen() {
                 <Ionicons
                   name={showFiltros ? 'options' : 'options-outline'}
                   size={18}
-                  color={cidade || estadoUf || filtroFuncao ? colors.primary : colors.textSecondary}
+                  color={
+                    verArtistas
+                      ? estadoUfArtistas || cidadeArtistas.trim() || filtroGenero || filtroFavoritos
+                        ? colors.primary
+                        : colors.textSecondary
+                      : cidadeFeed || estadoUfFeed || filtroFuncao
+                        ? colors.primary
+                        : colors.textSecondary
+                  }
                 />
               </TouchableOpacity>
             </View>
             {showFiltros ? (
               <View style={styles.filtrosBox}>
-                <View style={styles.geoRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.geoField,
-                      styles.geoUf,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: estadoUf ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => setShowEstados(true)}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={[styles.geoFieldText, { color: estadoUf ? colors.text : colors.textSecondary }]}
-                      numberOfLines={1}
-                    >
-                      {estadoUf || 'UF'}
-                    </Text>
-                    <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <View
-                    style={[
-                      styles.geoField,
-                      styles.geoCity,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: cidade.trim() ? colors.primary : colors.border,
-                      },
-                    ]}
-                  >
-                    <BrazilPlaceSearchField
-                      compact
-                      uf={estadoUf}
-                      value={cidade}
-                      onChangeText={setCidade}
-                      onSelectPlace={(place) => {
-                        setCidade(place.city);
-                        setCidadeDebounced(place.city);
-                        if (place.uf) setEstadoUf(place.uf);
-                      }}
-                      placeholder="Cidade"
-                    />
-                  </View>
-                </View>
-                <View style={styles.funcaoRow}>
-                  <FeedFuncaoFieldButton
-                    selectedFuncao={filtroFuncao}
-                    onPress={() => setShowFuncaoPicker(true)}
-                    colors={colors}
-                  />
-                </View>
+                {verArtistas ? (
+                  <>
+                    <View style={styles.geoRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.geoField,
+                          styles.geoUf,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: estadoUfArtistas ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => setShowEstados(true)}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[styles.geoFieldText, { color: estadoUfArtistas ? colors.text : colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {estadoUfArtistas || 'UF'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <View
+                        style={[
+                          styles.geoField,
+                          styles.geoCity,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: cidadeArtistas.trim() ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <BrazilPlaceSearchField
+                          compact
+                          citiesOnly
+                          uf={estadoUfArtistas}
+                          value={cidadeArtistas}
+                          onChangeText={setCidadeArtistas}
+                          onSelectPlace={(place) => {
+                            setCidadeArtistas(place.city);
+                            setCidadeArtistasDebounced(place.city);
+                            if (place.uf) setEstadoUfArtistas(place.uf);
+                          }}
+                          placeholder="Digite a cidade"
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.funcaoRow}>
+                      <FeedFuncaoFieldButton
+                        selectedFuncao={filtroGenero}
+                        onPress={() => setShowGeneroPicker(true)}
+                        colors={colors}
+                        emptyLabel="Todos os gêneros"
+                        icon="musical-notes-outline"
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.geoRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.geoField,
+                          styles.geoUf,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: estadoUfFeed ? colors.primary : colors.border,
+                          },
+                        ]}
+                        onPress={() => setShowEstados(true)}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[styles.geoFieldText, { color: estadoUfFeed ? colors.text : colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {estadoUfFeed || 'UF'}
+                        </Text>
+                        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <View
+                        style={[
+                          styles.geoField,
+                          styles.geoCity,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: cidadeFeed.trim() ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <BrazilPlaceSearchField
+                          compact
+                          uf={estadoUfFeed}
+                          value={cidadeFeed}
+                          onChangeText={setCidadeFeed}
+                          onSelectPlace={(place) => {
+                            setCidadeFeed(place.city);
+                            setCidadeFeedDebounced(place.city);
+                            if (place.uf) setEstadoUfFeed(place.uf);
+                          }}
+                          placeholder="Cidade"
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.funcaoRow}>
+                      <FeedFuncaoFieldButton
+                        selectedFuncao={filtroFuncao}
+                        onPress={() => setShowFuncaoPicker(true)}
+                        colors={colors}
+                      />
+                    </View>
+                  </>
+                )}
               </View>
             ) : null}
           </>
@@ -1441,7 +1507,7 @@ export default function FeedScreen() {
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.primary }]}
           onPress={handlePublicar}
-          accessibilityLabel="Publicar no feed"
+          accessibilityLabel="Publicar oportunidade"
         >
           <Ionicons name="add" size={26} color="#fff" />
         </TouchableOpacity>
@@ -1450,12 +1516,16 @@ export default function FeedScreen() {
       <BrazilStatePickerModal
         visible={showEstados}
         onClose={() => setShowEstados(false)}
-        selectedUf={estadoUf}
+        selectedUf={verArtistas ? estadoUfArtistas : estadoUfFeed}
         onSelect={(uf) => {
           const next = uf || '';
-          setEstadoUf(next);
-          if (next) void AsyncStorage.setItem(FEED_ARTISTAS_UF_KEY, next);
-          else void AsyncStorage.removeItem(FEED_ARTISTAS_UF_KEY);
+          if (verArtistas) {
+            setEstadoUfArtistas(next);
+            if (next) void AsyncStorage.setItem(FEED_ARTISTAS_UF_KEY, next);
+            else void AsyncStorage.removeItem(FEED_ARTISTAS_UF_KEY);
+          } else {
+            setEstadoUfFeed(next);
+          }
         }}
       />
       <FeedFuncaoPickerModal
@@ -1464,6 +1534,17 @@ export default function FeedScreen() {
         options={funcaoFilterOptions}
         selectedFuncao={filtroFuncao}
         onSelect={(funcao) => setFiltroFuncao(funcao || '')}
+      />
+      <FeedFuncaoPickerModal
+        visible={showGeneroPicker}
+        onClose={() => setShowGeneroPicker(false)}
+        options={generoFilterOptions}
+        selectedFuncao={filtroGenero}
+        onSelect={(genero) => setFiltroGenero(genero || '')}
+        title="Filtrar por gênero"
+        searchPlaceholder="Buscar gênero..."
+        clearLabel="Todos os gêneros"
+        emptyLabel="Nenhum gênero encontrado."
       />
       <ArtistReviewsModal
         visible={!!reviewsArtist}
@@ -1513,63 +1594,6 @@ export default function FeedScreen() {
         }}
       />
       <Modal
-        visible={showPublicarOpcoes}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowPublicarOpcoes(false)}
-      >
-        <Pressable style={styles.sheetOverlay} onPress={() => setShowPublicarOpcoes(false)}>
-          <Pressable
-            style={[styles.sheet, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-            <Text style={[styles.sheetTitle, { color: colors.text }]}>Publicar no feed</Text>
-            <Text style={[styles.sheetSub, { color: colors.textSecondary }]}>
-              Escolha o tipo de publicação de show
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.optionCard, { borderColor: colors.border, backgroundColor: colors.background }]}
-              onPress={() => handleEscolherPublicacao('disponivel')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.optionIcon, { backgroundColor: '#0F766E18' }]}>
-                <Ionicons name="briefcase-outline" size={22} color="#0F766E" />
-              </View>
-              <View style={styles.optionCopy}>
-                <Text style={[styles.optionTitle, { color: colors.text }]}>Oferecer</Text>
-                <Text style={[styles.optionDesc, { color: colors.textSecondary }]}>
-                  Oferecendo artista, banda, músico, serviço, parceria etc.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.optionCard, { borderColor: colors.border, backgroundColor: colors.background }]}
-              onPress={() => handleEscolherPublicacao('demanda')}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.optionIcon, { backgroundColor: '#4F46E518' }]}>
-                <Ionicons name="search" size={22} color="#4F46E5" />
-              </View>
-              <View style={styles.optionCopy}>
-                <Text style={[styles.optionTitle, { color: colors.text }]}>Procurar</Text>
-                <Text style={[styles.optionDesc, { color: colors.textSecondary }]}>
-                  Buscando artista, músico, banda, serviço, parceria etc.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetCancel} onPress={() => setShowPublicarOpcoes(false)}>
-              <Text style={[styles.sheetCancelText, { color: colors.textSecondary }]}>Cancelar</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
-      <Modal
         visible={!!anuncioMenu}
         transparent
         animationType="slide"
@@ -1591,13 +1615,8 @@ export default function FeedScreen() {
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.menuSummaryTipo,
-                    { color: anuncioMenu.feed_tipo === 'demanda' ? '#4F46E5' : '#0F766E' },
-                  ]}
-                >
-                  {anuncioMenu.feed_tipo === 'demanda' ? 'Procurando' : 'Oferecendo'}
+                <Text style={[styles.menuSummaryTipo, { color: colors.primary }]}>
+                  Oportunidade
                 </Text>
                 <Text style={[styles.menuSummaryDate, { color: colors.text }]}>
                   {[
@@ -1615,9 +1634,7 @@ export default function FeedScreen() {
                 <Text style={[styles.menuSummaryFuncoes, { color: colors.textSecondary }]} numberOfLines={1}>
                   {anuncioMenu.feed_funcoes.length > 0
                     ? anuncioMenu.feed_funcoes.join(' · ')
-                    : anuncioMenu.feed_tipo === 'demanda'
-                      ? 'Artista, músico ou serviço'
-                      : 'Disponibilidade nesta data'}
+                    : 'Show nesta data'}
                 </Text>
               </View>
             ) : null}
@@ -1785,6 +1802,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
+    zIndex: 8,
+    overflow: 'visible',
   },
   geoField: {
     height: 36,
@@ -1794,9 +1813,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
     paddingHorizontal: 10,
+    overflow: 'visible',
   },
-  geoUf: { width: 78 },
-  geoCity: { flex: 1 },
+  geoUf: { width: 78, zIndex: 1 },
+  geoCity: { flex: 1, zIndex: 9, overflow: 'visible' },
   geoFieldText: { flex: 1, fontSize: 14, fontWeight: '700' },
   geoInput: {
     flex: 1,
@@ -1902,6 +1922,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     overflow: 'hidden',
   },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  cardKind: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
   typeBanner: {
     flexDirection: 'row',
     alignItems: 'center',

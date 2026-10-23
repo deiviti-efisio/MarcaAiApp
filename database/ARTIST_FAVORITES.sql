@@ -25,6 +25,7 @@ CREATE POLICY artist_favorites_own
   WITH CHECK (user_id = auth.uid());
 
 DROP FUNCTION IF EXISTS public.listar_artistas_favoritos(uuid, text, text, text, text, integer, integer);
+DROP FUNCTION IF EXISTS public.listar_artistas_favoritos(uuid, text, text, text, text, text, integer, integer);
 
 CREATE FUNCTION public.listar_artistas_favoritos(
   p_artista_atual_id uuid,
@@ -32,6 +33,7 @@ CREATE FUNCTION public.listar_artistas_favoritos(
   p_estado text DEFAULT NULL,
   p_termo text DEFAULT NULL,
   p_funcao text DEFAULT NULL,
+  p_genero text DEFAULT NULL,
   p_limit integer DEFAULT 20,
   p_offset integer DEFAULT 0
 )
@@ -107,12 +109,17 @@ AS $$
       NULLIF(trim(p_funcao), '') IS NULL
       OR a.work_roles @> jsonb_build_array(trim(p_funcao))
     )
+    AND (
+      NULLIF(trim(p_genero), '') IS NULL
+      OR a.musical_style ILIKE trim(p_genero)
+      OR a.musical_style ILIKE trim(p_genero) || '%'
+    )
   ORDER BY f.created_at DESC
   LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 20), 40))
   OFFSET GREATEST(0, COALESCE(p_offset, 0));
 $$;
 
-GRANT EXECUTE ON FUNCTION public.listar_artistas_favoritos(uuid, text, text, text, text, integer, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.listar_artistas_favoritos(uuid, text, text, text, text, integer, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.listar_artistas_favoritos(uuid, text, text, text, text, text, integer, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.listar_artistas_favoritos(uuid, text, text, text, text, text, integer, integer) TO service_role;
 
 NOTIFY pgrst, 'reload schema';

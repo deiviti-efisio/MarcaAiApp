@@ -246,9 +246,7 @@ export default function NegociarFeedScreen() {
         >
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.badge, { color: colors.primary }]}>
-                {anuncio.feed_tipo === 'demanda' ? 'Procurando' : 'Oferta'}
-              </Text>
+              <Text style={[styles.badge, { color: colors.primary }]}>Oportunidade</Text>
               <TouchableOpacity
                 onPress={() =>
                   router.push({ pathname: '/perfil-artista', params: { artistId: anuncio.artist_id } })

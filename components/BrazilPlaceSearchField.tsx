@@ -19,6 +19,7 @@ type Props = {
   compact?: boolean;
   editable?: boolean;
   uf?: string;
+  citiesOnly?: boolean;
 };
 
 export default function BrazilPlaceSearchField({
@@ -29,6 +30,7 @@ export default function BrazilPlaceSearchField({
   compact = false,
   editable = true,
   uf,
+  citiesOnly = false,
 }: Props) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function BrazilPlaceSearchField({
     setLoading(true);
     timerRef.current = setTimeout(() => {
       const req = ++requestRef.current;
-      void searchBrazilPlaces(q, { uf })
+      void searchBrazilPlaces(q, { uf, citiesOnly })
         .then((places) => {
           if (req !== requestRef.current) return;
           setResults(places);
@@ -156,7 +158,7 @@ export default function BrazilPlaceSearchField({
 }
 
 const styles = StyleSheet.create({
-  wrap: { zIndex: 4 },
+  wrap: { zIndex: 30, overflow: 'visible' },
   box: {
     flexDirection: 'row',
     alignItems: 'center',

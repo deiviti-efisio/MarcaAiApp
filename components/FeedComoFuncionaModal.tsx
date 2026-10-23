@@ -20,9 +20,9 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    icon: 'megaphone-outline',
-    title: 'Oferecendo ou Procurando',
-    text: 'Publique disponibilidade (artista, banda, serviço) ou anuncie um evento e receba candidatos.',
+    icon: 'sparkles-outline',
+    title: 'Oportunidades',
+    text: 'Publique uma data de show: você está livre ou precisa de alguém. Tudo entra na mesma lista.',
   },
   {
     icon: 'people-outline',
@@ -75,7 +75,7 @@ export default function FeedComoFuncionaModal({ visible, onClose }: Props) {
               <Text style={[styles.title, { color: colors.text }]}>Como funciona o Feed</Text>
             </View>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Um mural para oferecer ou procurar artista, banda, músico e serviço. Na aba Artistas você vê quem está perto.
+              Um mural de shows para combinar. Na aba Artistas você vê quem está perto.
             </Text>
 
             {STEPS.map((step) => (

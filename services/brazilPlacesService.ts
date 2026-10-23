@@ -26,6 +26,8 @@ type IbgeMunicipio = {
 
 const municipiosByUf = new Map<string, BrazilPlace[]>();
 const municipiosByUfPromise = new Map<string, Promise<BrazilPlace[]>>();
+let municipiosBrasil: BrazilPlace[] | null = null;
+let municipiosBrasilPromise: Promise<BrazilPlace[]> | null = null;
 
 function fold(value: string): string {
   return value
@@ -91,13 +93,50 @@ function rankCityMatch(query: string, place: BrazilPlace): number {
   return 9;
 }
 
+function mapIbgeMunicipio(row: IbgeMunicipio): BrazilPlace | null {
+  const ufSigla = row.microrregiao?.mesorregiao?.UF?.sigla;
+  const ufNome = row.microrregiao?.mesorregiao?.UF?.nome;
+  const state = stateFromUfOrName(ufSigla, ufNome);
+  const city = (row.nome || '').trim();
+  if (!state || !city) return null;
+  return {
+    id: `ibge-${row.id}`,
+    kind: 'city',
+    label: `${city} — ${state.uf}`,
+    city,
+    uf: state.uf,
+    stateName: state.name,
+  };
+}
+
+async function loadMunicipiosBrasil(): Promise<BrazilPlace[]> {
+  if (municipiosBrasil) return municipiosBrasil;
+  if (municipiosBrasilPromise) return municipiosBrasilPromise;
+  const request = (async () => {
+    const res = await fetch(
+      'https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome'
+    );
+    if (!res.ok) throw new Error('IBGE indisponível');
+    const rows = (await res.json()) as IbgeMunicipio[];
+    const places = rows.map(mapIbgeMunicipio).filter((place): place is BrazilPlace => Boolean(place));
+    municipiosBrasil = places;
+    return places;
+  })();
+  municipiosBrasilPromise = request;
+  try {
+    return await request;
+  } catch (err) {
+    municipiosBrasilPromise = null;
+    throw err;
+  }
+}
+
 async function searchMunicipios(query: string, limit: number, uf?: string): Promise<BrazilPlace[]> {
   const q = fold(query);
   if (q.length < 2) return [];
   const ufKey = (uf || '').trim().toUpperCase();
-  if (ufKey.length !== 2) return [];
   try {
-    const all = await loadMunicipiosByUf(ufKey);
+    const all = ufKey.length === 2 ? await loadMunicipiosByUf(ufKey) : await loadMunicipiosBrasil();
     return all
       .filter((place) => fold(place.city).includes(q))
       .sort((a, b) => rankCityMatch(query, a) - rankCityMatch(query, b))
@@ -215,28 +254,44 @@ function looksLikeStreetQuery(query: string): boolean {
 
 export async function searchBrazilPlaces(
   query: string,
-  opts?: { uf?: string }
+  opts?: { uf?: string; citiesOnly?: boolean }
 ): Promise<BrazilPlace[]> {
   const raw = query.trim();
   if (raw.length < 2) return [];
 
   try {
-  const digits = raw.replace(/\D/g, '');
-  const [cities, cepPlaces, photon] = await Promise.all([
-    searchMunicipios(raw, 8, opts?.uf),
-    digits.length === 8 ? searchViaCep(digits) : Promise.resolve([] as BrazilPlace[]),
-    looksLikeStreetQuery(raw) ? searchPhoton(raw, 6) : Promise.resolve([] as BrazilPlace[]),
-  ]);
+    if (opts?.citiesOnly) {
+      const cities = await searchMunicipios(raw, 10, opts?.uf);
+      if (cities.length) return cities;
+      const photon = await searchPhoton(raw, 8);
+      const seen = new Set<string>();
+      const out: BrazilPlace[] = [];
+      for (const place of photon) {
+        if (place.street) continue;
+        const key = `${fold(place.city)}|${place.uf}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ ...place, kind: 'city', label: `${place.city} — ${place.uf}` });
+      }
+      return out.slice(0, 10);
+    }
 
-  const seen = new Set<string>();
-  const merged: BrazilPlace[] = [];
-  for (const place of [...cepPlaces, ...cities, ...photon]) {
-    const key = `${place.kind}|${fold(place.label)}|${place.uf}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(place);
-  }
-  return merged.slice(0, 12);
+    const digits = raw.replace(/\D/g, '');
+    const [cities, cepPlaces, photon] = await Promise.all([
+      searchMunicipios(raw, 8, opts?.uf),
+      digits.length === 8 ? searchViaCep(digits) : Promise.resolve([] as BrazilPlace[]),
+      looksLikeStreetQuery(raw) ? searchPhoton(raw, 6) : Promise.resolve([] as BrazilPlace[]),
+    ]);
+
+    const seen = new Set<string>();
+    const merged: BrazilPlace[] = [];
+    for (const place of [...cepPlaces, ...cities, ...photon]) {
+      const key = `${place.kind}|${fold(place.label)}|${place.uf}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(place);
+    }
+    return merged.slice(0, 12);
   } catch {
     return [];
   }

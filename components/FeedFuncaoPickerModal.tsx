@@ -26,12 +26,20 @@ export default function FeedFuncaoPickerModal({
   options,
   selectedFuncao,
   onSelect,
+  title = 'Filtrar por função',
+  searchPlaceholder = 'Buscar ou digitar função...',
+  clearLabel = 'Todas funções',
+  emptyLabel = 'Nenhuma função encontrada. Digite para filtrar por outro termo.',
 }: {
   visible: boolean;
   onClose: () => void;
   options: string[];
   selectedFuncao: string;
   onSelect: (funcao: string) => void;
+  title?: string;
+  searchPlaceholder?: string;
+  clearLabel?: string;
+  emptyLabel?: string;
 }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
@@ -77,7 +85,7 @@ export default function FeedFuncaoPickerModal({
       <View style={styles.overlay}>
         <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.title, { color: colors.text }]}>Filtrar por função</Text>
+            <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12} accessibilityLabel="Fechar">
               <Ionicons name="close" size={26} color={colors.text} />
             </TouchableOpacity>
@@ -93,7 +101,7 @@ export default function FeedFuncaoPickerModal({
             ]}
             value={query}
             onChangeText={setQuery}
-            placeholder="Buscar ou digitar função..."
+            placeholder={searchPlaceholder}
             placeholderTextColor={colors.textSecondary}
             autoCorrect={false}
             autoCapitalize="sentences"
@@ -106,7 +114,7 @@ export default function FeedFuncaoPickerModal({
                 onClose();
               }}
             >
-              <Text style={{ color: colors.error, fontWeight: '600' }}>Todas funções</Text>
+              <Text style={{ color: colors.error, fontWeight: '600' }}>{clearLabel}</Text>
             </TouchableOpacity>
           ) : null}
           {showCustomOption ? (
@@ -135,7 +143,7 @@ export default function FeedFuncaoPickerModal({
                 ? null
                 : (
                     <Text style={[styles.empty, { color: colors.textSecondary }]}>
-                      Nenhuma função encontrada. Digite para filtrar por outro termo.
+                      {emptyLabel}
                     </Text>
                   )
             }
@@ -150,12 +158,16 @@ export function FeedFuncaoFieldButton({
   selectedFuncao,
   onPress,
   colors,
+  emptyLabel = 'Todas funções',
+  icon = 'pricetag-outline',
 }: {
   selectedFuncao: string;
   onPress: () => void;
   colors: ReturnType<typeof useTheme>['colors'];
+  emptyLabel?: string;
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
 }) {
-  const label = selectedFuncao || 'Todas funções';
+  const label = selectedFuncao || emptyLabel;
   return (
     <TouchableOpacity
       style={[
@@ -168,7 +180,7 @@ export function FeedFuncaoFieldButton({
       onPress={onPress}
       activeOpacity={0.85}
     >
-      <Ionicons name="pricetag-outline" size={18} color={colors.primary} />
+      <Ionicons name={icon} size={18} color={colors.primary} />
       <Text
         style={[styles.fieldBtnText, { color: selectedFuncao ? colors.text : colors.textSecondary }]}
         numberOfLines={1}

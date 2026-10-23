@@ -35,11 +35,7 @@ import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
-import {
-  ARTIST_WORK_ROLE_PRESETS,
-  buildOrderedOptionsForPicker,
-  parseArtistStringArrayFromJson,
-} from '../constants/artistProfileLists';
+import { ARTIST_WORK_ROLE_PRESETS, buildOrderedOptionsForPicker } from '../constants/artistProfileLists';
 import { formatEventLocationSlash } from '../lib/brazilGeo';
 import { formatCalendarDate } from '../lib/dateUtils';
 import {
@@ -123,7 +119,6 @@ export default function PublicarFeedScreen() {
   const [editTipo, setEditTipo] = useState<FeedTipo | null>(null);
   const tipo: FeedTipo =
     editTipo ?? (tipoParam === 'demanda' ? 'demanda' : 'disponivel');
-  const isProcurar = tipo === 'demanda';
 
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedYmd, setSelectedYmd] = useState<string | null>(null);
@@ -151,7 +146,6 @@ export default function PublicarFeedScreen() {
   const [nomeEvento, setNomeEvento] = useState('');
   const [selectedFuncoes, setSelectedFuncoes] = useState<string[]>([]);
   const [funcaoDraft, setFuncaoDraft] = useState('');
-  const [artistWorkRoles, setArtistWorkRoles] = useState<string[]>([]);
   const [whatsappDraft, setWhatsappDraft] = useState('');
   const [mostrarCache, setMostrarCache] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(isEditMode);
@@ -256,12 +250,7 @@ export default function PublicarFeedScreen() {
     return Number.isFinite(n) ? n : 0;
   }, [cacheDraft]);
 
-  const funcaoPresets = useMemo(() => {
-    if (isProcurar) {
-      return [...ARTIST_WORK_ROLE_PRESETS];
-    }
-    return artistWorkRoles.length > 0 ? artistWorkRoles : [...ARTIST_WORK_ROLE_PRESETS];
-  }, [isProcurar, artistWorkRoles]);
+  const funcaoPresets = useMemo(() => [...ARTIST_WORK_ROLE_PRESETS], []);
 
   const funcaoOptions = useMemo(
     () => buildOrderedOptionsForPicker(funcaoPresets, selectedFuncoes),
@@ -330,7 +319,6 @@ export default function PublicarFeedScreen() {
 
   useEffect(() => {
     if (!activeArtist?.id) {
-      setArtistWorkRoles([]);
       if (!isEditMode) setWhatsappDraft('');
       return;
     }
@@ -338,7 +326,6 @@ export default function PublicarFeedScreen() {
     let cancelled = false;
     void getArtistById(activeArtist.id).then(({ artist }) => {
       if (cancelled) return;
-      setArtistWorkRoles(parseArtistStringArrayFromJson(artist?.work_roles));
       if (!isEditMode) {
         setWhatsappDraft(maskBrazilMobile(artist?.whatsapp || ''));
       }
@@ -448,12 +435,7 @@ export default function PublicarFeedScreen() {
   };
 
   const handleDayPress = (dateString: string) => {
-    const dayEvents = eventsByDate[dateString] || [];
-    if (dayEvents.length > 0) {
-      setDayModalDate(dateString);
-      setDayModalEvents(dayEvents);
-      return;
-    }
+    if (dateString < today) return;
     selecionarDia(dateString);
   };
 
@@ -466,12 +448,27 @@ export default function PublicarFeedScreen() {
       Alert.alert('Sem permissão', 'Somente admin ou vendedor pode publicar no feed.');
       return;
     }
+    if (!nomeEvento.trim()) {
+      Alert.alert('Nome', 'Informe o nome da oportunidade.');
+      return;
+    }
+    if (cacheNumber <= 0) {
+      Alert.alert(
+        'Cachê',
+        'Informe o valor do cachê. Ao aceitar a negociação, esse valor entra como despesa na agenda.'
+      );
+      return;
+    }
     if (!selectedYmd) {
       Alert.alert('Dia', 'Escolha um dia no calendário.');
       return;
     }
-    if (isProcurar && !nomeEvento.trim()) {
-      Alert.alert('Nome do evento', 'Informe o nome do evento.');
+    if (selectedYmd < today) {
+      Alert.alert('Data', 'Só é possível criar oportunidade em datas de hoje em diante.');
+      return;
+    }
+    if (!toHm(inicio) || !toHm(fim)) {
+      Alert.alert('Horário', 'Informe o horário inicial e o final.');
       return;
     }
     if (toHm(fim) <= toHm(inicio)) {
@@ -481,23 +478,22 @@ export default function PublicarFeedScreen() {
     if (selectedFuncoes.length === 0) {
       Alert.alert(
         'Funções',
-        isProcurar
-          ? 'Selecione o que você está procurando (ex.: Vocalista, Guitarrista).'
-          : 'Selecione o que você está oferecendo (ex.: Vocalista, Banda completa).'
+        'Selecione pelo menos uma função (ex.: Vocalista, Guitarrista).'
       );
+      return;
+    }
+    if (!cidade.trim()) {
+      Alert.alert('Cidade', 'Informe a cidade.');
+      return;
+    }
+    if (!estadoUf.trim()) {
+      Alert.alert('Estado', 'Selecione o estado.');
       return;
     }
     if (!isCompleteBrazilMobile(whatsappDraft)) {
       Alert.alert(
         'WhatsApp',
         'Informe um WhatsApp válido para contato (DDD + número). Usamos o número salvo no perfil do artista, se já existir.'
-      );
-      return;
-    }
-    if (cacheNumber <= 0) {
-      Alert.alert(
-        'Cachê',
-        'Informe o valor do cachê. Ao aceitar a negociação, esse valor entra como despesa na agenda.'
       );
       return;
     }
@@ -513,7 +509,7 @@ export default function PublicarFeedScreen() {
       feedFuncoes: selectedFuncoes,
       whatsapp: whatsappDraft.trim(),
       mostrarCache,
-      nome: isProcurar ? nomeEvento.trim() : null,
+      nome: nomeEvento.trim(),
     };
 
     const result = isEditMode && eventId
@@ -548,7 +544,7 @@ export default function PublicarFeedScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>
-          {isEditMode ? 'Editar anúncio' : isProcurar ? 'Procurar' : 'Oferecer'}
+          {isEditMode ? 'Editar oportunidade' : 'Nova oportunidade'}
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -562,23 +558,65 @@ export default function PublicarFeedScreen() {
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
         >
-          <View
+          <Text style={[styles.label, { color: colors.text }]}>Nome da oportunidade *</Text>
+          <TextInput
+            value={nomeEvento}
+            onChangeText={setNomeEvento}
+            placeholder="Ex.: Show no Bar do Zé"
+            placeholderTextColor={colors.textSecondary}
+            maxLength={80}
             style={[
-              styles.tipoHint,
-              { backgroundColor: `${isProcurar ? '#4F46E5' : '#0F766E'}14` },
+              styles.input,
+              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
             ]}
-          >
-            <Ionicons
-              name={isProcurar ? 'search' : 'briefcase-outline'}
-              size={18}
-              color={isProcurar ? '#4F46E5' : '#0F766E'}
+          />
+
+          <Text style={[styles.label, { color: colors.text }]}>Cachê *</Text>
+          <TextInput
+            value={cacheDraft}
+            onChangeText={(t) => {
+              const masked = formatCurrencyBRLInput(t);
+              setCacheDraft(masked);
+              if (!extractNumericValueString(masked)) {
+                setMostrarCache(false);
+              }
+            }}
+            keyboardType="number-pad"
+            placeholder="R$ 0,00"
+            placeholderTextColor={colors.textSecondary}
+            style={[
+              styles.input,
+              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
+            ]}
+          />
+          <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
+            Obrigatório. Ao fechar a negociação, esse valor entra como despesa na agenda.
+          </Text>
+          <View style={[styles.switchRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <View style={styles.switchCopy}>
+              <Text style={[styles.switchTitle, { color: colors.text }]}>Mostrar cachê no feed</Text>
+              <Text style={[styles.rolesHint, { color: colors.textSecondary, marginTop: 2 }]}>
+                {mostrarCache
+                  ? 'Todos verão o valor no card.'
+                  : 'O valor só aparece quando alguém demonstrar interesse.'}
+              </Text>
+            </View>
+            <Switch
+              value={mostrarCache}
+              onValueChange={setMostrarCache}
+              disabled={cacheNumber <= 0}
+              trackColor={{ false: colors.border, true: `${colors.primary}66` }}
+              thumbColor={Platform.OS === 'android' ? (mostrarCache ? colors.primary : '#f4f3f4') : undefined}
             />
-            <Text style={[styles.tipoHintText, { color: colors.text }]}>
-              {isProcurar
-                ? 'Publique o evento em que você está procurando. Inclua nome, data, horário e local.'
-                : 'Informe o que você oferece e quando está disponível. Quem se interessar cria o evento na hora de contratar.'}
-            </Text>
           </View>
+          {!mostrarCache ? (
+            <View style={[styles.lockHint, { backgroundColor: `${colors.primary}12` }]}>
+              <Ionicons name="lock-closed" size={16} color={colors.primary} />
+              <Text style={[styles.lockHintText, { color: colors.textSecondary }]}>
+                Com a opção desligada, o cachê fica oculto no feed e só é revelado na negociação.
+              </Text>
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[
@@ -647,16 +685,18 @@ export default function PublicarFeedScreen() {
                       return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.dayCell} />;
                     }
                     const dayEvents = eventsByDate[day.dateString] || [];
-                    const fechado = dayEvents.length > 0;
+                    const temEvento = dayEvents.length > 0;
                     const isToday = day.dateString === today;
                     const isSelected = day.dateString === selectedYmd;
-                    const isPast = day.dateString < today && !fechado;
+                    const isPast = day.dateString < today;
                     return (
                       <TouchableOpacity
                         key={day.dateString}
+                        disabled={isPast}
                         style={[
                           styles.dayCell,
-                          fechado && !isSelected && { backgroundColor: colors.secondary },
+                          isPast && { opacity: 0.38 },
+                          temEvento && !isSelected && !isPast && { backgroundColor: colors.secondary },
                           isToday && !isSelected && { borderColor: colors.primary, borderWidth: 1.5 },
                           isSelected && {
                             backgroundColor: colors.primary,
@@ -675,7 +715,7 @@ export default function PublicarFeedScreen() {
                                 ? '#fff'
                                 : isPast
                                   ? colors.border
-                                  : fechado || isToday
+                                  : temEvento || isToday
                                     ? colors.text
                                     : colors.textSecondary,
                             },
@@ -683,12 +723,12 @@ export default function PublicarFeedScreen() {
                         >
                           {day.dayNumber}
                         </Text>
-                        {fechado ? (
+                        {temEvento && !isPast ? (
                           <View
                             style={[
                               styles.eventDot,
                               {
-                                backgroundColor: isSelected ? '#fff' : colors.error,
+                                backgroundColor: isSelected ? '#fff' : colors.primary,
                               },
                             ]}
                           />
@@ -700,14 +740,8 @@ export default function PublicarFeedScreen() {
               ))}
 
               <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.eventDot, { backgroundColor: colors.error }]} />
-                  <Text style={[styles.legendText, { color: colors.textSecondary }]}>
-                    Data fechada
-                  </Text>
-                </View>
                 <Text style={[styles.legendText, { color: colors.textSecondary }]}>
-                  Toque no dia para selecionar ou ver os detalhes
+                  Só datas de hoje em diante. Datas passadas não podem ser escolhidas, mesmo com evento na agenda.
                 </Text>
               </View>
             </View>
@@ -719,7 +753,7 @@ export default function PublicarFeedScreen() {
             }}
           >
           <Text style={[styles.label, { color: colors.text }]}>
-            {isProcurar ? 'Dia do evento (obrigatório)' : 'Dia disponível (obrigatório)'}
+            Dia do show (obrigatório)
           </Text>
           <View style={[styles.field, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="calendar" size={18} color={colors.primary} />
@@ -733,23 +767,6 @@ export default function PublicarFeedScreen() {
             </Text>
           </View>
           </View>
-
-          {isProcurar ? (
-            <>
-              <Text style={[styles.label, { color: colors.text }]}>Nome do evento (obrigatório)</Text>
-              <TextInput
-                value={nomeEvento}
-                onChangeText={setNomeEvento}
-                placeholder="Ex.: Show no Bar do Zé"
-                placeholderTextColor={colors.textSecondary}
-                maxLength={80}
-                style={[
-                  styles.input,
-                  { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
-                ]}
-              />
-            </>
-          ) : null}
 
           <View style={styles.timeRow}>
             <View style={{ flex: 1 }}>
@@ -801,26 +818,18 @@ export default function PublicarFeedScreen() {
           ) : null}
 
           <ChipMultiSelectField
-            title={isProcurar ? 'O que você está procurando?' : 'O que você está oferecendo?'}
+            title="Funções *"
             options={funcaoOptions}
             selected={selectedFuncoes}
             onToggle={toggleFuncao}
             draft={funcaoDraft}
             onDraftChange={setFuncaoDraft}
             onAddCustom={addCustomFuncao}
-            addSectionLabel="Incluir outra função"
-            addPlaceholder="Digite e toque em Adicionar"
+            addSectionLabel="Ou digite uma função"
+            addPlaceholder="Ex.: Vocalista"
             presetStrip={funcaoPresets}
+            horizontalOnly
           />
-          {isProcurar ? (
-            <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
-              Lista completa de funções. Marque o que você está procurando; pode incluir outra abaixo.
-            </Text>
-          ) : artistWorkRoles.length > 0 ? (
-            <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
-              Funções do perfil do artista. Você pode incluir outra abaixo, se precisar.
-            </Text>
-          ) : null}
 
           <Text style={[styles.label, { color: colors.text }]}>WhatsApp para contato *</Text>
           <View style={[styles.field, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -839,65 +848,7 @@ export default function PublicarFeedScreen() {
             Quem ver seu anúncio poderá entrar em contato por este número. Se o artista já tem WhatsApp salvo, ele aparece aqui.
           </Text>
 
-          <Text style={[styles.label, { color: colors.text }]}>Cachê *</Text>
-          <TextInput
-            value={cacheDraft}
-            onChangeText={(t) => {
-              const masked = formatCurrencyBRLInput(t);
-              setCacheDraft(masked);
-              if (!extractNumericValueString(masked)) {
-                setMostrarCache(false);
-              }
-            }}
-            keyboardType="number-pad"
-            placeholder="R$ 0,00"
-            placeholderTextColor={colors.textSecondary}
-            style={[
-              styles.input,
-              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text },
-            ]}
-          />
-          <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
-            Obrigatório. Ao fechar a negociação, esse valor entra como despesa na agenda.
-          </Text>
-          <View style={[styles.switchRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-            <View style={styles.switchCopy}>
-              <Text style={[styles.switchTitle, { color: colors.text }]}>Mostrar cachê no feed</Text>
-              <Text style={[styles.rolesHint, { color: colors.textSecondary, marginTop: 2 }]}>
-                {mostrarCache
-                  ? 'Todos verão o valor no card.'
-                  : 'O valor só aparece quando alguém demonstrar interesse.'}
-              </Text>
-            </View>
-            <Switch
-              value={mostrarCache}
-              onValueChange={setMostrarCache}
-              disabled={cacheNumber <= 0}
-              trackColor={{ false: colors.border, true: `${colors.primary}66` }}
-              thumbColor={Platform.OS === 'android' ? (mostrarCache ? colors.primary : '#f4f3f4') : undefined}
-            />
-          </View>
-          {!mostrarCache ? (
-            <View style={[styles.lockHint, { backgroundColor: `${colors.primary}12` }]}>
-              <Ionicons name="lock-closed" size={16} color={colors.primary} />
-              <Text style={[styles.lockHintText, { color: colors.textSecondary }]}>
-                Com a opção desligada, o cachê fica oculto no feed e só é revelado na negociação.
-              </Text>
-            </View>
-          ) : null}
-
-          <Text style={[styles.label, { color: colors.text }]}>
-            {isProcurar ? 'Estado do evento (opcional)' : 'Estado em que você pode atender (opcional)'}
-          </Text>
-          <BrazilStateFieldButton
-            selectedUf={estadoUf}
-            onPress={() => setShowEstados(true)}
-            colors={colors}
-          />
-
-          <Text style={[styles.label, { color: colors.text }]}>
-            {isProcurar ? 'Cidade do evento (opcional)' : 'Cidade em que você pode atender (opcional)'}
-          </Text>
+          <Text style={[styles.label, { color: colors.text }]}>Cidade *</Text>
           <BrazilPlaceSearchField
             value={cidade}
             onChangeText={setCidade}
@@ -905,7 +856,15 @@ export default function PublicarFeedScreen() {
               setCidade(place.city);
               if (place.uf) setEstadoUf(place.uf);
             }}
-            placeholder="Buscar cidade, rua ou CEP"
+            placeholder="Digite a cidade"
+            citiesOnly
+          />
+
+          <Text style={[styles.label, { color: colors.text }]}>Estado *</Text>
+          <BrazilStateFieldButton
+            selectedUf={estadoUf}
+            onPress={() => setShowEstados(true)}
+            colors={colors}
           />
 
           <Text style={[styles.label, { color: colors.text }]}>Observações (opcional)</Text>
@@ -1070,15 +1029,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '800' },
   body: { padding: 16, paddingBottom: 40, gap: 8 },
   label: { fontSize: 14, fontWeight: '700', marginTop: 10 },
-  tipoHint: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 4,
-  },
-  tipoHintText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '600' },
   rolesHint: { fontSize: 12, lineHeight: 17, marginTop: -4, marginBottom: 4 },
   calendarToggle: {
     flexDirection: 'row',

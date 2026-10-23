@@ -160,7 +160,7 @@ AS $$
   WHERE COALESCE(e.ativo, true) = true
     AND e.feed_tipo IS NOT NULL
     AND e.feed_tipo IN ('disponivel', 'demanda')
-    AND e.event_date >= CURRENT_DATE
+    AND e.event_date >= public.feed_data_hoje_brasil()
     AND (
       p_tipo IS NULL
       OR trim(p_tipo) = ''
