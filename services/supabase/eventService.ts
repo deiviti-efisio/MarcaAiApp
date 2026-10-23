@@ -71,6 +71,7 @@ export interface Event {
   /** Show especial em destaque no perfil (cartaz). */
   is_featured?: boolean;
   highlight_image_url?: string | null;
+  featured_at?: string | null;
   tag: "ensaio" | "evento" | "reunião";
   ativo?: boolean;
   update_ativo?: string | null;
@@ -323,6 +324,10 @@ export const createEvent = async (
         Boolean(eventData.is_public || eventData.is_featured),
       is_featured: Boolean(eventData.confirmed) && Boolean(eventData.is_featured),
       highlight_image_url: eventData.highlight_image_url ?? null,
+      featured_at:
+        Boolean(eventData.confirmed) && Boolean(eventData.is_featured)
+          ? new Date().toISOString()
+          : null,
       tag: eventData.tag || "evento", // Default para 'evento' se não especificado
       contract_url: eventData.contract_url ?? null,
       contract_file_name: eventData.contract_file_name ?? null,
@@ -337,11 +342,12 @@ export const createEvent = async (
       .select()
       .single();
 
-    if (eventError && /is_public|is_featured|highlight_image_url|PGRST204/i.test(eventError.message || "")) {
+    if (eventError && /is_public|is_featured|highlight_image_url|featured_at|PGRST204/i.test(eventError.message || "")) {
       const {
         is_public: _omitPublic,
         is_featured: _omitFeatured,
         highlight_image_url: _omitHighlight,
+        featured_at: _omitFeaturedAt,
         ...withoutPublic
       } = insertPayload;
       const retry = await supabase.from("events").insert(withoutPublic).select().single();
@@ -707,13 +713,20 @@ export const updateEvent = async (
     if (eventData.confirmed === false) {
       patch.is_public = false;
       patch.is_featured = false;
+      patch.featured_at = null;
     } else if (eventData.confirmed === true) {
       if (eventData.is_featured != null) {
         patch.is_featured = Boolean(eventData.is_featured);
       }
       if (eventData.is_featured) {
         patch.is_public = true;
-      } else if (eventData.is_public != null) {
+        if (!eventResult.event.is_featured) {
+          patch.featured_at = new Date().toISOString();
+        }
+      } else if (eventData.is_featured === false) {
+        patch.featured_at = null;
+      }
+      if (!eventData.is_featured && eventData.is_public != null) {
         patch.is_public = Boolean(eventData.is_public);
       }
     }
@@ -725,11 +738,12 @@ export const updateEvent = async (
       .select()
       .single();
 
-    if (error && /is_public|is_featured|highlight_image_url|PGRST204/i.test(error.message || "")) {
+    if (error && /is_public|is_featured|highlight_image_url|featured_at|PGRST204/i.test(error.message || "")) {
       const {
         is_public: _omitPublic,
         is_featured: _omitFeatured,
         highlight_image_url: _omitHighlight,
+        featured_at: _omitFeaturedAt,
         ...withoutPublic
       } = patch;
       const retry = await supabase
@@ -1267,6 +1281,7 @@ export interface FeaturedShow {
   state_uf?: string | null;
   tag?: string | null;
   highlight_image_url?: string | null;
+  featured_at?: string | null;
 }
 
 export const listarAgendaPublicaArtista = async (
@@ -1310,9 +1325,13 @@ export const listarShowsDestaqueArtista = async (
         start_time: String(item.start_time || "").slice(0, 5),
         end_time: String(item.end_time || "").slice(0, 5),
         highlight_image_url: item.highlight_image_url?.trim() || null,
+        featured_at: item.featured_at || null,
       }))
       .filter((item) => !isEventDateAlreadyPast(item.event_date))
       .sort((a, b) => {
+        const at = a.featured_at || "";
+        const bt = b.featured_at || "";
+        if (at !== bt) return bt.localeCompare(at);
         const dateCmp = a.event_date.localeCompare(b.event_date);
         if (dateCmp !== 0) return dateCmp;
         return String(a.start_time || "").localeCompare(String(b.start_time || ""));
@@ -1320,5 +1339,21 @@ export const listarShowsDestaqueArtista = async (
     return { shows, error: null };
   } catch (error: any) {
     return { shows: [], error: error?.message || "Erro ao carregar shows em destaque" };
+  }
+};
+
+export const definirShowDestaquePrincipal = async (
+  eventId: string,
+): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    const { error } = await supabase.rpc("definir_show_destaque_principal", {
+      p_event_id: eventId,
+    });
+    if (error) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, error: null };
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Erro ao definir destaque principal" };
   }
 };

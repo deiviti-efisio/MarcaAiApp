@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,7 +19,7 @@ import OptimizedImage from '../components/OptimizedImage';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
-import FeaturedShowCard, { FeaturedShowMini } from '../components/FeaturedShowCard';
+import FeaturedShowCard from '../components/FeaturedShowCard';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
@@ -26,8 +27,9 @@ import {
   alternarArtistaFavorito,
   listarIdsArtistasFavoritos,
 } from '../services/supabase/artistFavoritesService';
-import { isEventDateAlreadyPast, todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
+import { formatCalendarDate, isEventDateAlreadyPast, todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
 import {
+  definirShowDestaquePrincipal,
   listarAgendaPublicaArtista,
   listarShowsDestaqueArtista,
   type FeaturedShow,
@@ -62,7 +64,8 @@ export default function PerfilArtistaScreen() {
   const [artist, setArtist] = useState<Artist | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicAgendaEvent[]>([]);
   const [featuredShows, setFeaturedShows] = useState<FeaturedShow[]>([]);
-  const [showMoreFeatured, setShowMoreFeatured] = useState(false);
+  const [featuredMenuOpen, setFeaturedMenuOpen] = useState(false);
+  const [savingFeatured, setSavingFeatured] = useState(false);
   const [favorito, setFavorito] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
@@ -85,7 +88,6 @@ export default function PerfilArtistaScreen() {
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
     setFeaturedShows(featuredRes.shows.filter((item) => !isEventDateAlreadyPast(item.event_date)));
-    setShowMoreFeatured(false);
     setFavorito(favoriteIds.has(artistId));
   }, [artistId]);
 
@@ -119,6 +121,22 @@ export default function PerfilArtistaScreen() {
     });
   };
 
+  const handleSetFeaturedPrincipal = async (show: FeaturedShow) => {
+    if (!isOwn || show.id === featuredHero?.id || savingFeatured) return;
+    setSavingFeatured(true);
+    const result = await definirShowDestaquePrincipal(show.id);
+    setSavingFeatured(false);
+    if (!result.success) {
+      Alert.alert('Destaque', result.error || 'Não foi possível definir o destaque principal.');
+      return;
+    }
+    setFeaturedShows((prev) => {
+      const next = prev.filter((item) => item.id !== show.id);
+      return [{ ...show, featured_at: new Date().toISOString() }, ...next];
+    });
+    setFeaturedMenuOpen(false);
+  };
+
   const youtubePreviews = previews.filter((item) => item.kind === 'youtube');
   const instagramPreviews = previews.filter((item) => item.kind === 'instagram');
   const spotifyPreviews = previews.filter((item) => item.kind === 'spotify');
@@ -127,7 +145,6 @@ export default function PerfilArtistaScreen() {
   );
   const videoSubtitle = (artist?.bio || '').trim();
   const featuredHero = featuredShows[0] ?? null;
-  const featuredOthers = featuredShows.slice(1);
 
   const locationLine = artist
     ? [artist.city, artist.state].filter(Boolean).join(' · ')
@@ -332,35 +349,22 @@ export default function PerfilArtistaScreen() {
           {featuredHero ? (
             <View style={[styles.section, styles.sectionPad]}>
               <View style={styles.sectionHead}>
-                <Ionicons name="star" size={18} color={colors.primary} />
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Shows em destaque</Text>
+                <View style={styles.sectionHeadLeft}>
+                  <Ionicons name="star" size={18} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Shows em destaque</Text>
+                </View>
+                {featuredShows.length > 1 ? (
+                  <TouchableOpacity
+                    onPress={() => setFeaturedMenuOpen(true)}
+                    style={styles.iconBtn}
+                    hitSlop={10}
+                    accessibilityLabel="Mais shows em destaque"
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
               </View>
               <FeaturedShowCard show={featuredHero} colors={colors} />
-              {featuredOthers.length ? (
-                <View style={styles.moreFeaturedRow}>
-                  {showMoreFeatured ? (
-                    featuredOthers.map((show) => (
-                      <FeaturedShowMini key={show.id} show={show} colors={colors} />
-                    ))
-                  ) : null}
-                  <TouchableOpacity
-                    style={[
-                      styles.morePlus,
-                      { backgroundColor: colors.surface, borderColor: colors.border },
-                    ]}
-                    onPress={() => setShowMoreFeatured((open) => !open)}
-                    accessibilityLabel={
-                      showMoreFeatured
-                        ? 'Ocultar outros shows em destaque'
-                        : `Ver mais ${featuredOthers.length} shows em destaque`
-                    }
-                  >
-                    <Text style={[styles.morePlusText, { color: colors.primary }]}>
-                      {showMoreFeatured ? '–' : `+${featuredOthers.length}`}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
             </View>
           ) : null}
 
@@ -438,6 +442,58 @@ export default function PerfilArtistaScreen() {
           </View>
         </ScrollView>
       )}
+
+      <Modal
+        visible={featuredMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFeaturedMenuOpen(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setFeaturedMenuOpen(false)} />
+          <View style={[styles.menuSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.menuHead}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Shows em destaque</Text>
+              <TouchableOpacity onPress={() => setFeaturedMenuOpen(false)} hitSlop={10}>
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {isOwn ? (
+              <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
+                Escolha o show que fica como destaque principal no perfil.
+              </Text>
+            ) : null}
+            {featuredShows.map((show) => {
+              const isPrincipal = show.id === featuredHero?.id;
+              return (
+                <TouchableOpacity
+                  key={show.id}
+                  style={[styles.menuItem, { borderColor: colors.border }]}
+                  disabled={isOwn ? isPrincipal || savingFeatured : true}
+                  onPress={() => void handleSetFeaturedPrincipal(show)}
+                  activeOpacity={isOwn && !isPrincipal ? 0.7 : 1}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.menuItemTitle, { color: colors.text }]} numberOfLines={1}>
+                      {show.name}
+                    </Text>
+                    <Text style={[styles.menuItemSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {formatCalendarDate(show.event_date)}
+                    </Text>
+                  </View>
+                  {isPrincipal ? (
+                    <View style={[styles.principalBadge, { backgroundColor: `${colors.primary}22` }]}>
+                      <Text style={[styles.principalBadgeText, { color: colors.primary }]}>Principal</Text>
+                    </View>
+                  ) : isOwn ? (
+                    <Text style={[styles.menuAction, { color: colors.primary }]}>Usar como principal</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -525,23 +581,52 @@ const styles = StyleSheet.create({
   section: { marginTop: 24, paddingLeft: 20 },
   sectionPad: { paddingRight: 20 },
   videoStack: { gap: 12 },
-  moreFeaturedRow: {
+  sectionHead: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+    paddingRight: 12,
+  },
+  sectionHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  sectionTitle: { fontSize: 17, fontWeight: '700' },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  menuSheet: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  menuHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  menuTitle: { fontSize: 16, fontWeight: '800' },
+  menuHint: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
+  menuItem: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 12,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  morePlus: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
+  menuItemTitle: { fontSize: 15, fontWeight: '700' },
+  menuItemSub: { fontSize: 12, marginTop: 2 },
+  menuAction: { fontSize: 12, fontWeight: '700' },
+  principalBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  morePlusText: { fontSize: 18, fontWeight: '800' },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingRight: 20 },
-  sectionTitle: { fontSize: 17, fontWeight: '700' },
+  principalBadgeText: { fontSize: 11, fontWeight: '800' },
   previewRow: { paddingRight: 20 },
 });
