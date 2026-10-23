@@ -336,6 +336,16 @@ export const createEvent = async (
       updated_at: new Date().toISOString(),
     };
 
+    const creatorPermissions = await getUserPermissions(eventData.user_id, eventData.artist_id, {
+      skipCache: true,
+    });
+    if (creatorPermissions?.role !== 'admin') {
+      insertPayload.is_public = false;
+      insertPayload.is_featured = false;
+      insertPayload.featured_at = null;
+      insertPayload.highlight_image_url = null;
+    }
+
     let { data: event, error: eventError } = await supabase
       .from("events")
       .insert(insertPayload)
@@ -696,6 +706,7 @@ export const updateEvent = async (
     const permissions = await getUserPermissions(
       userId,
       eventResult.event.artist_id,
+      { skipCache: true },
     );
     const canEdit =
       permissions?.permissions.canEditEvents ||
@@ -729,6 +740,13 @@ export const updateEvent = async (
       if (!eventData.is_featured && eventData.is_public != null) {
         patch.is_public = Boolean(eventData.is_public);
       }
+    }
+
+    if (permissions?.role !== 'admin') {
+      delete patch.is_public;
+      delete patch.is_featured;
+      delete patch.highlight_image_url;
+      delete patch.featured_at;
     }
 
     let { data, error } = await supabase

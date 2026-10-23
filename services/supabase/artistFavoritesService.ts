@@ -1,5 +1,7 @@
 import { isAbortError } from '../../lib/abortError';
 import { supabase } from '../../lib/supabase';
+import { getActiveArtist } from '../artistContext';
+import { getUserPermissions } from './permissionsService';
 import {
   ARTISTAS_BUSCA_PAGE_SIZE,
   type ArtistaBuscaConvite,
@@ -46,6 +48,18 @@ export async function alternarArtistaFavorito(
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id;
   if (!userId) return { favorite: currentlyFavorite, error: 'Faça login para favoritar.' };
+
+  const activeArtist = await getActiveArtist();
+  if (!activeArtist?.id) {
+    return { favorite: currentlyFavorite, error: 'Selecione um artista para favoritar.' };
+  }
+  const permissions = await getUserPermissions(userId, activeArtist.id, { skipCache: true });
+  if (permissions?.role !== 'admin') {
+    return {
+      favorite: currentlyFavorite,
+      error: 'Somente o administrador pode favoritar outros artistas.',
+    };
+  }
 
   if (currentlyFavorite) {
     const { error } = await supabase

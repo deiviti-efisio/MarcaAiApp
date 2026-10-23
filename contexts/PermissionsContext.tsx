@@ -1,7 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { clearPermissionsCache, getUserPermissions, UserPermission } from '../services/supabase/permissionsService';
-import { useActiveArtist } from '../services/useActiveArtist';
+import { useActiveArtistContext } from './ActiveArtistContext';
+import {
+  clearPermissionsCache,
+  getUserPermissions,
+  isArtistAdminRole,
+  UserPermission,
+} from '../services/supabase/permissionsService';
 
 interface PermissionsContextData {
   userPermissions: UserPermission | null;
@@ -26,7 +31,7 @@ const PermissionsContext = createContext<PermissionsContextData>({} as Permissio
 export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [userPermissions, setUserPermissions] = useState<UserPermission | null>(null);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
-  const { activeArtist } = useActiveArtist();
+  const { activeArtist } = useActiveArtistContext();
 
   const loadPermissions = async (forceNetwork = false) => {
     if (!activeArtist) {
@@ -49,7 +54,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
         clearPermissionsCache(user.id, activeArtist.id);
       }
 
-      const permissions = await getUserPermissions(user.id, activeArtist.id);
+      const permissions = await getUserPermissions(user.id, activeArtist.id, {
+        skipCache: forceNetwork,
+      });
 
       if (permissions) {
         console.log('✅ Permissões carregadas:', {
@@ -70,8 +77,8 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   useEffect(() => {
-    void loadPermissions(false);
-  }, [activeArtist?.id]);
+    void loadPermissions(true);
+  }, [activeArtist?.id, activeArtist?.role]);
 
   // 🔥 ESCUTAR MUDANÇAS EM TEMPO REAL
   useEffect(() => {
@@ -133,7 +140,8 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const canViewOwnEventValue = userPermissions?.permissions.canViewOwnEventValue ?? false;
 
   const isViewer = userPermissions?.role === 'viewer';
-  const isAdmin = userPermissions?.role === 'admin';
+  const isAdmin =
+    userPermissions?.role === 'admin' && isArtistAdminRole(activeArtist?.role);
   const isVendedor = userPermissions?.role === 'vendedor';
 
   return (

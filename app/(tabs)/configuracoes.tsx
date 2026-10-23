@@ -39,6 +39,7 @@ import {
 } from '../../services/supabase/userService';
 import { dispatchResetToLogin } from '../../lib/resetToLoginStack';
 import { LEGAL_URLS } from '../../constants/legal';
+import { isArtistAdminRole } from '../../services/supabase/permissionsService';
 
 const getRoleLabel = (role?: string) => {
   switch (role) {
@@ -705,7 +706,7 @@ export default function ConfiguracoesScreen() {
                   {getRoleLabel(currentArtist.role)}
                 </Text>
               </View>
-              {currentArtist.role === 'admin' && (
+              {isArtistAdminRole(currentArtist.role) && (
                 <TouchableOpacity 
                   style={dynamicStyles.editButton} 
                   onPress={handleArtistSettings}
@@ -716,16 +717,17 @@ export default function ConfiguracoesScreen() {
             </View>
 
             <View style={dynamicStyles.settingsCard}>
-              {renderSettingItem(
-                'person-outline',
-                'Ver perfil público',
-                'Capa, bio, vídeos e agenda que os outros veem',
-                () =>
-                  router.push({
-                    pathname: '/perfil-artista',
-                    params: { artistId: currentArtist.id },
-                  })
-              )}
+              {isArtistAdminRole(currentArtist.role) &&
+                renderSettingItem(
+                  'person-outline',
+                  'Ver perfil público',
+                  'Capa, bio, vídeos e agenda que os outros veem',
+                  () =>
+                    router.push({
+                      pathname: '/perfil-artista',
+                      params: { artistId: currentArtist.id },
+                    })
+                )}
 
               {renderSettingItem(
                 premiumEntitlementActive ? 'add-circle' : 'lock-closed',
@@ -749,13 +751,13 @@ export default function ConfiguracoesScreen() {
               {renderSettingItem(
                 'color-palette-outline',
                 'Press kit e identidade',
-                currentArtist.role === 'admin'
+                isArtistAdminRole(currentArtist.role)
                   ? 'Adicione imagens, áudios para compartilhar rápido com sua equipe e contratantes.'
                   : 'Somente o administrador pode ver, editar e compartilhar.',
-                currentArtist.role === 'admin'
+                isArtistAdminRole(currentArtist.role)
                   ? () => router.push('/press-kit-artista')
                   : handlePressKitAccessDenied,
-                currentArtist.role !== 'admin' ? (
+                !isArtistAdminRole(currentArtist.role) ? (
                   <Ionicons name="lock-closed" size={18} color={isDarkMode ? '#999' : '#888'} />
                 ) : undefined
               )}
@@ -781,7 +783,7 @@ export default function ConfiguracoesScreen() {
                 () => router.push('/parceiros-frequentes')
               )}
 
-              {currentArtist.role === 'admin' &&
+              {isArtistAdminRole(currentArtist.role) &&
                 renderSettingItem(
                   'document-text-outline',
                   'Comentários recebidos',

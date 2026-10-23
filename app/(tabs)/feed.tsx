@@ -73,7 +73,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeArtist } = useActiveArtistContext();
-  const { canCreateEvents } = usePermissions();
+  const { canCreateEvents, isAdmin } = usePermissions();
   const { unreadCount, loadUnreadCount } = useNotifications();
   const { unreadChats, refreshUnreadChats } = useUnreadConversas();
   const [filtro, setFiltro] = useState<FeedFiltro>('todos');
@@ -416,6 +416,7 @@ export default function FeedScreen() {
   }, [verArtistas, activeArtist?.id]);
 
   const toggleFavorito = useCallback(async (artistId: string) => {
+    if (!isAdmin) return;
     const wasFavorite = favoriteIds.has(artistId);
     setFavoriteIds((prev) => {
       const next = new Set(prev);
@@ -440,7 +441,7 @@ export default function FeedScreen() {
         return next;
       });
     }
-  }, [favoriteIds, filtroFavoritos]);
+  }, [favoriteIds, filtroFavoritos, isAdmin]);
 
   const emptyCopy = useMemo(() => {
     if (verArtistas) {
@@ -986,17 +987,19 @@ export default function FeedScreen() {
             </View>
           ) : null}
         </View>
-        <TouchableOpacity
-          onPress={() => void toggleFavorito(item.id)}
-          hitSlop={10}
-          style={styles.artistHeartBtn}
-        >
-          <Ionicons
-            name={favorito ? 'heart' : 'heart-outline'}
-            size={20}
-            color={favorito ? '#EF4444' : colors.textSecondary}
-          />
-        </TouchableOpacity>
+        {isAdmin ? (
+          <TouchableOpacity
+            onPress={() => void toggleFavorito(item.id)}
+            hitSlop={10}
+            style={styles.artistHeartBtn}
+          >
+            <Ionicons
+              name={favorito ? 'heart' : 'heart-outline'}
+              size={20}
+              color={favorito ? '#EF4444' : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        ) : null}
         <View style={[styles.artistFollow, { borderColor: colors.border, marginTop: roles.length ? 4 : 0 }]}>
           <Text style={[styles.artistFollowText, { color: colors.text }]}>Ver</Text>
         </View>
@@ -1048,20 +1051,22 @@ export default function FeedScreen() {
                   >
                     <Ionicons name="help-circle-outline" size={22} color={colors.primary} />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.notificationButton}
-                    onPress={() => router.push('/conversas')}
-                    accessibilityLabel="Conversas"
-                  >
-                    <Ionicons name="paper-plane-outline" size={22} color={colors.primary} />
-                    {unreadChats > 0 ? (
-                      <View style={styles.notificationBadge}>
-                        <Text style={styles.badgeText}>
-                          {unreadChats > 99 ? '99+' : unreadChats.toString()}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
+                  {isAdmin ? (
+                    <TouchableOpacity
+                      style={styles.notificationButton}
+                      onPress={() => router.push('/conversas')}
+                      accessibilityLabel="Conversas"
+                    >
+                      <Ionicons name="paper-plane-outline" size={22} color={colors.primary} />
+                      {unreadChats > 0 ? (
+                        <View style={styles.notificationBadge}>
+                          <Text style={styles.badgeText}>
+                            {unreadChats > 99 ? '99+' : unreadChats.toString()}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     style={styles.notificationButton}
                     onPress={() => router.push('/notificacoes')}
@@ -1083,20 +1088,22 @@ export default function FeedScreen() {
         ) : (
           <View style={styles.noArtistHeader}>
             <Text style={[styles.headerArtistName, { color: colors.text }]}>Feed</Text>
-            <TouchableOpacity
-              style={styles.notificationButton}
-              onPress={() => router.push('/conversas')}
-              accessibilityLabel="Conversas"
-            >
-              <Ionicons name="paper-plane-outline" size={24} color={colors.primary} />
-              {unreadChats > 0 ? (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.badgeText}>
-                    {unreadChats > 99 ? '99+' : unreadChats.toString()}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
+            {isAdmin ? (
+              <TouchableOpacity
+                style={styles.notificationButton}
+                onPress={() => router.push('/conversas')}
+                accessibilityLabel="Conversas"
+              >
+                <Ionicons name="paper-plane-outline" size={24} color={colors.primary} />
+                {unreadChats > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.badgeText}>
+                      {unreadChats > 99 ? '99+' : unreadChats.toString()}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={styles.notificationButton}
               onPress={() => router.push('/notificacoes')}
@@ -1240,7 +1247,7 @@ export default function FeedScreen() {
               {(verArtistas ? loadingArtistas : loading) ? (
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
               ) : null}
-              {verArtistas ? (
+              {verArtistas && isAdmin ? (
                 <TouchableOpacity
                   style={styles.filterToggle}
                   onPress={() => setFiltroFavoritos((v) => !v)}

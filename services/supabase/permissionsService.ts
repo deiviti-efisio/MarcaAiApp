@@ -14,6 +14,10 @@ export function normalizeArtistMemberRole(role: string): UserRole {
   return 'viewer';
 }
 
+export function isArtistAdminRole(role?: string | null): boolean {
+  return normalizeArtistMemberRole(String(role || '')) === 'admin';
+}
+
 export interface UserPermission {
   userId: string;
   artistId: string;
@@ -36,11 +40,14 @@ export interface UserPermission {
 const permissionsCache = new Map<string, UserPermission>();
 
 // Função para obter permissões do usuário para um artista específico
-export const getUserPermissions = async (userId: string, artistId: string): Promise<UserPermission | null> => {
+export const getUserPermissions = async (
+  userId: string,
+  artistId: string,
+  options?: { skipCache?: boolean },
+): Promise<UserPermission | null> => {
   const cacheKey = `${userId}-${artistId}`;
-  
-  // Verificar cache primeiro
-  if (permissionsCache.has(cacheKey)) {
+
+  if (!options?.skipCache && permissionsCache.has(cacheKey)) {
     return permissionsCache.get(cacheKey)!;
   }
 

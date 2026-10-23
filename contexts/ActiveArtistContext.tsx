@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { getActiveArtist, setActiveArtist as saveToStorage, clearActiveArtist } from '../services/artistContext';
 import { getArtistById, getArtists } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
+import { normalizeArtistMemberRole } from '../services/supabase/permissionsService';
 import { isLikelyNetworkFailure } from '../utils/isLikelyNetworkFailure';
 
 export interface ActiveArtist {
@@ -24,6 +25,23 @@ interface ActiveArtistContextData {
 }
 
 const ActiveArtistContext = createContext<ActiveArtistContextData>({} as ActiveArtistContextData);
+
+async function resolveMembershipRole(artistId: string, fallback?: string): Promise<string> {
+  try {
+    const { user } = await getCurrentUser();
+    if (!user) return fallback || 'viewer';
+    const { data } = await supabase
+      .from('artist_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('artist_id', artistId)
+      .maybeSingle();
+    if (data?.role) return normalizeArtistMemberRole(String(data.role));
+  } catch {
+    /* mantém fallback */
+  }
+  return fallback ? normalizeArtistMemberRole(String(fallback)) : 'viewer';
+}
 
 export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeArtist, setActiveArtistState] = useState<ActiveArtist | null>(null);
@@ -61,10 +79,11 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return;
       }
 
+      const membershipRole = await resolveMembershipRole(saved.id, saved.role);
       const fromStorage: ActiveArtist = {
         id: saved.id,
         name: saved.name,
-        role: saved.role,
+        role: membershipRole,
         profile_url: saved.profile_url,
         musical_style: saved.musical_style,
         created_at: saved.created_at,
@@ -78,7 +97,7 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const normalizedArtist: ActiveArtist = {
           id: artist.id,
           name: artist.name,
-          role: saved.role,
+          role: membershipRole,
           profile_url: artist.profile_url || saved.profile_url,
           musical_style: artist.musical_style || saved.musical_style,
           created_at: artist.created_at || saved.created_at,
@@ -122,10 +141,11 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (!error && artist) {
         // Atualizar apenas se o ID for o mesmo (garantir que não troca)
         if (artistIdRef.current === artist.id) {
+          const membershipRole = await resolveMembershipRole(artist.id, saved.role);
           const updatedArtist: ActiveArtist = {
             id: artist.id,
             name: artist.name,
-            role: saved.role, // Manter role do AsyncStorage
+            role: membershipRole,
             profile_url: artist.profile_url,
               musical_style: artist.musical_style || saved.musical_style,
               created_at: artist.created_at || saved.created_at,

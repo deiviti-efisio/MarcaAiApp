@@ -34,6 +34,8 @@ import VoiceCreateEventModal from '../components/VoiceCreateEventModal';
 import { persistViewedMonth } from '../contexts/SharedTabMonthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
+import { usePermissions } from '../contexts/PermissionsContext';
+import { isArtistAdminRole } from '../services/supabase/permissionsService';
 import { getArtists } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
 import { uploadEventContractFile } from '../services/supabase/eventContractUploadService';
@@ -409,9 +411,11 @@ export default function AdicionarEventoScreen() {
   const [contractName, setContractName] = useState<string | null>(null);
   const [contractMime, setContractMime] = useState<string | null>(null);
   const [highlightImageUri, setHighlightImageUri] = useState<string | null>(null);
+  const { isAdmin } = usePermissions();
   const { activeArtist: contextArtist } = useActiveArtistContext();
   const { activeArtist: storedArtist } = useActiveArtist();
   const artistId = contextArtist?.id || storedArtist?.id;
+  const canManagePublic = isAdmin && isArtistAdminRole(contextArtist?.role || storedArtist?.role);
   const [recentSuggestions, setRecentSuggestions] = useState<RecentEventSuggestion[]>([]);
   const [showPreviousEventsModal, setShowPreviousEventsModal] = useState(false);
   const [loadingPreviousEvents, setLoadingPreviousEvents] = useState(false);
@@ -611,8 +615,8 @@ export default function AdicionarEventoScreen() {
           : null,
         contractor_phone: form.telefoneContratante.trim() || undefined,
         confirmed: form.status === 'confirmado',
-        is_public: form.status === 'confirmado' && (form.isPublic || form.isFeatured),
-        is_featured: form.status === 'confirmado' && form.isFeatured,
+        is_public: canManagePublic && form.status === 'confirmado' && (form.isPublic || form.isFeatured),
+        is_featured: canManagePublic && form.status === 'confirmado' && form.isFeatured,
         highlight_image_url: null as string | null,
         tag: form.tag,
         contract_url: contractUrl ?? null,
@@ -620,7 +624,7 @@ export default function AdicionarEventoScreen() {
         expenses: expensesData
       };
 
-      if (form.status === 'confirmado' && form.isFeatured && highlightImageUri) {
+      if (canManagePublic && form.status === 'confirmado' && form.isFeatured && highlightImageUri) {
         const uploaded = await uploadImageToSupabase(
           highlightImageUri,
           'image_artists',
@@ -1155,7 +1159,7 @@ export default function AdicionarEventoScreen() {
           </View>
         </View>
 
-        {form.status === 'confirmado' ? (
+        {form.status === 'confirmado' && canManagePublic ? (
           <View style={styles.inputGroup}>
             <View
               style={[
@@ -1188,7 +1192,7 @@ export default function AdicionarEventoScreen() {
           </View>
         ) : null}
 
-        {form.status === 'confirmado' ? (
+        {form.status === 'confirmado' && canManagePublic ? (
           <View style={styles.inputGroup}>
             <View
               style={[

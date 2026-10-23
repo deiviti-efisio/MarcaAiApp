@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import OptimizedImage from '../components/OptimizedImage';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
+import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import FeaturedShowCard from '../components/FeaturedShowCard';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
@@ -55,6 +56,7 @@ function styleChips(artist: Artist | null): string[] {
 
 export default function PerfilArtistaScreen() {
   const { colors } = useTheme();
+  const { isAdmin } = usePermissions();
   const { activeArtist } = useActiveArtistContext();
   const params = useLocalSearchParams<{ artistId?: string }>();
   const artistId = typeof params.artistId === 'string' ? params.artistId : '';
@@ -69,6 +71,8 @@ export default function PerfilArtistaScreen() {
   const [favorito, setFavorito] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
+  const canManagePublicProfile = isOwn && isAdmin;
+  const canSocialWithArtists = isAdmin && !isOwn;
   const previews = useMemo(
     () => collectSocialPreviewItems(parseArtistSocialLinks(artist?.social_links)),
     [artist?.social_links]
@@ -106,6 +110,10 @@ export default function PerfilArtistaScreen() {
   };
 
   const handleConversar = () => {
+    if (!isAdmin) {
+      Alert.alert('Conversa', 'Somente o administrador pode conversar com outros artistas.');
+      return;
+    }
     if (!activeArtist?.id) {
       Alert.alert('Conversa', 'Selecione um artista para iniciar o bate-papo.');
       return;
@@ -122,7 +130,7 @@ export default function PerfilArtistaScreen() {
   };
 
   const handleSetFeaturedPrincipal = async (show: FeaturedShow) => {
-    if (!isOwn || show.id === featuredHero?.id || savingFeatured) return;
+    if (!canManagePublicProfile || show.id === featuredHero?.id || savingFeatured) return;
     setSavingFeatured(true);
     const result = await definirShowDestaquePrincipal(show.id);
     setSavingFeatured(false);
@@ -164,7 +172,7 @@ export default function PerfilArtistaScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.topTitle, { color: colors.text }]}>Perfil</Text>
-        {isOwn ? (
+        {canManagePublicProfile ? (
           <TouchableOpacity
             onPress={() => router.push('/editar-artista')}
             style={styles.iconBtn}
@@ -172,7 +180,7 @@ export default function PerfilArtistaScreen() {
           >
             <Ionicons name="create-outline" size={20} color={colors.text} />
           </TouchableOpacity>
-        ) : (
+        ) : canSocialWithArtists ? (
           <TouchableOpacity
             onPress={() => {
               if (!artistId) return;
@@ -188,6 +196,8 @@ export default function PerfilArtistaScreen() {
           >
             <Ionicons name={favorito ? 'heart' : 'heart-outline'} size={22} color={favorito ? '#EF4444' : colors.text} />
           </TouchableOpacity>
+        ) : (
+          <View style={styles.iconBtn} />
         )}
       </View>
 
@@ -297,7 +307,7 @@ export default function PerfilArtistaScreen() {
             ) : null}
 
             <View style={styles.actions}>
-              {!isOwn ? (
+              {canSocialWithArtists ? (
                 <TouchableOpacity
                   style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                   onPress={handleConversar}
@@ -458,7 +468,7 @@ export default function PerfilArtistaScreen() {
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            {isOwn ? (
+            {canManagePublicProfile ? (
               <Text style={[styles.menuHint, { color: colors.textSecondary }]}>
                 Escolha o show que fica como destaque principal no perfil.
               </Text>
@@ -469,9 +479,9 @@ export default function PerfilArtistaScreen() {
                 <TouchableOpacity
                   key={show.id}
                   style={[styles.menuItem, { borderColor: colors.border }]}
-                  disabled={isOwn ? isPrincipal || savingFeatured : true}
+                  disabled={canManagePublicProfile ? isPrincipal || savingFeatured : true}
                   onPress={() => void handleSetFeaturedPrincipal(show)}
-                  activeOpacity={isOwn && !isPrincipal ? 0.7 : 1}
+                  activeOpacity={canManagePublicProfile && !isPrincipal ? 0.7 : 1}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={[styles.menuItemTitle, { color: colors.text }]} numberOfLines={1}>
@@ -485,7 +495,7 @@ export default function PerfilArtistaScreen() {
                     <View style={[styles.principalBadge, { backgroundColor: `${colors.primary}22` }]}>
                       <Text style={[styles.principalBadgeText, { color: colors.primary }]}>Principal</Text>
                     </View>
-                  ) : isOwn ? (
+                  ) : canManagePublicProfile ? (
                     <Text style={[styles.menuAction, { color: colors.primary }]}>Usar como principal</Text>
                   ) : null}
                 </TouchableOpacity>

@@ -106,7 +106,7 @@ BEGIN
     FROM public.artist_members am
     WHERE am.artist_id = v_artist
       AND am.user_id = auth.uid()
-      AND am.role IN ('admin', 'owner', 'vendedor')
+      AND am.role IN ('admin', 'owner')
   ) THEN
     RAISE EXCEPTION 'Sem permissão para alterar o destaque';
   END IF;

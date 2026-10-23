@@ -16,6 +16,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import OptimizedImage from '../components/OptimizedImage';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
+import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import {
   abrirConversaArtistas,
@@ -35,6 +36,7 @@ function formatMsgTime(iso: string): string {
 export default function ConversaScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isAdmin } = usePermissions();
   const { activeArtist } = useActiveArtistContext();
   const params = useLocalSearchParams<{
     conversationId?: string;
@@ -56,7 +58,7 @@ export default function ConversaScreen() {
   const title = (typeof params.artistName === 'string' && params.artistName) || 'Conversa';
   const image = typeof params.artistImage === 'string' ? params.artistImage : '';
   const initial = title.trim().charAt(0).toUpperCase() || '?';
-  const canChat = !!activeArtist?.id && !!otherId && activeArtist.id !== otherId;
+  const canChat = isAdmin && !!activeArtist?.id && !!otherId && activeArtist.id !== otherId;
 
   const loadThread = useCallback(
     async (id: string, silent = false) => {
@@ -183,7 +185,9 @@ export default function ConversaScreen() {
       {!canChat ? (
         <View style={styles.center}>
           <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 28 }}>
-            Selecione um artista para conversar.
+            {isAdmin
+              ? 'Selecione um artista para conversar.'
+              : 'Somente o administrador pode conversar com outros artistas.'}
           </Text>
         </View>
       ) : (

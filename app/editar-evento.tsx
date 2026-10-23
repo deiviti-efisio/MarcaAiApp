@@ -19,6 +19,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePermissions } from '../contexts/PermissionsContext';
+import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
+import { isArtistAdminRole } from '../services/supabase/permissionsService';
 import { supabase } from '../lib/supabase';
 import { removeEventContractByUrl, uploadEventContractFile } from '../services/supabase/eventContractUploadService';
 import { getEventById, updateEvent, UpdateEventData } from '../services/supabase/eventService';
@@ -297,6 +300,9 @@ export default function EditarEventoScreen() {
     tag: 'evento', // Valor padrão
   });
 
+  const { isAdmin } = usePermissions();
+  const { activeArtist } = useActiveArtistContext();
+  const canManagePublic = isAdmin && isArtistAdminRole(activeArtist?.role);
   const [showDateModal, setShowDateModal] = useState(false);
   const [showTimeInicioModal, setShowTimeInicioModal] = useState(false);
   const [showTimeFimModal, setShowTimeFimModal] = useState(false);
@@ -505,10 +511,12 @@ export default function EditarEventoScreen() {
         start_time: form.horarioInicio.toTimeString().split(' ')[0].substring(0, 5),
         end_time: form.horarioFim.toTimeString().split(' ')[0].substring(0, 5),
         confirmed: form.status === 'confirmado',
-        is_public: form.status === 'confirmado' && (form.isPublic || form.isFeatured),
-        is_featured: form.status === 'confirmado' && form.isFeatured,
         tag: form.tag,
       };
+      if (canManagePublic) {
+        updateData.is_public = form.status === 'confirmado' && (form.isPublic || form.isFeatured);
+        updateData.is_featured = form.status === 'confirmado' && form.isFeatured;
+      }
 
       if (pendingContract) {
         const uploaded = await uploadEventContractFile(pendingContract.uri, {
@@ -526,7 +534,7 @@ export default function EditarEventoScreen() {
         updateData.contract_file_name = null;
       }
 
-      if (highlightDirty) {
+      if (canManagePublic && highlightDirty) {
         if (highlightImageUri && !highlightImageUri.startsWith('http')) {
           const uploaded = await uploadImageToSupabase(
             highlightImageUri,
@@ -913,7 +921,7 @@ export default function EditarEventoScreen() {
           </View>
         </View>
 
-        {form.status === 'confirmado' ? (
+        {form.status === 'confirmado' && canManagePublic ? (
           <View style={styles.inputGroup}>
             <View
               style={[
@@ -946,7 +954,7 @@ export default function EditarEventoScreen() {
           </View>
         ) : null}
 
-        {form.status === 'confirmado' ? (
+        {form.status === 'confirmado' && canManagePublic ? (
           <View style={styles.inputGroup}>
             <View
               style={[
