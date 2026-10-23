@@ -910,14 +910,15 @@ export default function PublicarFeedScreen() {
         animationType="fade"
         onRequestClose={closeDayModal}
       >
-        <GestureHandlerRootView style={styles.modalRoot}>
+        <GestureHandlerRootView style={styles.modalRoot} pointerEvents="box-none">
           <Pressable style={styles.modalOverlay} onPress={closeDayModal} />
 
           <Animated.View
+            pointerEvents="auto"
             style={[
               styles.modalCard,
               dayModalAnimatedStyle,
-              { backgroundColor: colors.surface },
+              { backgroundColor: colors.surface, zIndex: 2 },
             ]}
           >
             <View {...dayModalHandlePanResponder.panHandlers} style={styles.modalHandleTouch}>
@@ -963,6 +964,11 @@ export default function PublicarFeedScreen() {
                       <Text style={[styles.eventName, { color: colors.text }]} numberOfLines={2}>
                         {event.name}
                       </Text>
+                      {event.value != null && Number(event.value) > 0 ? (
+                        <Text style={[styles.eventValue, { color: colors.primary }]} numberOfLines={1}>
+                          {formatCurrencyBRLFromAmount(Number(event.value))}
+                        </Text>
+                      ) : null}
                       <Text style={[styles.eventMeta, { color: colors.textSecondary }]}>
                         {formatTime(event.start_time)
                           ? `${formatTime(event.start_time)}–${formatTime(event.end_time)}`
@@ -1089,6 +1095,7 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendText: { fontSize: 12 },
   eventName: { fontSize: 14, fontWeight: '700' },
+  eventValue: { fontSize: 13, fontWeight: '800', marginTop: 2 },
   eventMeta: { fontSize: 12, marginTop: 2 },
   field: {
     flexDirection: 'row',
@@ -1158,6 +1165,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
+    zIndex: 0,
   },
   modalCard: {
     borderTopLeftRadius: 20,

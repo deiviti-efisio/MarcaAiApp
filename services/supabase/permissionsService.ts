@@ -9,6 +9,7 @@ export type UserRole = 'viewer' | 'admin' | 'vendedor';
 
 export function normalizeArtistMemberRole(role: string): UserRole {
   if (role === 'viewer' || role === 'admin' || role === 'vendedor') return role;
+  if (role === 'owner') return 'admin';
   if (role === 'editor') return 'vendedor'; // legado: trata como vendedor até a migração rodar
   return 'viewer';
 }

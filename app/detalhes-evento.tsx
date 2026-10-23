@@ -40,6 +40,7 @@ import {
 import {
     AvaliacaoParticipacaoEventoRow,
     cancelarConviteParticipacao,
+    cancelarParticipacaoAceita,
     listarAvaliacoesParticipacaoEvento,
     listarConvitesDoEvento,
     obterConvitePorId,
@@ -1154,9 +1155,27 @@ export default function DetalhesEventoScreen() {
     });
   };
 
+  const isInviteEvent = Boolean(event?.convite_participacao_id);
+
   const handleDeleteEvent = () => {
     if (!canManageOwnEvent) {
       setShowPermissionModal(true);
+      return;
+    }
+
+    if (isInviteEvent) {
+      Alert.alert(
+        "Cancelar o evento",
+        `Cancelar a participação em "${event?.name}"? Quem te convidou será avisado.`,
+        [
+          { text: "Voltar", style: "cancel" },
+          {
+            text: "Cancelar o evento",
+            style: "destructive",
+            onPress: () => void confirmCancelInviteEvent(),
+          },
+        ],
+      );
       return;
     }
 
@@ -1175,6 +1194,27 @@ export default function DetalhesEventoScreen() {
         },
       ],
     );
+  };
+
+  const confirmCancelInviteEvent = async () => {
+    if (!event?.convite_participacao_id) return;
+    setIsDeleting(true);
+    try {
+      const { success, error } = await cancelarParticipacaoAceita(
+        event.convite_participacao_id,
+        "Cancelamento do evento de participação.",
+        currentUserId,
+      );
+      if (!success) {
+        Alert.alert("Erro", error || "Não foi possível cancelar o evento.");
+        return;
+      }
+      Alert.alert("Evento cancelado", "Seu cancelamento foi enviado para quem convidou.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const confirmDeleteEvent = async () => {
@@ -2561,6 +2601,7 @@ export default function DetalhesEventoScreen() {
 
           {canCreateEventsPermission &&
           event?.artist_id === activeArtist?.id &&
+          !isInviteEvent &&
           isEventDateTodayOrFuture(event.event_date) ? (
             <TouchableOpacity
               style={[
@@ -2581,6 +2622,7 @@ export default function DetalhesEventoScreen() {
             </TouchableOpacity>
           ) : null}
 
+          {!isInviteEvent ? (
           <TouchableOpacity
             style={[
               styles.actionButton,
@@ -2602,8 +2644,9 @@ export default function DetalhesEventoScreen() {
             )}
             <Ionicons name="chevron-forward" size={20} color={colors.text} />
           </TouchableOpacity>
+          ) : null}
 
-          {canCreateEventsPermission ? (
+          {canCreateEventsPermission && !isInviteEvent ? (
             <TouchableOpacity
               style={[
                 styles.actionButton,
@@ -2672,7 +2715,7 @@ export default function DetalhesEventoScreen() {
             onPress={handleDeleteEvent}
             disabled={isDeleting}
           >
-            <Ionicons name="trash" size={24} color={colors.error} />
+            <Ionicons name={isInviteEvent ? "close-circle" : "trash"} size={24} color={colors.error} />
             <Text
               style={[
                 styles.actionButtonText,
@@ -2680,7 +2723,13 @@ export default function DetalhesEventoScreen() {
                 { color: colors.error },
               ]}
             >
-              {isDeleting ? "Deletando..." : "Deletar Evento"}
+              {isDeleting
+                ? isInviteEvent
+                  ? "Cancelando..."
+                  : "Deletando..."
+                : isInviteEvent
+                  ? "Cancelar o evento"
+                  : "Deletar Evento"}
             </Text>
             {!canManageOwnEvent && (
               <Ionicons

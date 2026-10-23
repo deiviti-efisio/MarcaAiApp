@@ -91,7 +91,9 @@ function excludeFeedMarketplaceEvents<
 >(events: T[] | null | undefined): T[] {
   const seen = new Set<string>();
   return (events ?? []).filter((event) => {
-    if (event.ativo !== true) return false;
+    if (event.ativo === false) {
+      return false;
+    }
     const tipo = event.feed_tipo;
     if (tipo != null && String(tipo).trim() !== "") return false;
     const id = event.id != null ? String(event.id) : "";
@@ -101,6 +103,109 @@ function excludeFeedMarketplaceEvents<
     }
     return true;
   });
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function calendarMonthBounds(year: number, monthIndex: number): { startDate: string; endDate: string } {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  return {
+    startDate: `${year}-${pad2(monthIndex + 1)}-01`,
+    endDate: `${year}-${pad2(monthIndex + 1)}-${pad2(lastDay)}`,
+  };
+}
+
+function inDateRange(eventDate: unknown, startDate: string, endDate: string): boolean {
+  const day = toCalendarYmd(eventDate);
+  return !!day && day >= startDate && day <= endDate;
+}
+
+function coerceEventRow(row: Event): Event {
+  const raw = Number(row.value);
+  return {
+    ...row,
+    event_date: toCalendarYmd(row.event_date),
+    value: Number.isFinite(raw) ? raw : undefined,
+    ativo: row.ativo !== false,
+  };
+}
+
+async function fetchArtistAgendaEvents(
+  artistId: string,
+  abortSignal?: AbortSignal,
+): Promise<{ events: Event[]; error: string | null; aborted?: boolean }> {
+  const runTable = async (withFeedTipo: boolean) => {
+    let query = supabase
+      .from("events")
+      .select("*")
+      .eq("artist_id", artistId)
+      .eq("ativo", true)
+      .order("event_date", { ascending: true });
+    if (withFeedTipo) query = query.is("feed_tipo", null);
+    if (abortSignal) query = query.abortSignal(abortSignal);
+    return query;
+  };
+
+  let tableRes = await runTable(true);
+  if (abortSignal?.aborted || isAbortError(tableRes.error)) {
+    return { events: [], error: null, aborted: true };
+  }
+  if (tableRes.error && /feed_tipo/i.test(tableRes.error.message || "")) {
+    tableRes = await runTable(false);
+    if (abortSignal?.aborted || isAbortError(tableRes.error)) {
+      return { events: [], error: null, aborted: true };
+    }
+  }
+
+  const fromTable = tableRes.error
+    ? []
+    : excludeFeedMarketplaceEvents(
+        ((tableRes.data || []) as Event[]).map(coerceEventRow),
+      );
+  const tableHasValue = fromTable.some((event) => Number(event.value) > 0);
+
+  if (fromTable.length > 0 && tableHasValue) {
+    return { events: fromTable, error: null };
+  }
+
+  let rpc = supabase.rpc("get_events_by_role", { p_artist_id: artistId });
+  if (abortSignal) rpc = rpc.abortSignal(abortSignal);
+  const rpcRes = await rpc;
+  if (abortSignal?.aborted || isAbortError(rpcRes.error)) {
+    return { events: [], error: null, aborted: true };
+  }
+  if (!rpcRes.error && rpcRes.data) {
+    const fromRpc = excludeFeedMarketplaceEvents(
+      ((rpcRes.data || []) as Event[]).map(coerceEventRow),
+    );
+    if (fromTable.length === 0) {
+      return { events: fromRpc, error: null };
+    }
+    const valueById = new Map(
+      fromRpc.map((event) => [String(event.id), Number(event.value) || 0]),
+    );
+    return {
+      events: fromTable.map((event) => {
+        const tableVal = Number(event.value);
+        const rpcVal = valueById.get(String(event.id));
+        const value =
+          Number.isFinite(tableVal) && tableVal > 0
+            ? tableVal
+            : Number.isFinite(rpcVal) && (rpcVal as number) > 0
+              ? rpcVal
+              : event.value;
+        return { ...event, value };
+      }),
+      error: null,
+    };
+  }
+
+  if (fromTable.length > 0) {
+    return { events: fromTable, error: null };
+  }
+  return { events: [], error: tableRes.error?.message || rpcRes.error?.message || null };
 }
 
 function maskEventValueForRole<T extends { created_by?: string; value?: unknown; paid_amount?: unknown }>(
@@ -439,8 +544,7 @@ export const getEventsByMonth = async (
   abortSignal?: AbortSignal,
 ): Promise<{ success: boolean; error: string | null; events?: Event[]; aborted?: boolean }> => {
   try {
-    const startDate = new Date(year, month, 1).toISOString().split("T")[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split("T")[0];
+    const { startDate, endDate } = calendarMonthBounds(year, month);
 
     console.log(
       "getEventsByMonth: Buscando eventos para artista:",
@@ -451,28 +555,16 @@ export const getEventsByMonth = async (
       endDate,
     );
 
-    let query = supabase
-      .from("events")
-      .select("*")
-      .eq("artist_id", artistId)
-      .eq("ativo", true)
-      .is("feed_tipo", null)
-      .gte("event_date", startDate)
-      .lte("event_date", endDate)
-      .order("event_date", { ascending: true });
-    if (abortSignal) query = query.abortSignal(abortSignal);
-    const { data, error } = await query;
-
-    console.log("getEventsByMonth: Resultado da query:", { data, error });
-
-    if (abortSignal?.aborted || isAbortError(error)) {
+    const loaded = await fetchArtistAgendaEvents(artistId, abortSignal);
+    if (loaded.aborted) {
       return { success: false, error: null, aborted: true };
     }
-    if (error) {
-      return { success: false, error: error.message };
+    if (loaded.error) {
+      return { success: false, error: loaded.error };
     }
 
-    return { success: true, error: null, events: excludeFeedMarketplaceEvents(data) };
+    const events = loaded.events.filter((event) => inDateRange(event.event_date, startDate, endDate));
+    return { success: true, error: null, events };
   } catch (error) {
     if (abortSignal?.aborted || isAbortError(error)) {
       return { success: false, error: null, aborted: true };
@@ -488,29 +580,19 @@ export const getEventsByYear = async (
   abortSignal?: AbortSignal,
 ): Promise<{ success: boolean; error: string | null; events?: Event[]; aborted?: boolean }> => {
   try {
-    const startDate = new Date(year, 0, 1).toISOString().split("T")[0];
-    const endDate = new Date(year, 11, 31).toISOString().split("T")[0];
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
 
-    let query = supabase
-      .from("events")
-      .select("*")
-      .eq("artist_id", artistId)
-      .eq("ativo", true)
-      .is("feed_tipo", null)
-      .gte("event_date", startDate)
-      .lte("event_date", endDate)
-      .order("event_date", { ascending: true });
-    if (abortSignal) query = query.abortSignal(abortSignal);
-    const { data, error } = await query;
-
-    if (abortSignal?.aborted || isAbortError(error)) {
+    const loaded = await fetchArtistAgendaEvents(artistId, abortSignal);
+    if (loaded.aborted) {
       return { success: false, error: null, aborted: true };
     }
-    if (error) {
-      return { success: false, error: error.message };
+    if (loaded.error) {
+      return { success: false, error: loaded.error };
     }
 
-    return { success: true, error: null, events: excludeFeedMarketplaceEvents(data) };
+    const events = loaded.events.filter((event) => inDateRange(event.event_date, startDate, endDate));
+    return { success: true, error: null, events };
   } catch (error) {
     if (abortSignal?.aborted || isAbortError(error)) {
       return { success: false, error: null, aborted: true };
@@ -526,21 +608,12 @@ export const getEventsByDateRange = async (
   endDate: string,
 ): Promise<{ success: boolean; error: string | null; events?: Event[] }> => {
   try {
-    const { data, error } = await supabase
-      .from("events")
-      .select("*")
-      .eq("artist_id", artistId)
-      .eq("ativo", true)
-      .is("feed_tipo", null)
-      .gte("event_date", startDate)
-      .lte("event_date", endDate)
-      .order("event_date", { ascending: true });
-
-    if (error) {
-      return { success: false, error: error.message };
+    const loaded = await fetchArtistAgendaEvents(artistId);
+    if (loaded.error) {
+      return { success: false, error: loaded.error };
     }
-
-    return { success: true, error: null, events: excludeFeedMarketplaceEvents(data) };
+    const events = loaded.events.filter((event) => inDateRange(event.event_date, startDate, endDate));
+    return { success: true, error: null, events };
   } catch {
     return { success: false, error: "Erro de conexão" };
   }

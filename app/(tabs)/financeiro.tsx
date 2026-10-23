@@ -150,10 +150,10 @@ export default function FinanceiroScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { activeArtist, refreshActiveArtist } = useActiveArtistContext();
-  const { isAdmin, permissionsLoaded } = usePermissions();
+  const { isAdmin, canViewFinancials, permissionsLoaded } = usePermissions();
   const { unreadCount, loadUnreadCount } = useNotifications();
   const [hasAnyArtist, setHasAnyArtist] = useState(false);
-  const hasAccess = permissionsLoaded ? isAdmin : null;
+  const hasAccess = permissionsLoaded ? Boolean(isAdmin || canViewFinancials) : null;
   const isCheckingAccess = Boolean(activeArtist) && !permissionsLoaded;
   const [monthRevenueGoal, setMonthRevenueGoal] = useState<number | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -302,7 +302,7 @@ export default function FinanceiroScreen() {
     } finally {
       if (!abort.signal.aborted) setIsLoading(false);
     }
-  }, [activeArtist, currentYear, currentMonth]);
+  }, [activeArtist?.id, currentYear, currentMonth]);
 
   const loadAnnualFinancialData = React.useCallback(async () => {
     if (!activeArtist || !financeFocusedRef.current) {
@@ -388,7 +388,7 @@ export default function FinanceiroScreen() {
     } finally {
       if (!abort.signal.aborted) setIsLoading(false);
     }
-  }, [activeArtist, annualSummaryYear]);
+  }, [activeArtist?.id, annualSummaryYear]);
 
   // Só carrega com a aba aberta. No mount das tabs isso competia com o Feed
   // (dezenas de requests de despesa por evento e a busca de artistas ficava na fila).
@@ -396,7 +396,7 @@ export default function FinanceiroScreen() {
     React.useCallback(() => {
       financeFocusedRef.current = true;
       void loadUnreadCount();
-      if (!activeArtist || !permissionsLoaded || !isAdmin) {
+      if (!activeArtist || !permissionsLoaded || !(isAdmin || canViewFinancials)) {
         return () => {
           financeFocusedRef.current = false;
           financeAbortRef.current?.abort();
@@ -418,6 +418,7 @@ export default function FinanceiroScreen() {
       activeArtist?.id,
       permissionsLoaded,
       isAdmin,
+      canViewFinancials,
       financeViewMode,
       currentMonth,
       currentYear,

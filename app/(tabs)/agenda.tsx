@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -1149,10 +1150,16 @@ export default function AgendaScreen() {
   };
 
   const canEditEventFromDay = (event: {
+    id?: string;
     created_by?: string | null;
     convite_participacao_id?: string | null;
   }) => {
-    if (event.convite_participacao_id) return false;
+    if (
+      event.convite_participacao_id ||
+      (event.id ? Boolean(conviteIdByEventId[event.id]) : false)
+    ) {
+      return false;
+    }
     if (currentUserRole === "admin") return true;
     if (
       currentUserRole === "vendedor" &&
@@ -2500,21 +2507,25 @@ export default function AgendaScreen() {
         onRequestClose={closeDayModal}
       >
         <View style={styles.dayModalOverlay}>
-          <TouchableWithoutFeedback onPress={closeDayModal}>
-            <View style={styles.dayModalBackdrop} />
-          </TouchableWithoutFeedback>
+          <Pressable
+            style={styles.dayModalBackdrop}
+            onPress={closeDayModal}
+            accessibilityLabel="Fechar"
+          />
 
           <View
             style={[
               styles.dayModalContent,
               { backgroundColor: colors.surface },
             ]}
+            onStartShouldSetResponder={() => true}
           >
             <TouchableOpacity
               style={styles.dayModalCloseButton}
               onPress={closeDayModal}
               activeOpacity={0.7}
               hitSlop={{ top: 24, bottom: 24, left: 24, right: 24 }}
+              accessibilityLabel="Fechar"
             >
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </TouchableOpacity>
@@ -2546,11 +2557,25 @@ export default function AgendaScreen() {
                         size={18}
                         color={colors.primary}
                       />
-                      <Text
-                        style={[styles.dayEventName, { color: colors.text }]}
-                      >
-                        {event.name}
-                      </Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={[styles.dayEventName, { color: colors.text }]}
+                          numberOfLines={2}
+                        >
+                          {event.name}
+                        </Text>
+                        {canSeeEventValue(event) &&
+                        hasDisplayableEventValue(event.value) ? (
+                          <Text
+                            style={[styles.dayEventValue, { color: colors.primary }]}
+                            numberOfLines={1}
+                          >
+                            {showEventValues
+                              ? formatEventValueBRL(event.value)
+                              : "R$ •••••"}
+                          </Text>
+                        ) : null}
+                      </View>
                     </TouchableOpacity>
                     {canEditEventFromDay(event) ? (
                       <TouchableOpacity
@@ -2867,7 +2892,7 @@ export default function AgendaScreen() {
                     >
                       {isCancellingInviteParticipation
                         ? "Cancelando..."
-                        : "Cancelar participação"}
+                        : "Cancelar o evento"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4154,12 +4179,14 @@ const styles = StyleSheet.create({
   dayModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.6)",
+    zIndex: 0,
   },
   dayModalContent: {
     width: "100%",
     maxWidth: 360,
     borderRadius: 20,
     padding: 20,
+    zIndex: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: Platform.OS === "android" ? 0 : 0.2,
@@ -4178,6 +4205,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.2)",
+    zIndex: 2,
+    elevation: 4,
   },
   dayModalTitle: {
     fontSize: 18,
@@ -4208,7 +4237,11 @@ const styles = StyleSheet.create({
   dayEventName: {
     fontSize: 16,
     fontWeight: "600",
-    flex: 1,
+  },
+  dayEventValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 2,
   },
   dayEventEditButton: {
     flexDirection: "row",
