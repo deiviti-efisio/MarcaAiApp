@@ -38,7 +38,13 @@
             ]
           }
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "youtube",
+          "vnd.youtube",
+          "instagram",
+          "spotify"
+        ]
       }
     },
     "android": {

@@ -27,6 +27,7 @@ import {
 } from '../services/supabase/artistFavoritesService';
 import { todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
 import { listarAgendaPublicaArtista, type PublicAgendaEvent } from '../services/supabase/eventService';
+import { maskBrazilMobile, openWhatsAppConversation } from '../utils/brazilPhone';
 
 function styleChips(artist: Artist | null): string[] {
   if (!artist) return [];
@@ -109,7 +110,10 @@ export default function PerfilArtistaScreen() {
 
   const youtubePreviews = previews.filter((item) => item.kind === 'youtube');
   const instagramPreviews = previews.filter((item) => item.kind === 'instagram');
-  const otherPreviews = previews.filter((item) => item.kind !== 'youtube' && item.kind !== 'instagram');
+  const spotifyPreviews = previews.filter((item) => item.kind === 'spotify');
+  const otherPreviews = previews.filter(
+    (item) => item.kind !== 'youtube' && item.kind !== 'instagram' && item.kind !== 'spotify'
+  );
   const videoSubtitle = (artist?.bio || '').trim();
 
   const locationLine = artist
@@ -118,6 +122,10 @@ export default function PerfilArtistaScreen() {
   const chips = styleChips(artist);
   const initial = (artist?.name || '?').trim().charAt(0).toUpperCase();
   const temShowHoje = publicEvents.some((item) => toCalendarYmd(item.event_date) === todayCalendarYmd());
+  const publicWhatsapp =
+    artist?.show_whatsapp && artist.whatsapp?.trim() ? artist.whatsapp.trim() : '';
+  const publicEmail =
+    artist?.show_email && artist.email?.trim() ? artist.email.trim() : '';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
@@ -169,8 +177,12 @@ export default function PerfilArtistaScreen() {
           }
         >
           <View style={styles.hero}>
-            {artist.cover_url ? (
-              <Image source={{ uri: artist.cover_url }} style={styles.cover} contentFit="cover" />
+            {artist.cover_url || artist.profile_url ? (
+              <Image
+                source={{ uri: artist.cover_url || artist.profile_url }}
+                style={styles.cover}
+                contentFit="cover"
+              />
             ) : (
               <View style={[styles.cover, { backgroundColor: `${colors.primary}22` }]} />
             )}
@@ -209,6 +221,28 @@ export default function PerfilArtistaScreen() {
                 <Text style={[styles.locText, { color: colors.textSecondary }]}>{locationLine}</Text>
               </View>
             ) : null}
+            {publicWhatsapp ? (
+              <TouchableOpacity
+                style={styles.locRow}
+                onPress={() => void openWhatsAppConversation(publicWhatsapp)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="logo-whatsapp" size={16} color="#16A34A" />
+                <Text style={[styles.locText, { color: '#16A34A' }]}>
+                  {maskBrazilMobile(publicWhatsapp)}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {publicEmail ? (
+              <TouchableOpacity
+                style={styles.locRow}
+                onPress={() => void Linking.openURL(`mailto:${publicEmail}`)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="mail-outline" size={16} color={colors.primary} />
+                <Text style={[styles.locText, { color: colors.primary }]}>{publicEmail}</Text>
+              </TouchableOpacity>
+            ) : null}
             {chips.length ? (
               <ScrollView
                 horizontal
@@ -240,6 +274,24 @@ export default function PerfilArtistaScreen() {
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
                   <Text style={styles.primaryBtnText}>Conversar</Text>
+                </TouchableOpacity>
+              ) : null}
+              {publicWhatsapp ? (
+                <TouchableOpacity
+                  style={[styles.socialBtn, { borderColor: '#16A34A', backgroundColor: '#16A34A12' }]}
+                  onPress={() => void openWhatsAppConversation(publicWhatsapp)}
+                  accessibilityLabel="Abrir WhatsApp"
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
+                </TouchableOpacity>
+              ) : null}
+              {publicEmail ? (
+                <TouchableOpacity
+                  style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                  onPress={() => void Linking.openURL(`mailto:${publicEmail}`)}
+                  accessibilityLabel="Enviar e-mail"
+                >
+                  <Ionicons name="mail-outline" size={18} color={colors.primary} />
                 </TouchableOpacity>
               ) : null}
               {previews.map((item) => (
@@ -278,6 +330,20 @@ export default function PerfilArtistaScreen() {
                     featured
                     subtitle={index === 0 ? videoSubtitle : undefined}
                   />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {spotifyPreviews.length ? (
+            <View style={[styles.section, styles.sectionPad]}>
+              <View style={styles.sectionHead}>
+                <Ionicons name="musical-notes" size={18} color="#1DB954" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Spotify</Text>
+              </View>
+              <View style={styles.videoStack}>
+                {spotifyPreviews.map((item) => (
+                  <SocialMediaPreviewCard key={item.url} item={item} featured />
                 ))}
               </View>
             </View>

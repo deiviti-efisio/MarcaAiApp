@@ -4,7 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
-import { extractYoutubeId, type SocialPreviewItem } from '../lib/socialLinks';
+import {
+  extractInstagramShortcode,
+  extractInstagramUsername,
+  extractYoutubeId,
+  instagramAppUserUrl,
+  parseSpotifyEmbed,
+  youtubeEmbedUrl,
+  youtubeThumbnailCandidates,
+  youtubeWatchUrl,
+  type SocialPreviewItem,
+} from '../lib/socialLinks';
 
 const ACCENT: Record<SocialPreviewItem['kind'], string> = {
   youtube: '#FF0000',
@@ -12,16 +22,103 @@ const ACCENT: Record<SocialPreviewItem['kind'], string> = {
   instagram: '#E4405F',
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function youtubePlayerHtml(videoId: string): string {
+  const src = escapeHtml(youtubeEmbedUrl(videoId));
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+      iframe { width: 100%; height: 100%; border: 0; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="${src}"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      allowfullscreen
+    ></iframe>
+  </body>
+</html>`;
+}
+
+function spotifyPlayerHtml(embedUrl: string): string {
+  const src = escapeHtml(embedUrl);
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+      iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="${src}"
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+      loading="lazy"
+    ></iframe>
+  </body>
+</html>`;
+}
+
+function instagramEmbedPage(embedHtml: string): string {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; }
+      .instagram-media { min-width: 0 !important; max-width: 100% !important; width: 100% !important; }
+    </style>
+  </head>
+  <body>
+    ${embedHtml}
+    <script async src="https://www.instagram.com/embed.js"></script>
+    <script>
+      window.addEventListener('load', function () {
+        if (window.instgrm && window.instgrm.Embeds) window.instgrm.Embeds.process();
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+async function tryOpenUrls(urls: string[]) {
+  for (const url of urls) {
+    try {
+      await Linking.openURL(url);
+      return;
+    } catch {
+      // tenta o próximo esquema / https
+    }
+  }
+}
+
 async function fetchOEmbed(
   url: string,
   kind: SocialPreviewItem['kind']
-): Promise<{ title?: string; thumbnail?: string; author?: string }> {
+): Promise<{ title?: string; thumbnail?: string; author?: string; html?: string }> {
   try {
     const endpoint =
       kind === 'spotify'
         ? `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`
         : kind === 'instagram'
-          ? `https://noembed.com/embed?url=${encodeURIComponent(url)}`
+          ? `https://graph.facebook.com/v26.0/instagram_oembed?url=${encodeURIComponent(url)}&omitscript=true&hidecaption=false&maxwidth=320`
           : `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
     const res = await fetch(endpoint);
     if (!res.ok) return {};
@@ -29,10 +126,16 @@ async function fetchOEmbed(
       title?: string;
       thumbnail_url?: string;
       author_name?: string;
+      html?: string;
       error?: string;
     };
     if (json.error) return {};
-    return { title: json.title, thumbnail: json.thumbnail_url, author: json.author_name };
+    return {
+      title: json.title,
+      thumbnail: json.thumbnail_url,
+      author: json.author_name,
+      html: json.html,
+    };
   } catch {
     return {};
   }
@@ -50,21 +153,45 @@ export default function SocialMediaPreviewCard({ item, featured, subtitle }: Pro
   const [thumb, setThumb] = useState(item.thumbnailUrl);
   const [author, setAuthor] = useState('');
   const [playing, setPlaying] = useState(false);
+  const [instagramHtml, setInstagramHtml] = useState<string | null>(null);
+  const [thumbIndex, setThumbIndex] = useState(0);
+
   const youtubeId = useMemo(
     () => (item.kind === 'youtube' ? extractYoutubeId(item.url) : null),
     [item.kind, item.url]
   );
-  const isFeatured = featured || item.kind === 'youtube' || item.kind === 'instagram';
+  const youtubeThumbs = useMemo(
+    () => (youtubeId ? youtubeThumbnailCandidates(youtubeId) : []),
+    [youtubeId]
+  );
+  const spotify = useMemo(
+    () => (item.kind === 'spotify' ? parseSpotifyEmbed(item.url) : null),
+    [item.kind, item.url]
+  );
+  const instagramUser = useMemo(
+    () => (item.kind === 'instagram' ? extractInstagramUsername(item.url) : null),
+    [item.kind, item.url]
+  );
+  const instagramCode = useMemo(
+    () => (item.kind === 'instagram' ? extractInstagramShortcode(item.url) : null),
+    [item.kind, item.url]
+  );
+
+  const isFeatured = featured || item.kind === 'youtube' || item.kind === 'instagram' || item.kind === 'spotify';
+  const displayThumb = youtubeThumbs[thumbIndex] || thumb;
 
   useEffect(() => {
     setTitle(item.title);
     setThumb(item.thumbnailUrl);
     setAuthor('');
     setPlaying(false);
+    setInstagramHtml(null);
+    setThumbIndex(0);
     void fetchOEmbed(item.url, item.kind).then((meta) => {
       if (meta.title) setTitle(meta.title);
       if (meta.thumbnail) setThumb(meta.thumbnail);
       if (meta.author) setAuthor(meta.author);
+      if (item.kind === 'instagram' && meta.html) setInstagramHtml(meta.html);
     });
   }, [item.url, item.kind, item.title, item.thumbnailUrl]);
 
@@ -79,58 +206,139 @@ export default function SocialMediaPreviewCard({ item, featured, subtitle }: Pro
     subtitle?.trim() ||
     author ||
     (item.kind === 'youtube' ? 'YouTube' : item.kind === 'instagram' ? 'Instagram' : item.title);
-  const embedUri = youtubeId
-    ? `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&playsinline=1&rel=0&modestbranding=1`
-    : null;
 
   const openExternal = () => {
+    if (item.kind === 'youtube' && youtubeId) {
+      void tryOpenUrls([
+        `youtube://www.youtube.com/watch?v=${youtubeId}`,
+        `vnd.youtube://${youtubeId}`,
+        youtubeWatchUrl(youtubeId),
+      ]);
+      return;
+    }
+    if (item.kind === 'spotify' && spotify) {
+      void tryOpenUrls([spotify.uri, item.url]);
+      return;
+    }
+    if (item.kind === 'instagram') {
+      const urls = [
+        instagramUser ? instagramAppUserUrl(instagramUser) : '',
+        item.url,
+      ].filter(Boolean);
+      void tryOpenUrls(urls);
+      return;
+    }
     void Linking.openURL(item.url);
   };
 
-  if (isFeatured) {
-    return (
-      <View style={[styles.featured, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {playing && embedUri ? (
-          <WebView
-            source={{ uri: embedUri }}
-            style={styles.featuredMedia}
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            javaScriptEnabled
-            allowsFullscreenVideo
+  const webViewChrome = {
+    allowsInlineMediaPlayback: true,
+    mediaPlaybackRequiresUserAction: false,
+    javaScriptEnabled: true,
+    domStorageEnabled: true,
+    originWhitelist: ['*'] as string[],
+    allowsFullscreenVideo: true,
+    nestedScrollEnabled: true,
+    scrollEnabled: false,
+    setSupportMultipleWindows: false,
+  };
+
+  const appLabel =
+    item.kind === 'youtube'
+      ? 'Abrir no YouTube'
+      : item.kind === 'spotify'
+        ? 'Abrir no Spotify'
+        : 'Abrir no Instagram';
+  const metaLine =
+    item.kind === 'instagram'
+      ? instagramUser
+        ? `@${instagramUser}`
+        : instagramCode
+          ? 'Publicação'
+          : 'Instagram'
+      : caption;
+
+  const canPlayInApp =
+    Boolean(youtubeId) || Boolean(spotify) || Boolean(instagramHtml);
+
+  const renderCover = (onPress: () => void) => (
+    <TouchableOpacity style={styles.fill} onPress={onPress} activeOpacity={0.92}>
+      {displayThumb ? (
+        <Image
+          source={{ uri: displayThumb }}
+          style={styles.fill}
+          contentFit="cover"
+          onError={() => {
+            if (thumbIndex < youtubeThumbs.length - 1) setThumbIndex((i) => i + 1);
+          }}
+        />
+      ) : (
+        <View style={[styles.fill, styles.thumbFallback, { backgroundColor: `${ACCENT[item.kind]}22` }]}>
+          <Ionicons name={icon} size={42} color={ACCENT[item.kind]} />
+        </View>
+      )}
+      <View style={styles.featuredDim} />
+      <View style={styles.featuredPlayWrap} pointerEvents="none">
+        <View style={[styles.featuredPlay, { backgroundColor: `${ACCENT[item.kind]}EE` }]}>
+          <Ionicons
+            name={item.kind === 'instagram' ? 'logo-instagram' : 'play'}
+            size={26}
+            color="#fff"
+            style={item.kind === 'instagram' ? undefined : { marginLeft: 3 }}
           />
-        ) : (
-          <TouchableOpacity style={styles.featuredMedia} onPress={() => (youtubeId ? setPlaying(true) : openExternal())} activeOpacity={0.92}>
-            {thumb ? (
-              <Image source={{ uri: thumb }} style={styles.featuredMedia} contentFit="cover" />
-            ) : (
-              <View style={[styles.featuredMedia, styles.thumbFallback, { backgroundColor: `${ACCENT[item.kind]}22` }]}>
-                <Ionicons name={icon} size={42} color={ACCENT[item.kind]} />
-              </View>
-            )}
-            <View style={styles.featuredDim} />
-            <View style={styles.featuredPlayWrap} pointerEvents="none">
-              <View style={styles.featuredPlay}>
-                <Ionicons
-                  name={item.kind === 'instagram' ? 'logo-instagram' : 'play'}
-                  size={item.kind === 'instagram' ? 28 : 28}
-                  color="#fff"
-                  style={item.kind === 'instagram' ? undefined : { marginLeft: 3 }}
-                />
-              </View>
-            </View>
-            <View style={styles.featuredCaption}>
-              <Text style={styles.featuredTitle} numberOfLines={2}>
-                {title}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  if (isFeatured) {
+    let media = renderCover(() => (canPlayInApp ? setPlaying(true) : openExternal()));
+    if (playing && youtubeId) {
+      media = (
+        <WebView
+          source={{ html: youtubePlayerHtml(youtubeId), baseUrl: 'https://www.youtube.com' }}
+          style={styles.fill}
+          {...webViewChrome}
+        />
+      );
+    } else if (playing && spotify) {
+      media = (
+        <WebView
+          source={{ html: spotifyPlayerHtml(spotify.embedUrl), baseUrl: 'https://open.spotify.com' }}
+          style={styles.fill}
+          {...webViewChrome}
+        />
+      );
+    } else if (playing && instagramHtml) {
+      media = (
+        <WebView
+          source={{ html: instagramEmbedPage(instagramHtml), baseUrl: 'https://www.instagram.com' }}
+          style={styles.fill}
+          {...webViewChrome}
+          scrollEnabled
+        />
+      );
+    }
+
+    return (
+      <View style={[styles.shell, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.media}>{media}</View>
+        <View style={styles.metaBar}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.metaTitle, { color: colors.text }]} numberOfLines={1}>
+              {title}
+            </Text>
+            {metaLine ? (
+              <Text style={[styles.metaSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                {metaLine}
               </Text>
-              {caption ? (
-                <Text style={styles.featuredSub} numberOfLines={2}>
-                  {caption}
-                </Text>
-              ) : null}
-            </View>
+            ) : null}
+          </View>
+          <TouchableOpacity onPress={openExternal} style={styles.appBtn} hitSlop={8}>
+            <Ionicons name={icon} size={16} color={ACCENT[item.kind]} />
+            <Text style={[styles.appBtnText, { color: ACCENT[item.kind] }]}>{appLabel}</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
     );
   }
@@ -141,8 +349,8 @@ export default function SocialMediaPreviewCard({ item, featured, subtitle }: Pro
       onPress={openExternal}
       activeOpacity={0.88}
     >
-      {thumb ? (
-        <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
+      {displayThumb ? (
+        <Image source={{ uri: displayThumb }} style={styles.thumb} contentFit="cover" />
       ) : (
         <View style={[styles.thumbFallback, { backgroundColor: `${ACCENT[item.kind]}22` }]}>
           <Ionicons name={icon} size={28} color={ACCENT[item.kind]} />
@@ -164,14 +372,18 @@ export default function SocialMediaPreviewCard({ item, featured, subtitle }: Pro
 }
 
 const styles = StyleSheet.create({
-  featured: {
+  shell: {
     width: '100%',
-    aspectRatio: 16 / 9,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  featuredMedia: { width: '100%', height: '100%' },
+  media: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+  },
+  fill: { width: '100%', height: '100%' },
   featuredDim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.22)',
@@ -180,40 +392,26 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 28,
   },
   featuredPlay: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  featuredCaption: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
+  metaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 52,
   },
-  featuredTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
-  },
-  featuredSub: {
-    color: 'rgba(255,255,255,0.92)',
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
+  metaTitle: { fontSize: 14, fontWeight: '800' },
+  metaSub: { fontSize: 12, marginTop: 2 },
+  appBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  appBtnText: { fontSize: 12, fontWeight: '700' },
   card: {
     width: 260,
     height: 148,

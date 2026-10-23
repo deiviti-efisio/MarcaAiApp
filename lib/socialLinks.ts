@@ -112,7 +112,79 @@ export function detectSocialKind(url: string): SocialPreviewKind | null {
 }
 
 export function youtubeThumbnailUrl(videoId: string): string {
-  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+/** Thumbnails oficiais (Data API / i.ytimg.com), do maior para o fallback. */
+export function youtubeThumbnailCandidates(videoId: string): string[] {
+  return [
+    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  ];
+}
+
+export function youtubeWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
+export function youtubeEmbedUrl(videoId: string): string {
+  const params = new URLSearchParams({
+    autoplay: '1',
+    playsinline: '1',
+    rel: '0',
+    enablejsapi: '1',
+    origin: 'https://www.youtube.com',
+  });
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+}
+
+export type SpotifyEmbedKind = 'track' | 'album' | 'playlist' | 'artist' | 'episode' | 'show';
+
+export function parseSpotifyEmbed(url: string): {
+  type: SpotifyEmbedKind;
+  id: string;
+  uri: string;
+  embedUrl: string;
+  height: number;
+} | null {
+  const allowed: SpotifyEmbedKind[] = ['track', 'album', 'playlist', 'artist', 'episode', 'show'];
+  const raw = url.trim();
+  if (!raw) return null;
+
+  const fromParts = (typeRaw: string, idRaw: string) => {
+    const type = typeRaw.toLowerCase() as SpotifyEmbedKind;
+    const id = idRaw.split('?')[0].trim();
+    if (!allowed.includes(type) || !id) return null;
+    const compact = type === 'track' || type === 'episode';
+    return {
+      type,
+      id,
+      uri: `spotify:${type}:${id}`,
+      embedUrl: `https://open.spotify.com/embed/${type}/${id}?utm_source=generator&theme=0`,
+      height: compact ? 152 : 352,
+    };
+  };
+
+  if (raw.toLowerCase().startsWith('spotify:')) {
+    const parts = raw.split(':');
+    return fromParts(parts[1] || '', parts[2] || '');
+  }
+
+  try {
+    const u = new URL(withHttps(raw));
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    if (!host.endsWith('spotify.com') && host !== 'spotify.link') return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    const start = parts[0]?.toLowerCase().startsWith('intl-') ? 1 : 0;
+    return fromParts(parts[start] || '', parts[start + 1] || '');
+  } catch {
+    return null;
+  }
+}
+
+export function instagramAppUserUrl(username: string): string {
+  return `instagram://user?username=${encodeURIComponent(username)}`;
 }
 
 export function extractInstagramUsername(url: string): string | null {

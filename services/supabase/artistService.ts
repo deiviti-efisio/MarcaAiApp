@@ -16,11 +16,14 @@ export interface Artist {
   bio?: string | null;
   social_links?: ArtistSocialLinks;
   whatsapp?: string;
+  email?: string;
   city?: string;
   state?: string;
   is_available_for_gigs?: boolean;
   /** Se true, o WhatsApp pode aparecer na busca de convites a eventos. */
   show_whatsapp?: boolean;
+  /** Se true, o e-mail aparece no perfil público. */
+  show_email?: boolean;
   average_cache_value?: number | null;
   work_roles?: string[];
   show_formats?: string[];
@@ -38,17 +41,26 @@ export interface CreateArtistData {
   social_links?: ArtistSocialLinks;
   user_id: string;
   whatsapp?: string | null;
+  email?: string | null;
   city?: string | null;
   state?: string | null;
   is_available_for_gigs?: boolean;
   show_whatsapp?: boolean;
+  show_email?: boolean;
   average_cache_value?: number | null;
   work_roles?: string[];
   show_formats?: string[];
 }
 
-function mapArtistRow(row: Record<string, unknown> | null | undefined): Artist | null {
+function mapArtistRow(
+  row: Record<string, unknown> | null | undefined,
+  opts?: { hidePrivateWhatsapp?: boolean },
+): Artist | null {
   if (!row || !row.id) return null;
+  const showWhatsapp = Boolean(row.show_whatsapp);
+  const showEmail = Boolean(row.show_email);
+  const whatsapp = (row.whatsapp as string) || undefined;
+  const email = (row.email as string) || undefined;
   return {
     id: String(row.id),
     name: String(row.name ?? ''),
@@ -57,11 +69,13 @@ function mapArtistRow(row: Record<string, unknown> | null | undefined): Artist |
     cover_url: (row.cover_url as string) || null,
     bio: (row.bio as string) || null,
     social_links: parseArtistSocialLinks(row.social_links),
-    whatsapp: (row.whatsapp as string) || undefined,
+    whatsapp: opts?.hidePrivateWhatsapp && !showWhatsapp ? undefined : whatsapp,
+    email: opts?.hidePrivateWhatsapp && !showEmail ? undefined : email,
     city: (row.city as string) || undefined,
     state: (row.state as string) || undefined,
     is_available_for_gigs: Boolean(row.is_available_for_gigs),
     show_whatsapp: Boolean(row.show_whatsapp),
+    show_email: showEmail,
     average_cache_value:
       row.average_cache_value == null ? null : Number(row.average_cache_value),
     work_roles: parseArtistStringArrayFromJson(row.work_roles),
@@ -130,10 +144,12 @@ export const createArtist = async (artistData: CreateArtistData): Promise<{ succ
         musical_style: artistData.musical_style || null,
         profile_url: artistData.profile_url || null,
         whatsapp: available ? (artistData.whatsapp?.trim() || null) : null,
+        email: artistData.email?.trim() || null,
         city: artistData.city?.trim() || null,
         state: artistData.state?.trim() || null,
         is_available_for_gigs: available,
         show_whatsapp: available ? Boolean(artistData.show_whatsapp) : false,
+        show_email: Boolean(artistData.show_email) && Boolean(artistData.email?.trim()),
         average_cache_value: available ? (artistData.average_cache_value ?? null) : null,
         work_roles: available ? (artistData.work_roles || []) : [],
         show_formats: available ? (artistData.show_formats || []) : [],
@@ -154,10 +170,12 @@ export const createArtist = async (artistData: CreateArtistData): Promise<{ succ
             musical_style: artistData.musical_style || null,
             profile_url: artistData.profile_url || null,
             whatsapp: available ? (artistData.whatsapp?.trim() || null) : null,
+            email: artistData.email?.trim() || null,
             city: artistData.city?.trim() || null,
             state: artistData.state?.trim() || null,
             is_available_for_gigs: available,
             show_whatsapp: available ? Boolean(artistData.show_whatsapp) : false,
+            show_email: Boolean(artistData.show_email) && Boolean(artistData.email?.trim()),
             average_cache_value: available ? (artistData.average_cache_value ?? null) : null,
             work_roles: available ? (artistData.work_roles || []) : [],
             show_formats: available ? (artistData.show_formats || []) : [],
@@ -312,12 +330,36 @@ export const getArtistPublicProfile = async (
     });
     if (!error) {
       const row = Array.isArray(data) ? data[0] : data;
-      const mapped = mapArtistRow(row as Record<string, unknown> | null);
+      const mapped = mapArtistRow(row as Record<string, unknown> | null, {
+        hidePrivateWhatsapp: true,
+      });
       if (mapped) return { artist: mapped, error: null };
     }
-    return getArtistById(artistId);
+    const fallback = await getArtistById(artistId);
+    if (fallback.artist) {
+      return {
+        artist: {
+          ...fallback.artist,
+          whatsapp: fallback.artist.show_whatsapp ? fallback.artist.whatsapp : undefined,
+          email: fallback.artist.show_email ? fallback.artist.email : undefined,
+        },
+        error: fallback.error,
+      };
+    }
+    return fallback;
   } catch {
-    return getArtistById(artistId);
+    const fallback = await getArtistById(artistId);
+    if (fallback.artist) {
+      return {
+        artist: {
+          ...fallback.artist,
+          whatsapp: fallback.artist.show_whatsapp ? fallback.artist.whatsapp : undefined,
+          email: fallback.artist.show_email ? fallback.artist.email : undefined,
+        },
+        error: fallback.error,
+      };
+    }
+    return fallback;
   }
 };
 
@@ -340,6 +382,12 @@ export const updateArtist = async (artistId: string, artistData: Partial<CreateA
           : artistData.whatsapp === null
             ? null
             : artistData.whatsapp.trim() || null,
+      email:
+        artistData.email === undefined
+          ? undefined
+          : artistData.email === null
+            ? null
+            : artistData.email.trim() || null,
       city:
         artistData.city === undefined
           ? undefined
@@ -354,6 +402,7 @@ export const updateArtist = async (artistId: string, artistData: Partial<CreateA
             : artistData.state.trim() || null,
       is_available_for_gigs: artistData.is_available_for_gigs,
       show_whatsapp: artistData.show_whatsapp,
+      show_email: artistData.show_email,
       average_cache_value:
         artistData.average_cache_value === undefined
           ? undefined

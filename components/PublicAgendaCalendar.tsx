@@ -2,10 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatEventLocationSlash } from '../lib/brazilGeo';
-import { toCalendarYmd, todayCalendarYmd, weekdayFromCalendarDate } from '../lib/dateUtils';
+import { todayCalendarYmd } from '../lib/dateUtils';
 import type { PublicAgendaEvent } from '../services/supabase/eventService';
 
-const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTHS = [
   'Janeiro',
   'Fevereiro',
@@ -27,19 +27,12 @@ const TAG_LABEL: Record<string, string> = {
   reunião: 'Reunião',
 };
 
-function ymd(year: number, month: number, day: number): string {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+function eventDateKey(value: unknown): string {
+  return String(value || '').slice(0, 10);
 }
 
-function parseYmd(value: string): { y: number; m: number; d: number } | null {
-  const part = toCalendarYmd(value);
-  const bits = part.split('-');
-  if (bits.length < 3) return null;
-  const y = Number(bits[0]);
-  const m = Number(bits[1]);
-  const d = Number(bits[2]);
-  if (!y || !m || !d) return null;
-  return { y, m: m - 1, d };
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
 }
 
 function formatClock(value?: string | null): string {
@@ -55,16 +48,6 @@ function formatTimeRange(start?: string | null, end?: string | null): string {
   return from || to;
 }
 
-function weekdayShort(date: string): string {
-  const full = weekdayFromCalendarDate(date);
-  return full ? full.slice(0, 3).toLowerCase() : '';
-}
-
-function dayNumber(date: string): string {
-  const parsed = parseYmd(date);
-  return parsed ? String(parsed.d) : '';
-}
-
 export default function PublicAgendaCalendar({
   events,
   colors,
@@ -77,6 +60,7 @@ export default function PublicAgendaCalendar({
     surface: string;
     border: string;
     background: string;
+    secondary?: string;
   };
 }) {
   const now = new Date();
@@ -85,51 +69,60 @@ export default function PublicAgendaCalendar({
   const today = todayCalendarYmd();
   const [selected, setSelected] = useState(today);
 
-  const byDate = useMemo(() => {
-    const map = new Map<string, PublicAgendaEvent[]>();
+  const eventsByDate = useMemo(() => {
+    const map: Record<string, PublicAgendaEvent[]> = {};
     events.forEach((item) => {
-      const key = toCalendarYmd(item.event_date);
-      if (!key) return;
-      const list = map.get(key) ?? [];
-      list.push(item);
-      map.set(key, list);
+      const dateKey = eventDateKey(item.event_date);
+      if (!dateKey) return;
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(item);
     });
     return map;
   }, [events]);
 
-  const cells = useMemo(() => {
-    const first = new Date(viewYear, viewMonth, 1);
-    const startPad = first.getDay();
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const out: { key: string; day?: number; date?: string }[] = [];
-    for (let i = 0; i < startPad; i += 1) {
-      out.push({ key: `pad-${i}` });
+  const calendarMatrix = useMemo(() => {
+    const firstDayOfMonth = new Date(viewYear, viewMonth, 1);
+    const firstWeekDay = firstDayOfMonth.getDay();
+    const totalDays = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const weeks: ({ dayNumber: number; dateString: string } | null)[][] = [];
+
+    let dayCounter = 1 - firstWeekDay;
+    while (dayCounter <= totalDays) {
+      const week: ({ dayNumber: number; dateString: string } | null)[] = [];
+      for (let i = 0; i < 7; i += 1) {
+        const currentDay = dayCounter + i;
+        if (currentDay < 1 || currentDay > totalDays) {
+          week.push(null);
+        } else {
+          week.push({
+            dayNumber: currentDay,
+            dateString: `${viewYear}-${pad2(viewMonth + 1)}-${pad2(currentDay)}`,
+          });
+        }
+      }
+      weeks.push(week);
+      dayCounter += 7;
     }
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = ymd(viewYear, viewMonth, day);
-      out.push({ key: date, day, date });
-    }
-    while (out.length % 7 !== 0) {
-      out.push({ key: `end-${out.length}` });
-    }
-    return out;
+
+    return weeks;
   }, [viewMonth, viewYear]);
 
-  const selectedEvents = byDate.get(selected) ?? [];
-  const monthPrefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+  const selectedEvents = eventsByDate[selected] || [];
+  const monthPrefix = `${viewYear}-${pad2(viewMonth + 1)}`;
   const monthEvents = useMemo(
-    () => events.filter((item) => toCalendarYmd(item.event_date).startsWith(monthPrefix)),
+    () => events.filter((item) => eventDateKey(item.event_date).startsWith(monthPrefix)),
     [events, monthPrefix]
   );
-
-  const todayEvents = byDate.get(today) ?? [];
-  const otherSelected =
-    selected === today
-      ? []
-      : selectedEvents.filter((item) => toCalendarYmd(item.event_date) !== today);
+  const todayEvents = eventsByDate[today] || [];
+  const otherSelected = selected === today ? [] : selectedEvents;
 
   const renderEventCard = (item: PublicAgendaEvent) => {
-    const dateKey = toCalendarYmd(item.event_date);
+    const dateKey = eventDateKey(item.event_date);
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const localDate = Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)
+      ? new Date(y, m - 1, d)
+      : null;
+    const weekLabel = localDate ? WEEKDAY_LABELS[localDate.getDay()] : '';
     const time = formatTimeRange(item.start_time, item.end_time);
     const place = formatEventLocationSlash(item);
     const tag = TAG_LABEL[String(item.tag || '').toLowerCase()] || '';
@@ -140,8 +133,8 @@ export default function PublicAgendaCalendar({
         style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
       >
         <View style={[styles.dateBadge, { backgroundColor: colors.primary }]}>
-          <Text style={styles.dateBadgeDay}>{dayNumber(dateKey)}</Text>
-          <Text style={styles.dateBadgeWeek}>{isTodayShow ? 'hoje' : weekdayShort(dateKey)}</Text>
+          <Text style={styles.dateBadgeDay}>{localDate ? String(localDate.getDate()) : ''}</Text>
+          <Text style={styles.dateBadgeWeek}>{isTodayShow ? 'hoje' : weekLabel.toLowerCase()}</Text>
         </View>
         <View style={styles.cardBody}>
           {isTodayShow ? (
@@ -188,55 +181,62 @@ export default function PublicAgendaCalendar({
           </Text>
         </View>
 
-        <View style={styles.weekRow}>
-          {WEEKDAYS.map((label, idx) => (
-            <Text key={`${label}-${idx}`} style={[styles.weekLabel, { color: colors.textSecondary }]}>
+        <View style={styles.calendarHeaderRow}>
+          {WEEKDAY_LABELS.map((label) => (
+            <Text key={label} style={[styles.calendarHeaderText, { color: colors.textSecondary }]}>
               {label}
             </Text>
           ))}
         </View>
 
-        <View style={styles.grid}>
-          {cells.map((cell) => {
-            const marked = !!cell.date && byDate.has(cell.date);
-            const isSelected = !!cell.date && cell.date === selected;
-            const isToday = !!cell.date && cell.date === today;
-            const filled = marked;
-            return (
-              <TouchableOpacity
-                key={cell.key}
-                style={styles.dayCell}
-                disabled={!cell.day}
-                onPress={() => cell.date && setSelected(cell.date)}
-                activeOpacity={0.75}
-              >
-                {cell.day ? (
-                  <View
+        {calendarMatrix.map((week, weekIndex) => (
+          <View key={`week-${weekIndex}`} style={styles.calendarWeekRow}>
+            {week.map((day, dayIndex) => {
+              if (!day) {
+                return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.calendarDayCell} />;
+              }
+
+              const dayEvents = eventsByDate[day.dateString] || [];
+              const hasEvents = dayEvents.length > 0;
+              const isToday = day.dateString === today;
+              const isSelected = selected === day.dateString;
+
+              return (
+                <TouchableOpacity
+                  key={day.dateString}
+                  style={[
+                    styles.calendarDayCell,
+                    isToday && { borderColor: colors.primary, borderWidth: 1.5 },
+                    hasEvents && { backgroundColor: colors.secondary || `${colors.primary}18` },
+                    isSelected && { backgroundColor: `${colors.primary}22` },
+                  ]}
+                  onPress={() => setSelected(day.dateString)}
+                  activeOpacity={0.7}
+                >
+                  <Text
                     style={[
-                      styles.dayDisc,
-                      filled && { backgroundColor: colors.primary },
-                      isSelected && filled && styles.dayDiscSelected,
-                      isSelected && !filled && { borderColor: colors.primary, borderWidth: 1.5 },
-                      isToday && !filled && !isSelected && { backgroundColor: colors.background },
+                      styles.calendarDayText,
+                      { color: hasEvents ? colors.text : colors.textSecondary },
+                      isToday && styles.calendarDayTodayText,
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.dayNum,
-                        { color: filled ? '#fff' : colors.text },
-                        isToday && !filled && { color: colors.primary, fontWeight: '800' },
-                      ]}
-                    >
-                      {cell.day}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.dayDisc} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                    {day.dayNumber}
+                  </Text>
+                  {hasEvents ? (
+                    <View style={styles.eventIndicatorsRow}>
+                      {Array.from({ length: Math.min(dayEvents.length, 3) }).map((_, dotIndex) => (
+                        <View
+                          key={`${day.dateString}-dot-${dotIndex}`}
+                          style={[styles.eventIndicator, { backgroundColor: colors.primary }]}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       <View style={styles.listWrap}>
@@ -277,10 +277,10 @@ const styles = StyleSheet.create({
   },
   calCard: {
     marginRight: 20,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingTop: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
     paddingBottom: 12,
     marginBottom: 16,
   },
@@ -288,35 +288,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
-    paddingVertical: 6,
   },
   monthTitle: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
-  weekRow: { flexDirection: 'row', marginBottom: 6, paddingHorizontal: 2 },
-  weekLabel: {
+  calendarHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  calendarHeaderText: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: {
-    width: `${100 / 7}%`,
-    height: 42,
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  calendarDayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    maxWidth: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 2,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  calendarDayText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  calendarDayTodayText: {
+    fontWeight: '700',
+  },
+  eventIndicatorsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 3,
+    marginTop: 4,
+    minHeight: 6,
   },
-  dayDisc: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
+  eventIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  dayDiscSelected: {
-    transform: [{ scale: 1.06 }],
-  },
-  dayNum: { fontSize: 14, fontWeight: '600' },
   listWrap: { paddingRight: 20, gap: 10 },
   card: {
     borderRadius: 16,

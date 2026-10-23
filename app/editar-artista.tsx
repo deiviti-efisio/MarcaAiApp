@@ -124,6 +124,8 @@ export default function EditarArtistaScreen() {
   const [name, setName] = useState('');
   const [musicalStyle, setMusicalStyle] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [email, setEmail] = useState('');
+  const [showEmailOnProfile, setShowEmailOnProfile] = useState(false);
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [isAvailableForGigs, setIsAvailableForGigs] = useState(true);
@@ -275,6 +277,8 @@ export default function EditarArtistaScreen() {
       setName(currentArtist.name || '');
       setMusicalStyle(currentArtist.musical_style || '');
       setWhatsapp(currentArtist.whatsapp || '');
+      setEmail(currentArtist.email || '');
+      setShowEmailOnProfile(Boolean(currentArtist.show_email));
       setCity(currentArtist.city || '');
       setState(normalizeEstadoParaListaExibicao(currentArtist.state));
       setIsAvailableForGigs(currentArtist.is_available_for_gigs ?? true);
@@ -417,6 +421,16 @@ export default function EditarArtistaScreen() {
       }
     }
 
+    const emailTrim = email.trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      Alert.alert('Atenção', 'Informe um e-mail válido.');
+      return;
+    }
+    if (showEmailOnProfile && !emailTrim) {
+      Alert.alert('Atenção', 'Informe o e-mail para exibir no perfil.');
+      return;
+    }
+
     const socialCandidates = [youtubeUrl, spotifyUrl, instagramUrl, ...extraVideos.split('\n')];
     if (socialCandidates.some((item) => item.trim() && !isLikelyHttpUrl(item))) {
       Alert.alert('Atenção', 'Confira os links de YouTube, Spotify ou Instagram.');
@@ -479,6 +493,8 @@ export default function EditarArtistaScreen() {
         name: name.trim(),
         musical_style: musicalStyle.trim() || undefined,
         whatsapp: isAvailableForGigs ? whatsapp.trim() || null : null,
+        email: emailTrim || null,
+        show_email: showEmailOnProfile && Boolean(emailTrim),
         city: city.trim() || null,
         state: state.trim() || null,
         is_available_for_gigs: isAvailableForGigs,
@@ -552,6 +568,11 @@ export default function EditarArtistaScreen() {
   const instagramPreview = useMemo(
     () => collectSocialPreviewItems({ instagram: instagramUrl }).find((item) => item.kind === 'instagram'),
     [instagramUrl]
+  );
+
+  const spotifyPreview = useMemo(
+    () => collectSocialPreviewItems({ spotify: spotifyUrl }).find((item) => item.kind === 'spotify'),
+    [spotifyUrl]
   );
 
   const renderInput = (
@@ -776,6 +797,11 @@ export default function EditarArtistaScreen() {
             </View>
           ) : null}
           {renderInput('Spotify', spotifyUrl, setSpotifyUrl, 'https://open.spotify.com/...', 'url', false)}
+          {spotifyPreview ? (
+            <View style={styles.youtubePreview}>
+              <SocialMediaPreviewCard item={spotifyPreview} featured />
+            </View>
+          ) : null}
           {renderInput('Instagram', instagramUrl, setInstagramUrl, 'https://instagram.com/...', 'url', false)}
           {instagramPreview ? (
             <View style={styles.youtubePreview}>
@@ -895,6 +921,43 @@ export default function EditarArtistaScreen() {
             </Text>
           </View>
 
+          {renderInput(
+            'E-mail',
+            email,
+            setEmail,
+            'contato@email.com',
+            'email-address',
+            false
+          )}
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>Mostrar e-mail no perfil</Text>
+            <View
+              style={[
+                styles.switchRow,
+                { borderColor: colors.border, backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
+                  Deixar e-mail público
+                </Text>
+              </View>
+              <Switch
+                value={showEmailOnProfile}
+                onValueChange={setShowEmailOnProfile}
+                trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                thumbColor={Platform.OS === 'android' ? (showEmailOnProfile ? colors.primary : '#f4f3f4') : undefined}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+              {showEmailOnProfile
+                ? 'Ligado: o e-mail aparece no perfil público.'
+                : 'Desligado: o e-mail permanece cadastrado, mas não aparece no perfil.'}
+            </Text>
+          </View>
+
           {isAvailableForGigs && (
             <>
               {renderInput(
@@ -907,7 +970,7 @@ export default function EditarArtistaScreen() {
               )}
 
               <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Mostrar WhatsApp na busca</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Mostrar WhatsApp no perfil</Text>
                 <View
                   style={[
                     styles.switchRow,
@@ -916,7 +979,7 @@ export default function EditarArtistaScreen() {
                 >
                   <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
-                      Exibir contato para quem convida
+                      Deixar WhatsApp público
                     </Text>
                   </View>
                   <Switch
@@ -929,8 +992,8 @@ export default function EditarArtistaScreen() {
                 </View>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
                   {showWhatsappInSearch
-                    ? 'Ligado: organizadores veem o WhatsApp na busca de convites.'
-                    : 'Desligado: o número permanece cadastrado, mas não aparece na busca.'}
+                    ? 'Ligado: o WhatsApp aparece no perfil público e na busca de convites.'
+                    : 'Desligado: o número permanece cadastrado, mas não aparece no perfil nem na busca.'}
                 </Text>
               </View>
 

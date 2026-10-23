@@ -118,6 +118,8 @@ export default function ArtistProfileScreen() {
   const [musicalStyle, setMusicalStyle] = useState('');
   const [bio, setBio] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [email, setEmail] = useState('');
+  const [showEmailOnProfile, setShowEmailOnProfile] = useState(false);
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [isAvailableForGigs, setIsAvailableForGigs] = useState(false);
@@ -300,6 +302,16 @@ export default function ArtistProfileScreen() {
       }
     }
 
+    const emailTrim = email.trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      Alert.alert('Atenção', 'Informe um e-mail válido.');
+      return;
+    }
+    if (showEmailOnProfile && !emailTrim) {
+      Alert.alert('Atenção', 'Informe o e-mail para exibir no perfil.');
+      return;
+    }
+
     setLoading(true);
     try {
       // Obter o usuário atual
@@ -359,6 +371,8 @@ export default function ArtistProfileScreen() {
         profile_url: finalProfileUrl || undefined,
         user_id: user.id,
         whatsapp: isAvailableForGigs ? whatsapp.trim() || undefined : undefined,
+        email: emailTrim || undefined,
+        show_email: showEmailOnProfile && Boolean(emailTrim),
         city: city.trim() || undefined,
         state: state.trim() || undefined,
         is_available_for_gigs: isAvailableForGigs,
@@ -594,6 +608,51 @@ export default function ArtistProfileScreen() {
                     </ScrollView>
                   </View>
                 )}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>E-mail</Text>
+                <View style={[styles.inputContainer, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { color: colors.text }]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="contato@email.com"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>Mostrar e-mail no perfil</Text>
+                <View
+                  style={[
+                    styles.switchRow,
+                    { backgroundColor: colors.background, borderColor: colors.border },
+                  ]}
+                >
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
+                      Deixar e-mail público
+                    </Text>
+                  </View>
+                  <Switch
+                    value={showEmailOnProfile}
+                    onValueChange={setShowEmailOnProfile}
+                    trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                    thumbColor={Platform.OS === 'android' ? (showEmailOnProfile ? colors.primary : '#f4f3f4') : undefined}
+                    ios_backgroundColor={colors.border}
+                  />
+                </View>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+                  {showEmailOnProfile
+                    ? 'Ligado: o e-mail aparece no perfil público.'
+                    : 'Desligado: o e-mail permanece cadastrado, mas não aparece no perfil.'}
+                </Text>
               </View>
 
               <View style={styles.inputGroup}>
