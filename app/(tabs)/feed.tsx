@@ -60,6 +60,7 @@ import {
   listarIdsArtistasFavoritos,
 } from '../../services/supabase/artistFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
+import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../../lib/openArtistChat';
 
 function formatTime(t: string) {
   if (!t) return '';
@@ -85,7 +86,6 @@ export default function FeedScreen() {
   const [loadingArtistas, setLoadingArtistas] = useState(false);
   const [loadingMoreArtistas, setLoadingMoreArtistas] = useState(false);
   const [artistasHasMore, setArtistasHasMore] = useState(true);
-  const seededNearRef = useRef(false);
   const artistasLenRef = useRef(0);
   const artistasHasMoreRef = useRef(true);
   const loadingMoreArtistasRef = useRef(false);
@@ -231,9 +231,57 @@ export default function FeedScreen() {
     return () => clearTimeout(t);
   }, [cidadeArtistas]);
 
+  useEffect(() => {
+    if (artistasProntoGeo) return;
+    let cancelled = false;
+    const geoAbort = new AbortController();
+    void (async () => {
+      try {
+        if (!activeArtist?.id) return;
+        const { data } = await supabase
+          .rpc('estado_do_artista', { p_artista_id: activeArtist.id })
+          .abortSignal(geoAbort.signal);
+        if (cancelled || geoAbort.signal.aborted) return;
+        const fromArtist = String(data || '');
+        const uf =
+          brazilUfFromStateName(fromArtist) ||
+          (fromArtist.trim().length === 2 ? fromArtist.trim().toUpperCase() : null);
+        if (uf) setEstadoUfArtistas(uf);
+      } finally {
+        if (!cancelled) setArtistasProntoGeo(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      geoAbort.abort();
+    };
+  }, [activeArtist?.id, artistasProntoGeo]);
+
+  const temFiltroArtistas = (filtros = artistaFiltrosRef.current) =>
+    Boolean(
+      filtros.estadoUf ||
+        filtros.cidade ||
+        filtros.genero ||
+        filtros.nome ||
+        filtros.favoritos,
+    );
+
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
     if (!verArtistasRef.current) return;
     feedFocusedRef.current = true;
+    if (!temFiltroArtistas()) {
+      artistasAbortRef.current?.abort();
+      setArtistasProximos([]);
+      artistasLenRef.current = 0;
+      artistasHasMoreRef.current = false;
+      setArtistasHasMore(false);
+      setLoadingArtistas(false);
+      setLoadingMoreArtistas(false);
+      loadingMoreArtistasRef.current = false;
+      setRefreshing(false);
+      setError(null);
+      return;
+    }
     const append = Boolean(opts.append);
     if (append) {
       if (!artistasHasMoreRef.current || loadingMoreArtistasRef.current) return;
@@ -298,33 +346,6 @@ export default function FeedScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    if (artistasProntoGeo) return;
-    seededNearRef.current = true;
-    let cancelled = false;
-    const geoAbort = new AbortController();
-    void (async () => {
-      try {
-        if (!activeArtist?.id) return;
-        const { data } = await supabase
-          .rpc('estado_do_artista', { p_artista_id: activeArtist.id })
-          .abortSignal(geoAbort.signal);
-        if (cancelled || geoAbort.signal.aborted) return;
-        const fromArtist = String(data || '');
-        const uf =
-          brazilUfFromStateName(fromArtist) ||
-          (fromArtist.trim().length === 2 ? fromArtist.trim().toUpperCase() : null);
-        if (uf) setEstadoUfArtistas(uf);
-      } finally {
-        if (!cancelled) setArtistasProntoGeo(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      geoAbort.abort();
-    };
-  }, [activeArtist?.id, artistasProntoGeo]);
-
   const skipNextFocusLoadRef = useRef(true);
   const loadRef = useRef(load);
   const loadArtistasRef = useRef(loadArtistas);
@@ -364,7 +385,6 @@ export default function FeedScreen() {
     setEstadoUfArtistas('');
     setCidadeArtistas('');
     setCidadeArtistasDebounced('');
-    seededNearRef.current = false;
     setArtistasProntoGeo(false);
     skipNextFocusLoadRef.current = true;
   }, [activeArtist?.id]);
@@ -452,9 +472,9 @@ export default function FeedScreen() {
         return 'Nenhum artista encontrado com esse nome.';
       }
       if (filtroGenero || estadoUfArtistas || cidadeArtistas.trim()) {
-        return 'Nenhum artista neste filtro. Limpe estado, cidade ou gênero para ver todos.';
+        return 'Nenhum artista neste filtro.';
       }
-      return 'Nenhum artista disponível no momento.';
+      return 'Toque no filtro e escolha estado, cidade, gênero ou favoritos para ver artistas.';
     }
     if (filtroFuncao) {
       return `Nenhuma oportunidade com a função "${filtroFuncao}" neste filtro.`;
@@ -516,6 +536,35 @@ export default function FeedScreen() {
       return;
     }
     router.push({ pathname: '/negociar-feed', params: { eventId: item.id } });
+  };
+
+  const showContextFromFeed = (item: FeedAnuncio, extraFuncao?: string | null): ShowChatContext => {
+    const horario = [formatTime(item.start_time), formatTime(item.end_time)].filter(Boolean).join(' – ');
+    const funcoes = item.feed_funcoes.map((f) => f.trim()).filter(Boolean).join(', ');
+    return {
+      nome: item.evento_nome || item.artist_name,
+      data: formatCalendarDate(item.event_date),
+      horario: horario || null,
+      local: formatEventLocationSlash({ city: item.city, state_uf: item.state_uf }),
+      funcao: extraFuncao || funcoes || null,
+      cache: formatChatCache(item.cache_valor),
+    };
+  };
+
+  const handleConversarFeed = (
+    otherArtistId: string,
+    otherArtistName?: string | null,
+    otherArtistImage?: string | null,
+    showContext?: ShowChatContext | null
+  ) => {
+    openArtistChatInApp({
+      myArtistId: activeArtist?.id,
+      isAdmin,
+      otherArtistId,
+      otherArtistName,
+      otherArtistImage,
+      showContext,
+    });
   };
 
   const nomeDespesaProposta = (proposta: FeedProposta) => {
@@ -857,71 +906,103 @@ export default function FeedScreen() {
         {meuAnuncio && propostas.length > 0 ? (
           <View style={[styles.propostasBox, { borderColor: colors.border }]}>
             {propostas.map((proposta) => (
-              <TouchableOpacity
-                key={proposta.convite_id}
-                style={styles.propostaRow}
-                onPress={() => handlePropostaPress(item, proposta)}
-                activeOpacity={0.8}
-                disabled={aceitandoConviteId === proposta.convite_id}
-              >
-                <View style={[styles.propostaAvatar, { backgroundColor: colors.secondary }]}>
-                  {proposta.artista_image ? (
-                    <OptimizedImage
-                      imageUrl={proposta.artista_image}
-                      style={styles.propostaAvatarImg}
-                      fallbackIcon="person"
-                      fallbackIconSize={14}
-                    />
+              <View key={proposta.convite_id} style={styles.propostaRow}>
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  onPress={() => handlePropostaPress(item, proposta)}
+                  activeOpacity={0.8}
+                  disabled={aceitandoConviteId === proposta.convite_id}
+                >
+                  <View style={[styles.propostaAvatar, { backgroundColor: colors.secondary }]}>
+                    {proposta.artista_image ? (
+                      <OptimizedImage
+                        imageUrl={proposta.artista_image}
+                        style={styles.propostaAvatarImg}
+                        fallbackIcon="person"
+                        fallbackIconSize={14}
+                      />
+                    ) : (
+                      <Ionicons name="person" size={14} color={colors.primary} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.propostaNome, { color: colors.text }]} numberOfLines={1}>
+                      {proposta.artista_nome}
+                    </Text>
+                    <Text style={[styles.propostaMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {proposta.status === 'aceito'
+                        ? 'Aceita'
+                        : 'Pendente · toque para aceitar'}
+                      {proposta.funcao && proposta.funcao !== 'Interesse'
+                        ? ` · ${proposta.funcao}`
+                        : ''}
+                    </Text>
+                  </View>
+                  {aceitandoConviteId === proposta.convite_id ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Ionicons name="person" size={14} color={colors.primary} />
+                    <Ionicons
+                      name={proposta.status === 'aceito' ? 'checkmark-circle' : 'chevron-forward'}
+                      size={14}
+                      color={proposta.status === 'aceito' ? colors.primary : colors.textSecondary}
+                    />
                   )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.propostaNome, { color: colors.text }]} numberOfLines={1}>
-                    {proposta.artista_nome}
-                  </Text>
-                  <Text style={[styles.propostaMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {proposta.status === 'aceito'
-                      ? 'Aceita'
-                      : 'Pendente · toque para aceitar'}
-                    {proposta.funcao && proposta.funcao !== 'Interesse'
-                      ? ` · ${proposta.funcao}`
-                      : ''}
-                  </Text>
-                </View>
-                {aceitandoConviteId === proposta.convite_id ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons
-                    name={proposta.status === 'aceito' ? 'checkmark-circle' : 'chevron-forward'}
-                    size={14}
-                    color={proposta.status === 'aceito' ? colors.primary : colors.textSecondary}
-                  />
-                )}
-              </TouchableOpacity>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    handleConversarFeed(
+                      proposta.artista_id,
+                      proposta.artista_nome,
+                      proposta.artista_image,
+                      showContextFromFeed(item, proposta.funcao)
+                    )
+                  }
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ paddingLeft: 8 }}
+                  accessibilityLabel={`Conversar com ${proposta.artista_nome}`}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
         ) : null}
 
         {!meuAnuncio ? (
-          <TouchableOpacity
-            style={
-              item.ja_proposei
-                ? [styles.btnOutline, { borderColor: colors.primary }]
-                : [styles.btnPrimary, { backgroundColor: colors.primary }]
-            }
-            onPress={() => handleNegociar(item)}
-          >
-            <Text
+          <View style={{ gap: 8 }}>
+            <TouchableOpacity
               style={
                 item.ja_proposei
-                  ? [styles.btnOutlineText, { color: colors.primary }]
-                  : styles.btnPrimaryText
+                  ? [styles.btnOutline, { borderColor: colors.primary }]
+                  : [styles.btnPrimary, { backgroundColor: colors.primary }]
+              }
+              onPress={() => handleNegociar(item)}
+            >
+              <Text
+                style={
+                  item.ja_proposei
+                    ? [styles.btnOutlineText, { color: colors.primary }]
+                    : styles.btnPrimaryText
+                }
+              >
+                {item.ja_proposei ? 'Proposta enviada' : 'Tenho interesse'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btnOutline, { borderColor: colors.border, flexDirection: 'row', justifyContent: 'center', gap: 6 }]}
+              onPress={() =>
+                handleConversarFeed(
+                  item.artist_id,
+                  item.artist_name,
+                  item.artist_image,
+                  showContextFromFeed(item)
+                )
               }
             >
-                {item.ja_proposei ? 'Proposta enviada' : 'Tenho interesse'}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+              <Text style={[styles.btnOutlineText, { color: colors.primary }]}>Conversar</Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
         </View>
       </View>
@@ -1148,9 +1229,9 @@ export default function FeedScreen() {
               setVerMinhas(false);
               verArtistasRef.current = true;
               feedFocusedRef.current = true;
-              setShowFiltros(true);
+              setShowFiltros(false);
               setVerArtistas(true);
-              setLoadingArtistas(true);
+              setLoadingArtistas(!estadoUfArtistas && !artistasProntoGeo);
               setArtistasProximos([]);
               artistasLenRef.current = 0;
             }}
@@ -1204,33 +1285,7 @@ export default function FeedScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View
-            style={[
-              styles.artistSearch,
-              {
-                backgroundColor: colors.surface,
-                borderColor: buscaArtista.trim() ? colors.primary : colors.border,
-              },
-            ]}
-          >
-            <Ionicons name="search-outline" size={15} color={colors.textSecondary} />
-            <TextInput
-              value={buscaArtista}
-              onChangeText={setBuscaArtista}
-              placeholder="Buscar artista"
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.artistSearchInput, { color: colors.text }]}
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {buscaArtista.trim() ? (
-              <TouchableOpacity onPress={() => setBuscaArtista('')} hitSlop={10}>
-                <Ionicons name="close-circle" size={15} color={colors.textSecondary} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
+        ) : null}
 
         {!verMinhas ? (
           <>
@@ -1284,6 +1339,32 @@ export default function FeedScreen() {
               <View style={styles.filtrosBox}>
                 {verArtistas ? (
                   <>
+                    <View
+                      style={[
+                        styles.artistSearch,
+                        {
+                          backgroundColor: colors.surface,
+                          borderColor: buscaArtista.trim() ? colors.primary : colors.border,
+                          marginBottom: 8,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="search-outline" size={15} color={colors.textSecondary} />
+                      <TextInput
+                        value={buscaArtista}
+                        onChangeText={setBuscaArtista}
+                        placeholder="Buscar artista"
+                        placeholderTextColor={colors.textSecondary}
+                        style={[styles.artistSearchInput, { color: colors.text }]}
+                        autoCorrect={false}
+                        returnKeyType="search"
+                      />
+                      {buscaArtista.trim() ? (
+                        <TouchableOpacity onPress={() => setBuscaArtista('')} hitSlop={10}>
+                          <Ionicons name="close-circle" size={15} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                     <View style={styles.geoRow}>
                       <TouchableOpacity
                         style={[
@@ -1482,7 +1563,7 @@ export default function FeedScreen() {
           ListEmptyComponent={
             <View style={styles.center}>
               <Ionicons name="people-outline" size={42} color={colors.textSecondary} />
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>Pertos de mim</Text>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>Filtrar artistas</Text>
               <Text style={[styles.emptySub, { color: colors.textSecondary }]}>{emptyCopy}</Text>
             </View>
           }

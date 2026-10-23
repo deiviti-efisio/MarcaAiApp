@@ -20,7 +20,13 @@
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "bundleIdentifier": "com.marcaai.app",
+      "appleTeamId": "L5S2D49AB5",
       "buildNumber": "110",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.marcaai.app"
+        ]
+      },
       "icon": "./assets/images/icone_app_1024.png",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Este app precisa acessar sua galeria de fotos para permitir que você selecione uma foto de perfil.",
@@ -87,6 +93,8 @@
       "favicon": "./assets/images/icone_app_1024.png"
     },
     "plugins": [
+      "@bacons/apple-targets",
+      "./plugins/withAgendaWidget",
       "expo-iap",
       "expo-apple-authentication",
       [

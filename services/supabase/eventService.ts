@@ -409,6 +409,9 @@ export const createEvent = async (
       }
     }
 
+    void import("../agendaWidgetService").then((mod) => {
+      void mod.refreshAgendaWidget(eventData.artist_id);
+    });
     return { success: true, error: null, event };
   } catch {
     return { success: false, error: "Erro de conexão" };
@@ -807,6 +810,9 @@ export const updateEvent = async (
       );
     }
 
+    void import("../agendaWidgetService").then((mod) => {
+      void mod.refreshAgendaWidget(eventResult.event.artist_id);
+    });
     return { success: true, error: null, event: data };
   } catch {
     return { success: false, error: "Erro de conexão" };
@@ -875,6 +881,9 @@ export const deleteEvent = async (
       );
     }
 
+    void import("../agendaWidgetService").then((mod) => {
+      void mod.refreshAgendaWidget(artistId);
+    });
     return { success: true, error: null };
   } catch {
     return { success: false, error: "Erro de conexão" };
@@ -1162,6 +1171,9 @@ export const getEventsByArtistWithRole = async (
       })),
     );
     console.log("✅ Eventos carregados com filtragem:", events.length);
+    void import("../agendaWidgetService").then((mod) => {
+      mod.publishAgendaWidget(events);
+    });
     return { events, error: null };
   } catch (error: any) {
     if (abortSignal?.aborted || isAbortError(error)) {

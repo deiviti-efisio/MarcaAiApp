@@ -5,6 +5,11 @@ import { getActiveArtist, setActiveArtist as saveToStorage, clearActiveArtist } 
 import { getArtistById, getArtists } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
 import { normalizeArtistMemberRole } from '../services/supabase/permissionsService';
+import {
+  clearAgendaWidget,
+  refreshAgendaWidget,
+  setAgendaWidgetArtistName,
+} from '../services/agendaWidgetService';
 import { isLikelyNetworkFailure } from '../utils/isLikelyNetworkFailure';
 
 export interface ActiveArtist {
@@ -53,6 +58,15 @@ export const ActiveArtistProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     loadArtistFromStorage();
   }, []);
+
+  useEffect(() => {
+    if (activeArtist) {
+      setAgendaWidgetArtistName(activeArtist.name);
+      void refreshAgendaWidget(activeArtist.id);
+    } else if (!isLoading) {
+      clearAgendaWidget();
+    }
+  }, [activeArtist?.id, activeArtist?.name, isLoading]);
 
   // Configurar realtime quando artista mudar
   useEffect(() => {

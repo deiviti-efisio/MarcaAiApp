@@ -605,6 +605,62 @@ export default function EditarArtistaScreen() {
     </View>
   );
 
+  const renderContactWithPublicFlag = ({
+    label,
+    value,
+    onChangeText,
+    placeholder,
+    keyboardType,
+    required,
+    publicValue,
+    onPublicChange,
+  }: {
+    label: string;
+    value: string;
+    onChangeText: (text: string) => void;
+    placeholder: string;
+    keyboardType: TextInputProps['keyboardType'];
+    required?: boolean;
+    publicValue: boolean;
+    onPublicChange: (value: boolean) => void;
+  }) => (
+    <View style={styles.inputContainer}>
+      <View style={styles.contactPublicHeader}>
+        <Text style={[styles.inputLabel, styles.contactPublicTitle, { color: colors.text }]}>
+          {label} {required ? <Text style={styles.required}>*</Text> : null}
+        </Text>
+        <View style={styles.publicFlag}>
+          <Text style={[styles.publicFlagLabel, { color: colors.textSecondary }]}>Público</Text>
+          <View style={styles.publicSwitchScale}>
+            <Switch
+              value={publicValue}
+              onValueChange={onPublicChange}
+              trackColor={{ false: colors.border, true: colors.primary + '80' }}
+              thumbColor={Platform.OS === 'android' ? (publicValue ? colors.primary : '#f4f3f4') : undefined}
+              ios_backgroundColor={colors.border}
+            />
+          </View>
+        </View>
+      </View>
+      <TextInput
+        style={[
+          styles.input,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
+            color: colors.text,
+          },
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSecondary}
+        keyboardType={keyboardType}
+        autoCapitalize="none"
+      />
+    </View>
+  );
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -921,81 +977,28 @@ export default function EditarArtistaScreen() {
             </Text>
           </View>
 
-          {renderInput(
-            'E-mail',
-            email,
-            setEmail,
-            'contato@email.com',
-            'email-address',
-            false
-          )}
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: colors.text }]}>Mostrar e-mail no perfil</Text>
-            <View
-              style={[
-                styles.switchRow,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-              ]}
-            >
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
-                  Deixar e-mail público
-                </Text>
-              </View>
-              <Switch
-                value={showEmailOnProfile}
-                onValueChange={setShowEmailOnProfile}
-                trackColor={{ false: colors.border, true: colors.primary + '80' }}
-                thumbColor={Platform.OS === 'android' ? (showEmailOnProfile ? colors.primary : '#f4f3f4') : undefined}
-                ios_backgroundColor={colors.border}
-              />
-            </View>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
-              {showEmailOnProfile
-                ? 'Ligado: o e-mail aparece no perfil público.'
-                : 'Desligado: o e-mail permanece cadastrado, mas não aparece no perfil.'}
-            </Text>
-          </View>
+          {renderContactWithPublicFlag({
+            label: 'E-mail',
+            value: email,
+            onChangeText: setEmail,
+            placeholder: 'contato@email.com',
+            keyboardType: 'email-address',
+            publicValue: showEmailOnProfile,
+            onPublicChange: setShowEmailOnProfile,
+          })}
 
           {isAvailableForGigs && (
             <>
-              {renderInput(
-                'WhatsApp',
-                whatsapp,
-                setWhatsapp,
-                '(00) 00000-0000',
-                'phone-pad',
-                true
-              )}
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: colors.text }]}>Mostrar WhatsApp no perfil</Text>
-                <View
-                  style={[
-                    styles.switchRow,
-                    { borderColor: colors.border, backgroundColor: colors.surface },
-                  ]}
-                >
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>
-                      Deixar WhatsApp público
-                    </Text>
-                  </View>
-                  <Switch
-                    value={showWhatsappInSearch}
-                    onValueChange={setShowWhatsappInSearch}
-                    trackColor={{ false: colors.border, true: colors.primary + '80' }}
-                    thumbColor={Platform.OS === 'android' ? (showWhatsappInSearch ? colors.primary : '#f4f3f4') : undefined}
-                    ios_backgroundColor={colors.border}
-                  />
-                </View>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
-                  {showWhatsappInSearch
-                    ? 'Ligado: o WhatsApp aparece no perfil público e na busca de convites.'
-                    : 'Desligado: o número permanece cadastrado, mas não aparece no perfil nem na busca.'}
-                </Text>
-              </View>
+              {renderContactWithPublicFlag({
+                label: 'WhatsApp',
+                value: whatsapp,
+                onChangeText: setWhatsapp,
+                placeholder: '(00) 00000-0000',
+                keyboardType: 'phone-pad',
+                required: true,
+                publicValue: showWhatsappInSearch,
+                onPublicChange: setShowWhatsappInSearch,
+              })}
 
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: colors.text }]}>Cachê médio (R$)</Text>
@@ -1368,6 +1371,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
+  },
+  contactPublicHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  contactPublicTitle: {
+    marginBottom: 0,
+    flex: 1,
+  },
+  publicFlag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  publicFlagLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  publicSwitchScale: {
+    transform: [{ scale: 0.72 }],
   },
   currencyPrefix: {
     fontSize: 16,

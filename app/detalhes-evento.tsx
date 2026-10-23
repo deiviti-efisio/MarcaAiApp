@@ -27,8 +27,10 @@ import EventPaymentProgress, {
     getUnpaidRemainder,
 } from "../components/EventPaymentProgress";
 import TransientToast from "../components/TransientToast";
+import { usePermissions } from "../contexts/PermissionsContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { formatBrazilStateChoice } from "../lib/brazilGeo";
+import { openArtistChatInApp } from "../lib/openArtistChat";
 import { formatCalendarDate, isEventDateAlreadyPast } from "../lib/dateUtils";
 import { consumePendingEventUpdatedToast } from "../lib/pendingEventUpdatedToast";
 import { supabase } from "../lib/supabase";
@@ -291,6 +293,7 @@ export default function DetalhesEventoScreen() {
   const [showAudit, setShowAudit] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const { activeArtist } = useActiveArtist();
+  const { isAdmin } = usePermissions();
 
   // Estados para controle de acesso
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
@@ -300,6 +303,9 @@ export default function DetalhesEventoScreen() {
   const [artistMemberRole, setArtistMemberRole] = useState<string | null>(null);
   const [participationFromInviteBanner, setParticipationFromInviteBanner] =
     useState<string | null>(null);
+  const [participationInviterId, setParticipationInviterId] = useState<
+    string | null
+  >(null);
   /** Texto livre do convite (mensagem); não expõe observações internas do evento do organizador. */
   const [participationInviteMessage, setParticipationInviteMessage] = useState<
     string | null
@@ -413,6 +419,7 @@ export default function DetalhesEventoScreen() {
     (async () => {
       if (!event?.convite_participacao_id) {
         setParticipationFromInviteBanner(null);
+        setParticipationInviterId(null);
         setParticipationInviteMessage(null);
         setParticipationInviteLocationFallback(null);
         return;
@@ -423,6 +430,7 @@ export default function DetalhesEventoScreen() {
       if (cancelled || !convite) return;
       const n = await obterNomeArtista(convite.artista_que_convidou_id);
       if (!cancelled) {
+        setParticipationInviterId(convite.artista_que_convidou_id);
         setParticipationFromInviteBanner(n || "outro artista");
         const msg = convite.mensagem?.trim();
         setParticipationInviteMessage(msg ? msg : null);
@@ -1196,6 +1204,37 @@ export default function DetalhesEventoScreen() {
     );
   };
 
+  const openEventArtistChat = (
+    otherArtistId?: string | null,
+    otherArtistName?: string | null,
+    otherArtistImage?: string | null,
+    extraFuncao?: string | null,
+  ) => {
+    openArtistChatInApp({
+      myArtistId: activeArtist?.id,
+      isAdmin,
+      otherArtistId,
+      otherArtistName,
+      otherArtistImage,
+      showContext: event
+        ? {
+            nome: event.name,
+            data: formatDate(event.event_date),
+            horario: `${formatTime(event.start_time)} – ${formatTime(event.end_time)}`,
+            local: effectiveEventLocationLine,
+            funcao: extraFuncao,
+            cache:
+              event.value != null && Number(event.value) > 0
+                ? Number(event.value).toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })
+                : null,
+          }
+        : undefined,
+    });
+  };
+
   const confirmCancelInviteEvent = async () => {
     if (!event?.convite_participacao_id) return;
     setIsDeleting(true);
@@ -1479,7 +1518,7 @@ export default function DetalhesEventoScreen() {
     if (pressKitItems.length === 0) {
       Alert.alert(
         "Press kit vazio",
-        "Adicione imagens, áudios em Configurações → Press kit e identidade para compartilhar rápido com equipe e contratantes.",
+        "Adicione imagens e áudios em Editar perfil público → Press kit e identidade para compartilhar rápido com equipe e contratantes.",
       );
       return;
     }
@@ -1953,6 +1992,44 @@ export default function DetalhesEventoScreen() {
                   </Text>
                   .
                 </Text>
+                {participationInviterId ? (
+                  <TouchableOpacity
+                    onPress={() =>
+                      openEventArtistChat(
+                        participationInviterId,
+                        participationFromInviteBanner,
+                      )
+                    }
+                    style={{
+                      marginTop: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      alignSelf: "flex-start",
+                      gap: 6,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="chatbubble-ellipses-outline"
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontWeight: "700",
+                        fontSize: 13,
+                      }}
+                    >
+                      Conversar
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           </View>
@@ -2493,6 +2570,31 @@ export default function DetalhesEventoScreen() {
                             >
                               Motivo: {c.mensagem}
                             </Text>
+                          ) : null}
+                          {c.status === "pendente" || c.status === "aceito" ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                openEventArtistChat(
+                                  c.artista_convidado_id,
+                                  nome,
+                                  participationInviteeProfiles[
+                                    c.artista_convidado_id
+                                  ],
+                                  funcao,
+                                )
+                              }
+                              style={{ marginTop: 6 }}
+                            >
+                              <Text
+                                style={{
+                                  color: colors.primary,
+                                  fontSize: 13,
+                                  fontWeight: "600",
+                                }}
+                              >
+                                Conversar
+                              </Text>
+                            </TouchableOpacity>
                           ) : null}
                           {c.status === "pendente" ? (
                             <TouchableOpacity

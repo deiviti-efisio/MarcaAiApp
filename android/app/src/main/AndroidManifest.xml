@@ -34,5 +34,27 @@
         <data android:scheme="marcaai"/>
       </intent-filter>
     </activity>
+    <receiver
+      android:name=".AgendaWidgetSmallProvider"
+      android:exported="true"
+      android:label="@string/widget_small_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/agenda_widget_small_info"/>
+    </receiver>
+    <receiver
+      android:name=".AgendaWidgetMonthProvider"
+      android:exported="true"
+      android:label="@string/widget_month_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/agenda_widget_month_info"/>
+    </receiver>
   </application>
 </manifest>

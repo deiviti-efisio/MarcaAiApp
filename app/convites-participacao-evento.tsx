@@ -20,7 +20,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../lib/openArtistChat';
 import { formatCalendarDate } from '../lib/dateUtils';
 import {
   aceitarConviteParticipacao,
@@ -46,9 +48,23 @@ function formatTimeRange(start: string, end: string) {
   return s;
 }
 
+function showContextFromConvite(item: ConviteParticipacaoEventoRow): ShowChatContext {
+  const local = [item.cidade, item.estado_uf].filter(Boolean).join(' / ');
+  const funcao = item.funcao_participacao?.trim();
+  return {
+    nome: item.nome_evento,
+    data: formatCalendarDate(item.data_evento),
+    horario: formatTimeRange(item.hora_inicio, item.hora_fim),
+    local: local || null,
+    funcao: funcao && funcao.toLowerCase() !== 'interesse' ? funcao : null,
+    cache: formatChatCache(item.cache_valor),
+  };
+}
+
 export default function ConvitesParticipacaoEventoScreen() {
   const { colors } = useTheme();
   const { activeArtist } = useActiveArtist();
+  const { isAdmin } = usePermissions();
   const [convites, setConvites] = useState<ConviteParticipacaoEventoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -272,6 +288,24 @@ export default function ConvitesParticipacaoEventoScreen() {
                     ) : null}
                   </View>
                 ) : null}
+                <TouchableOpacity
+                  style={styles.whatsRow}
+                  onPress={() =>
+                    openArtistChatInApp({
+                      myArtistId: activeArtist?.id,
+                      isAdmin,
+                      otherArtistId: item.artista_que_convidou_id,
+                      otherArtistName: inviterName,
+                      showContext: showContextFromConvite(item),
+                    })
+                  }
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.cardMeta, { color: colors.primary, fontWeight: '700', marginTop: 0 }]}>
+                    Conversar
+                  </Text>
+                </TouchableOpacity>
                 {item.funcao_participacao &&
                 item.funcao_participacao.trim().toLowerCase() !== 'interesse' ? (
                   <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
@@ -432,6 +466,27 @@ export default function ConvitesParticipacaoEventoScreen() {
                         </Text>
                       </View>
                     ) : null}
+                    <TouchableOpacity
+                      style={[styles.acceptInfoBox, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]}
+                      onPress={() =>
+                        openArtistChatInApp({
+                          myArtistId: activeArtist?.id,
+                          isAdmin,
+                          otherArtistId: selectedAcceptInvite.artista_que_convidou_id,
+                          otherArtistName: names[selectedAcceptInvite.artista_que_convidou_id],
+                          showContext: showContextFromConvite(selectedAcceptInvite),
+                        })
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.acceptLabel, { color: colors.primary }]}>Conversar</Text>
+                      <View style={styles.acceptWhatsRow}>
+                        <Text style={[styles.acceptValue, { flex: 1, color: colors.text }]}>
+                          Falar com {names[selectedAcceptInvite.artista_que_convidou_id] || 'quem convidou'}
+                        </Text>
+                        <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
+                      </View>
+                    </TouchableOpacity>
                     {selectedAcceptInvite.telefone_contratante?.trim() ? (
                       <View style={[styles.acceptInfoBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
                         <Text style={[styles.acceptLabel, { color: colors.textSecondary }]}>WhatsApp (organizador)</Text>

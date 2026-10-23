@@ -1,5 +1,9 @@
 <resources>
   <string name="app_name">MeuShow</string>
+  <string name="widget_small_name">MeuShow</string>
+  <string name="widget_small_description">Dia de hoje e o próximo show. Toque para abrir a agenda.</string>
+  <string name="widget_month_name">Calendário MeuShow</string>
+  <string name="widget_month_description">Mês com os dias de show marcados. Toque para abrir a agenda.</string>
   <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>
   <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
   <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>

@@ -305,13 +305,6 @@ export default function ConfiguracoesScreen() {
     setShowCreateArtistLockedModal(true);
   };
 
-  const handlePressKitAccessDenied = () => {
-    Alert.alert(
-      'Press kit',
-      'Somente o administrador do artista pode abrir o press kit. Peça acesso de administrador se precisar gerenciar os materiais.'
-    );
-  };
-
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
@@ -746,20 +739,6 @@ export default function ConfiguracoesScreen() {
                 'Colaboradores',
                 'Gerenciar colaboradores do artista',
                 () => router.push('/colaboradores-artista')
-              )}
-
-              {renderSettingItem(
-                'color-palette-outline',
-                'Press kit e identidade',
-                isArtistAdminRole(currentArtist.role)
-                  ? 'Adicione imagens, áudios para compartilhar rápido com sua equipe e contratantes.'
-                  : 'Somente o administrador pode ver, editar e compartilhar.',
-                isArtistAdminRole(currentArtist.role)
-                  ? () => router.push('/press-kit-artista')
-                  : handlePressKitAccessDenied,
-                !isArtistAdminRole(currentArtist.role) ? (
-                  <Ionicons name="lock-closed" size={18} color={isDarkMode ? '#999' : '#888'} />
-                ) : undefined
               )}
 
               {renderSettingItem(

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.artist_conversations (
   last_message_at timestamptz,
   last_read_low timestamptz,
   last_read_high timestamptz,
+  subject text,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (artist_low < artist_high),
   UNIQUE (artist_low, artist_high)
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.artist_messages (
   conversation_id uuid NOT NULL REFERENCES public.artist_conversations(id) ON DELETE CASCADE,
   sender_artist_id uuid NOT NULL REFERENCES public.artists(id) ON DELETE CASCADE,
   body text NOT NULL,
+  deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -107,10 +109,15 @@ BEGIN
   END IF;
 END $$;
 
+ALTER TABLE public.artist_conversations ADD COLUMN IF NOT EXISTS subject text;
+ALTER TABLE public.artist_messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
 DROP FUNCTION IF EXISTS public.abrir_conversa_artistas(uuid, uuid);
+DROP FUNCTION IF EXISTS public.abrir_conversa_artistas(uuid, uuid, text);
 CREATE FUNCTION public.abrir_conversa_artistas(
   p_meu_artista_id uuid,
-  p_outro_artista_id uuid
+  p_outro_artista_id uuid,
+  p_assunto text DEFAULT NULL
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -121,6 +128,7 @@ DECLARE
   v_low uuid;
   v_high uuid;
   v_id uuid;
+  v_assunto text;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Não autenticado';
@@ -140,19 +148,42 @@ BEGIN
 
   v_low := LEAST(p_meu_artista_id, p_outro_artista_id);
   v_high := GREATEST(p_meu_artista_id, p_outro_artista_id);
+  v_assunto := left(trim(COALESCE(p_assunto, '')), 500);
 
   SELECT c.id INTO v_id
   FROM public.artist_conversations c
   WHERE c.artist_low = v_low AND c.artist_high = v_high;
 
   IF v_id IS NULL THEN
-    INSERT INTO public.artist_conversations (artist_low, artist_high)
-    VALUES (v_low, v_high)
+    INSERT INTO public.artist_conversations (artist_low, artist_high, subject)
+    VALUES (v_low, v_high, NULLIF(v_assunto, ''))
     RETURNING id INTO v_id;
+  ELSIF v_assunto <> '' THEN
+    UPDATE public.artist_conversations
+    SET subject = v_assunto
+    WHERE id = v_id;
   END IF;
 
   RETURN v_id;
 END;
+$$;
+
+DROP FUNCTION IF EXISTS public.obter_assunto_conversa(uuid, uuid);
+CREATE FUNCTION public.obter_assunto_conversa(
+  p_conversation_id uuid,
+  p_meu_artista_id uuid
+)
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT c.subject
+  FROM public.artist_conversations c
+  WHERE c.id = p_conversation_id
+    AND public._is_member_of_artist(auth.uid(), p_meu_artista_id, NULL)
+    AND (c.artist_low = p_meu_artista_id OR c.artist_high = p_meu_artista_id);
 $$;
 
 DROP FUNCTION IF EXISTS public.listar_conversas_artista(uuid);
@@ -164,7 +195,8 @@ RETURNS TABLE (
   other_artist_image text,
   last_message text,
   last_message_at timestamptz,
-  unread_count integer
+  unread_count integer,
+  subject text
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -183,11 +215,13 @@ AS $$
       FROM public.artist_messages m
       WHERE m.conversation_id = c.id
         AND m.sender_artist_id <> p_meu_artista_id
+        AND m.deleted_at IS NULL
         AND m.created_at > COALESCE(
           CASE WHEN c.artist_low = p_meu_artista_id THEN c.last_read_low ELSE c.last_read_high END,
           'epoch'::timestamptz
         )
-    )
+    ),
+    c.subject
   FROM public.artist_conversations c
   JOIN public.artists a
     ON a.id = CASE WHEN c.artist_low = p_meu_artista_id THEN c.artist_high ELSE c.artist_low END
@@ -208,7 +242,8 @@ RETURNS TABLE (
   sender_artist_id uuid,
   body text,
   created_at timestamptz,
-  is_mine boolean
+  is_mine boolean,
+  is_deleted boolean
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -218,9 +253,10 @@ AS $$
   SELECT
     m.id,
     m.sender_artist_id,
-    m.body,
+    CASE WHEN m.deleted_at IS NULL THEN m.body ELSE '' END,
     m.created_at,
-    (m.sender_artist_id = p_meu_artista_id)
+    (m.sender_artist_id = p_meu_artista_id),
+    (m.deleted_at IS NOT NULL)
   FROM public.artist_messages m
   JOIN public.artist_conversations c ON c.id = m.conversation_id
   WHERE m.conversation_id = p_conversation_id
@@ -229,6 +265,59 @@ AS $$
     AND (p_before IS NULL OR m.created_at < p_before)
   ORDER BY m.created_at DESC
   LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 80), 200));
+$$;
+
+DROP FUNCTION IF EXISTS public.excluir_mensagem_conversa(uuid, uuid);
+CREATE FUNCTION public.excluir_mensagem_conversa(
+  p_mensagem_id uuid,
+  p_meu_artista_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conversation_id uuid;
+  v_last text;
+  v_last_at timestamptz;
+BEGIN
+  IF NOT public._is_member_of_artist(auth.uid(), p_meu_artista_id, NULL) THEN
+    RAISE EXCEPTION 'Sem permissão';
+  END IF;
+
+  UPDATE public.artist_messages m
+  SET
+    deleted_at = now(),
+    body = ''
+  FROM public.artist_conversations c
+  WHERE m.id = p_mensagem_id
+    AND m.sender_artist_id = p_meu_artista_id
+    AND m.deleted_at IS NULL
+    AND c.id = m.conversation_id
+    AND (c.artist_low = p_meu_artista_id OR c.artist_high = p_meu_artista_id)
+  RETURNING m.conversation_id INTO v_conversation_id;
+
+  IF v_conversation_id IS NULL THEN
+    RAISE EXCEPTION 'Não foi possível apagar esta mensagem';
+  END IF;
+
+  SELECT m.body, m.created_at
+    INTO v_last, v_last_at
+  FROM public.artist_messages m
+  WHERE m.conversation_id = v_conversation_id
+    AND m.deleted_at IS NULL
+  ORDER BY m.created_at DESC
+  LIMIT 1;
+
+  UPDATE public.artist_conversations
+  SET
+    last_message = COALESCE(NULLIF(v_last, ''), 'Mensagem apagada'),
+    last_message_at = COALESCE(v_last_at, last_message_at, now())
+  WHERE id = v_conversation_id;
+
+  RETURN true;
+END;
 $$;
 
 DROP FUNCTION IF EXISTS public.enviar_mensagem_conversa(uuid, uuid, text);
@@ -318,6 +407,7 @@ AS $$
       FROM public.artist_messages m
       WHERE m.conversation_id = c.id
         AND m.sender_artist_id <> p_meu_artista_id
+        AND m.deleted_at IS NULL
         AND m.created_at > COALESCE(
           CASE WHEN c.artist_low = p_meu_artista_id THEN c.last_read_low ELSE c.last_read_high END,
           'epoch'::timestamptz
@@ -325,10 +415,12 @@ AS $$
     );
 $$;
 
-GRANT EXECUTE ON FUNCTION public.abrir_conversa_artistas(uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.abrir_conversa_artistas(uuid, uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.obter_assunto_conversa(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.listar_conversas_artista(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.listar_mensagens_conversa(uuid, uuid, int, timestamptz) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.enviar_mensagem_conversa(uuid, uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.excluir_mensagem_conversa(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.marcar_conversa_lida(uuid, uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.contar_mensagens_nao_lidas(uuid) TO authenticated;
 

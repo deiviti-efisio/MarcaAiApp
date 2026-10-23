@@ -15,6 +15,7 @@ import OptimizedImage from '../components/OptimizedImage';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { parseQuotedChatMessage } from '../lib/openArtistChat';
 import {
   listarConversasArtista,
   subscribeConversasRealtime,
@@ -181,10 +182,16 @@ export default function ConversasScreen() {
                         styles.preview,
                         { color: item.unreadCount > 0 ? colors.text : colors.textSecondary },
                         item.unreadCount > 0 && styles.previewUnread,
+                        item.lastMessage === 'Mensagem apagada' && { fontStyle: 'italic' },
                       ]}
                       numberOfLines={1}
                     >
-                      {item.lastMessage || 'Diga olá'}
+                      {item.lastMessage === 'Mensagem apagada'
+                        ? 'Mensagem apagada'
+                        : parseQuotedChatMessage(item.lastMessage).text ||
+                          parseQuotedChatMessage(item.lastMessage).quote ||
+                          item.subject ||
+                          'Diga olá'}
                     </Text>
                     {item.unreadCount > 0 ? (
                       <View style={[styles.unread, { backgroundColor: colors.primary }]}>

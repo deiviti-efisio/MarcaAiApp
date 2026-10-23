@@ -25,6 +25,7 @@ import { ARTIST_WORK_ROLE_PRESETS } from '../constants/artistProfileLists';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatEventLocationSlash } from '../lib/brazilGeo';
+import { formatChatCache, openArtistChatInApp } from '../lib/openArtistChat';
 import { formatCalendarDate } from '../lib/dateUtils';
 import {
   desfazerPropostaFeed,
@@ -59,7 +60,7 @@ function hmToDate(hm: string): Date {
 export default function NegociarFeedScreen() {
   const { colors, isDarkMode } = useTheme();
   const { activeArtist } = useActiveArtist();
-  const { canCreateEvents } = usePermissions();
+  const { canCreateEvents, isAdmin } = usePermissions();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const [anuncio, setAnuncio] = useState<FeedAnuncio | null>(null);
   const [loading, setLoading] = useState(true);
@@ -301,6 +302,32 @@ export default function NegociarFeedScreen() {
                   . Ao aceitar, entra como despesa na agenda.
                 </Text>
               </View>
+              <TouchableOpacity
+                style={[styles.whatsappBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]}
+                onPress={() =>
+                  openArtistChatInApp({
+                    myArtistId: activeArtist?.id,
+                    isAdmin,
+                    otherArtistId: anuncio.artist_id,
+                    otherArtistName: anuncio.artist_name,
+                    otherArtistImage: anuncio.artist_image,
+                    showContext: {
+                      nome: anuncio.evento_nome || anuncio.artist_name,
+                      data: formatCalendarDate(anuncio.event_date),
+                      horario: [formatTime(anuncio.start_time), formatTime(anuncio.end_time)]
+                        .filter(Boolean)
+                        .join(' – '),
+                      local: location,
+                      funcao: anuncio.feed_funcoes.filter(Boolean).join(', ') || funcao || null,
+                      cache: formatChatCache(anuncio.cache_valor),
+                    },
+                  })
+                }
+                activeOpacity={0.85}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                <Text style={[styles.whatsappBtnText, { color: colors.primary }]}>Conversar</Text>
+              </TouchableOpacity>
               {whatsappUrl ? (
                 <TouchableOpacity
                   style={[styles.whatsappBtn, { borderColor: '#16A34A', backgroundColor: '#16A34A10' }]}

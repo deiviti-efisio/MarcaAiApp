@@ -8,6 +8,7 @@ export type ConversaResumo = {
   lastMessage: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
+  subject: string | null;
 };
 
 export type MensagemConversa = {
@@ -16,6 +17,7 @@ export type MensagemConversa = {
   body: string;
   createdAt: string;
   isMine: boolean;
+  isDeleted: boolean;
 };
 
 function asInt(value: unknown): number {
@@ -25,15 +27,40 @@ function asInt(value: unknown): number {
 
 export async function abrirConversaArtistas(
   meuArtistaId: string,
-  outroArtistaId: string
+  outroArtistaId: string,
+  assunto?: string | null
 ): Promise<{ conversationId: string | null; error: string | null }> {
-  const { data, error } = await supabase.rpc('abrir_conversa_artistas', {
+  const payload: Record<string, string> = {
     p_meu_artista_id: meuArtistaId,
     p_outro_artista_id: outroArtistaId,
-  });
+  };
+  const assuntoTrim = (assunto || '').trim();
+  if (assuntoTrim) payload.p_assunto = assuntoTrim.slice(0, 500);
+  let { data, error } = await supabase.rpc('abrir_conversa_artistas', payload);
+  if (error && assuntoTrim) {
+    const retry = await supabase.rpc('abrir_conversa_artistas', {
+      p_meu_artista_id: meuArtistaId,
+      p_outro_artista_id: outroArtistaId,
+    });
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) return { conversationId: null, error: error.message };
   const id = data != null ? String(data) : '';
   return { conversationId: id || null, error: id ? null : 'Não foi possível abrir a conversa.' };
+}
+
+export async function obterAssuntoConversa(
+  conversationId: string,
+  meuArtistaId: string
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc('obter_assunto_conversa', {
+    p_conversation_id: conversationId,
+    p_meu_artista_id: meuArtistaId,
+  });
+  if (error || data == null) return null;
+  const text = String(data).trim();
+  return text || null;
 }
 
 export async function listarConversasArtista(
@@ -55,6 +82,7 @@ export async function listarConversasArtista(
         lastMessage: r.last_message != null ? String(r.last_message) : null,
         lastMessageAt: r.last_message_at != null ? String(r.last_message_at) : null,
         unreadCount: asInt(r.unread_count),
+        subject: r.subject != null ? String(r.subject) : null,
       };
     }),
     error: null,
@@ -83,6 +111,7 @@ export async function listarMensagensConversa(params: {
         body: String(r.body || ''),
         createdAt: String(r.created_at || ''),
         isMine: r.is_mine === true || r.is_mine === 't',
+        isDeleted: r.is_deleted === true || r.is_deleted === 't',
       };
     })
     .reverse();
@@ -101,6 +130,18 @@ export async function enviarMensagemConversa(params: {
   });
   if (error) return { id: null, error: error.message };
   return { id: data != null ? String(data) : null, error: null };
+}
+
+export async function excluirMensagemConversa(params: {
+  mensagemId: string;
+  meuArtistaId: string;
+}): Promise<{ success: boolean; error: string | null }> {
+  const { error } = await supabase.rpc('excluir_mensagem_conversa', {
+    p_mensagem_id: params.mensagemId,
+    p_meu_artista_id: params.meuArtistaId,
+  });
+  if (error) return { success: false, error: error.message };
+  return { success: true, error: null };
 }
 
 export async function marcarConversaLida(
