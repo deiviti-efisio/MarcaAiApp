@@ -31,7 +31,7 @@ import { usePermissions } from '../../contexts/PermissionsContext';
 import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../services/useNotifications';
-import { brazilUfFromStateName, formatEventLocationSlash } from '../../lib/brazilGeo';
+import { brazilUfFromStateName, formatCityAndRegion } from '../../lib/brazilGeo';
 import { formatCalendarDate, formatCalendarDateLongParts, weekdayFromCalendarDate } from '../../lib/dateUtils';
 import {
   ARTIST_MUSICAL_STYLE_PRESETS,
@@ -61,6 +61,8 @@ import {
 } from '../../services/supabase/artistFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
 import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../../lib/openArtistChat';
+import { getArtistById } from '../../services/supabase/artistService';
+import { openWhatsAppConversation } from '../../utils/brazilPhone';
 
 function formatTime(t: string) {
   if (!t) return '';
@@ -257,31 +259,9 @@ export default function FeedScreen() {
     };
   }, [activeArtist?.id, artistasProntoGeo]);
 
-  const temFiltroArtistas = (filtros = artistaFiltrosRef.current) =>
-    Boolean(
-      filtros.estadoUf ||
-        filtros.cidade ||
-        filtros.genero ||
-        filtros.nome ||
-        filtros.favoritos,
-    );
-
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
     if (!verArtistasRef.current) return;
     feedFocusedRef.current = true;
-    if (!temFiltroArtistas()) {
-      artistasAbortRef.current?.abort();
-      setArtistasProximos([]);
-      artistasLenRef.current = 0;
-      artistasHasMoreRef.current = false;
-      setArtistasHasMore(false);
-      setLoadingArtistas(false);
-      setLoadingMoreArtistas(false);
-      loadingMoreArtistasRef.current = false;
-      setRefreshing(false);
-      setError(null);
-      return;
-    }
     const append = Boolean(opts.append);
     if (append) {
       if (!artistasHasMoreRef.current || loadingMoreArtistasRef.current) return;
@@ -474,7 +454,7 @@ export default function FeedScreen() {
       if (filtroGenero || estadoUfArtistas || cidadeArtistas.trim()) {
         return 'Nenhum artista neste filtro.';
       }
-      return 'Toque no filtro e escolha estado, cidade, gênero ou favoritos para ver artistas.';
+      return 'Nenhum artista encontrado.';
     }
     if (filtroFuncao) {
       return `Nenhuma oportunidade com a função "${filtroFuncao}" neste filtro.`;
@@ -515,11 +495,6 @@ export default function FeedScreen() {
       Alert.alert('Seu anúncio', 'Você não pode iniciar negociação na sua própria publicação.');
       return;
     }
-    if (item.ja_proposei) {
-      setAnuncioProposta(item);
-      setShowPropostaEnviada(true);
-      return;
-    }
     if (!activeArtist) {
       Alert.alert(
         'Perfil de artista',
@@ -538,6 +513,15 @@ export default function FeedScreen() {
     router.push({ pathname: '/negociar-feed', params: { eventId: item.id } });
   };
 
+  const handleWhatsappCandidato = async (artistId: string, artistName: string) => {
+    const { artist } = await getArtistById(artistId);
+    if (!artist?.show_whatsapp || !artist.whatsapp) {
+      Alert.alert('WhatsApp', `${artistName} não deixou o WhatsApp público. Use o bate-papo do app.`);
+      return;
+    }
+    void openWhatsAppConversation(artist.whatsapp);
+  };
+
   const showContextFromFeed = (item: FeedAnuncio, extraFuncao?: string | null): ShowChatContext => {
     const horario = [formatTime(item.start_time), formatTime(item.end_time)].filter(Boolean).join(' – ');
     const funcoes = item.feed_funcoes.map((f) => f.trim()).filter(Boolean).join(', ');
@@ -545,7 +529,7 @@ export default function FeedScreen() {
       nome: item.evento_nome || item.artist_name,
       data: formatCalendarDate(item.event_date),
       horario: horario || null,
-      local: formatEventLocationSlash({ city: item.city, state_uf: item.state_uf }),
+      local: formatCityAndRegion({ city: item.city, state_uf: item.state_uf }),
       funcao: extraFuncao || funcoes || null,
       cache: formatChatCache(item.cache_valor),
     };
@@ -660,7 +644,7 @@ export default function FeedScreen() {
   const renderMarketplaceItem = (item: FeedAnuncio) => {
     const meuAnuncio = isMeuAnuncio(item);
     const badgeColor = colors.primary;
-    const location = formatEventLocationSlash({
+    const location = formatCityAndRegion({
       city: item.city,
       state_uf: item.state_uf,
     });
@@ -833,7 +817,9 @@ export default function FeedScreen() {
           {cacheDisplay ? (
             <View style={[styles.cachePill, { backgroundColor: `${colors.primary}10` }]}>
               <Ionicons name="cash-outline" size={14} color={colors.primary} />
-              <Text style={[styles.cachePillText, { color: colors.text }]}>Cachê {cacheDisplay}</Text>
+              <Text style={[styles.cachePillText, { color: colors.text }]}>
+                {item.feed_mostrar_cache && cacheTxt ? `Até ${cacheTxt}` : `Cachê ${cacheDisplay}`}
+              </Text>
             </View>
           ) : null}
 
@@ -890,15 +876,9 @@ export default function FeedScreen() {
             </View>
             ) : null}
             <Text style={[styles.countPillText, { color: colors.textSecondary }]}>
-              {meuAnuncio
-                ? item.propostas_count === 0
-                  ? 'Nenhuma proposta'
-                  : item.propostas_count === 1
-                    ? '1 proposta'
-                    : `${item.propostas_count} propostas`
-                : item.propostas_count === 1
-                  ? '1 pessoa se candidatou'
-                  : `${item.propostas_count} pessoas se candidataram`}
+              {item.propostas_count === 1
+                ? '1 candidato'
+                : `${item.propostas_count} candidatos`}
             </Text>
           </View>
         ) : null}
@@ -931,11 +911,8 @@ export default function FeedScreen() {
                     </Text>
                     <Text style={[styles.propostaMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                       {proposta.status === 'aceito'
-                        ? 'Aceita'
-                        : 'Pendente · toque para aceitar'}
-                      {proposta.funcao && proposta.funcao !== 'Interesse'
-                        ? ` · ${proposta.funcao}`
-                        : ''}
+                        ? 'Aceita · toque para ver'
+                        : 'Candidato · toque para aceitar'}
                     </Text>
                   </View>
                   {aceitandoConviteId === proposta.convite_id ? (
@@ -959,9 +936,17 @@ export default function FeedScreen() {
                   }
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ paddingLeft: 8 }}
-                  accessibilityLabel={`Conversar com ${proposta.artista_nome}`}
+                  accessibilityLabel={`Conversar no app com ${proposta.artista_nome}`}
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleWhatsappCandidato(proposta.artista_id, proposta.artista_nome)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ paddingLeft: 6 }}
+                  accessibilityLabel={`WhatsApp de ${proposta.artista_nome}`}
+                >
+                  <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
                 </TouchableOpacity>
               </View>
             ))}
@@ -985,11 +970,14 @@ export default function FeedScreen() {
                     : styles.btnPrimaryText
                 }
               >
-                {item.ja_proposei ? 'Proposta enviada' : 'Tenho interesse'}
+                {item.ja_proposei ? 'Ver oportunidade' : 'Tenho interesse'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btnOutline, { borderColor: colors.border, flexDirection: 'row', justifyContent: 'center', gap: 6 }]}
+              style={[
+                styles.btnOutline,
+                { borderColor: colors.border, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+              ]}
               onPress={() =>
                 handleConversarFeed(
                   item.artist_id,
@@ -1132,22 +1120,20 @@ export default function FeedScreen() {
                   >
                     <Ionicons name="help-circle-outline" size={22} color={colors.primary} />
                   </TouchableOpacity>
-                  {isAdmin ? (
-                    <TouchableOpacity
-                      style={styles.notificationButton}
-                      onPress={() => router.push('/conversas')}
-                      accessibilityLabel="Conversas"
-                    >
-                      <Ionicons name="paper-plane-outline" size={22} color={colors.primary} />
-                      {unreadChats > 0 ? (
-                        <View style={styles.notificationBadge}>
-                          <Text style={styles.badgeText}>
-                            {unreadChats > 99 ? '99+' : unreadChats.toString()}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </TouchableOpacity>
-                  ) : null}
+                  <TouchableOpacity
+                    style={styles.notificationButton}
+                    onPress={() => router.push('/conversas')}
+                    accessibilityLabel="Conversas"
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
+                    {unreadChats > 0 ? (
+                      <View style={styles.notificationBadge}>
+                        <Text style={styles.badgeText}>
+                          {unreadChats > 99 ? '99+' : unreadChats.toString()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.notificationButton}
                     onPress={() => router.push('/notificacoes')}
@@ -1169,22 +1155,20 @@ export default function FeedScreen() {
         ) : (
           <View style={styles.noArtistHeader}>
             <Text style={[styles.headerArtistName, { color: colors.text }]}>Feed</Text>
-            {isAdmin ? (
-              <TouchableOpacity
-                style={styles.notificationButton}
-                onPress={() => router.push('/conversas')}
-                accessibilityLabel="Conversas"
-              >
-                <Ionicons name="paper-plane-outline" size={24} color={colors.primary} />
-                {unreadChats > 0 ? (
-                  <View style={styles.notificationBadge}>
-                    <Text style={styles.badgeText}>
-                      {unreadChats > 99 ? '99+' : unreadChats.toString()}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            ) : null}
+            <TouchableOpacity
+              style={styles.notificationButton}
+              onPress={() => router.push('/conversas')}
+              accessibilityLabel="Conversas"
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={24} color={colors.primary} />
+              {unreadChats > 0 ? (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.badgeText}>
+                    {unreadChats > 99 ? '99+' : unreadChats.toString()}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.notificationButton}
               onPress={() => router.push('/notificacoes')}
@@ -1382,7 +1366,7 @@ export default function FeedScreen() {
                           style={[styles.geoFieldText, { color: estadoUfArtistas ? colors.text : colors.textSecondary }]}
                           numberOfLines={1}
                         >
-                          {estadoUfArtistas || 'UF'}
+                          {estadoUfArtistas || 'Todos'}
                         </Text>
                         <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
@@ -1617,6 +1601,7 @@ export default function FeedScreen() {
         visible={showEstados}
         onClose={() => setShowEstados(false)}
         selectedUf={verArtistas ? estadoUfArtistas : estadoUfFeed}
+        todosLabel={verArtistas ? 'Todos os estados' : undefined}
         onSelect={(uf) => {
           const next = uf || '';
           if (verArtistas) {
@@ -1778,8 +1763,8 @@ export default function FeedScreen() {
                     <Ionicons name="people-outline" size={20} color={colors.text} />
                     <Text style={[styles.menuRowText, { color: colors.text }]}>
                       {anuncioMenu.propostas_count === 1
-                        ? 'Ver 1 proposta'
-                        : `Ver ${anuncioMenu.propostas_count} propostas`}
+                        ? 'Ver 1 candidato'
+                        : `Ver ${anuncioMenu.propostas_count} candidatos`}
                     </Text>
                     <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                   </TouchableOpacity>

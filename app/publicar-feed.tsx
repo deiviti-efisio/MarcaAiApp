@@ -36,7 +36,12 @@ import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
 import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { ARTIST_WORK_ROLE_PRESETS, buildOrderedOptionsForPicker } from '../constants/artistProfileLists';
-import { formatEventLocationSlash } from '../lib/brazilGeo';
+import {
+  brazilUfFromStateName,
+  formatCityAndRegion,
+  formatEventLocationSlash,
+  parseCityUf,
+} from '../lib/brazilGeo';
 import { formatCalendarDate } from '../lib/dateUtils';
 import {
   getEventsByMonthWithRole,
@@ -147,7 +152,7 @@ export default function PublicarFeedScreen() {
   const [selectedFuncoes, setSelectedFuncoes] = useState<string[]>([]);
   const [funcaoDraft, setFuncaoDraft] = useState('');
   const [whatsappDraft, setWhatsappDraft] = useState('');
-  const [mostrarCache, setMostrarCache] = useState(false);
+  const [mostrarCache, setMostrarCache] = useState(true);
   const [loadingEdit, setLoadingEdit] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -328,6 +333,17 @@ export default function PublicarFeedScreen() {
       if (cancelled) return;
       if (!isEditMode) {
         setWhatsappDraft(maskBrazilMobile(artist?.whatsapp || ''));
+        const parsedCity = parseCityUf(artist?.city || '');
+        if (parsedCity.cityLabel) setCidade(parsedCity.cityLabel);
+        const uf =
+          parsedCity.uf ||
+          brazilUfFromStateName(artist?.state) ||
+          '';
+        if (uf) setEstadoUf(uf);
+        if (artist?.average_cache_value && artist.average_cache_value > 0) {
+          setCacheDraft(formatCurrencyBRLFromAmount(artist.average_cache_value));
+          setMostrarCache(true);
+        }
       }
     });
 
@@ -455,7 +471,7 @@ export default function PublicarFeedScreen() {
     if (cacheNumber <= 0) {
       Alert.alert(
         'Cachê',
-        'Informe o valor do cachê. Ao aceitar a negociação, esse valor entra como despesa na agenda.'
+        'Informe até quanto você cobra. Esse valor pode ser negociado entre as partes pelo bate-papo.'
       );
       return;
     }
@@ -483,11 +499,11 @@ export default function PublicarFeedScreen() {
       return;
     }
     if (!cidade.trim()) {
-      Alert.alert('Cidade', 'Informe a cidade.');
+      Alert.alert('Cidade e região', 'Informe a cidade. O anúncio vale para a cidade e a região.');
       return;
     }
     if (!estadoUf.trim()) {
-      Alert.alert('Estado', 'Selecione o estado.');
+      Alert.alert('Cidade e região', 'Selecione o estado da região.');
       return;
     }
     if (!isCompleteBrazilMobile(whatsappDraft)) {
@@ -562,7 +578,7 @@ export default function PublicarFeedScreen() {
           <TextInput
             value={nomeEvento}
             onChangeText={setNomeEvento}
-            placeholder="Ex.: Show no Bar do Zé"
+            placeholder="Ex.: Disponível para shows"
             placeholderTextColor={colors.textSecondary}
             maxLength={80}
             style={[
@@ -571,7 +587,7 @@ export default function PublicarFeedScreen() {
             ]}
           />
 
-          <Text style={[styles.label, { color: colors.text }]}>Cachê *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Cachê até *</Text>
           <TextInput
             value={cacheDraft}
             onChangeText={(t) => {
@@ -582,7 +598,7 @@ export default function PublicarFeedScreen() {
               }
             }}
             keyboardType="number-pad"
-            placeholder="R$ 0,00"
+            placeholder="Até R$ 0,00"
             placeholderTextColor={colors.textSecondary}
             style={[
               styles.input,
@@ -590,14 +606,14 @@ export default function PublicarFeedScreen() {
             ]}
           />
           <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
-            Obrigatório. Ao fechar a negociação, esse valor entra como despesa na agenda.
+            Teto do que você cobra. Pode ser negociado entre as partes pelo bate-papo. No aceite, o valor combinado entra como despesa.
           </Text>
           <View style={[styles.switchRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
             <View style={styles.switchCopy}>
-              <Text style={[styles.switchTitle, { color: colors.text }]}>Mostrar cachê no feed</Text>
+              <Text style={[styles.switchTitle, { color: colors.text }]}>Mostrar teto no feed</Text>
               <Text style={[styles.rolesHint, { color: colors.textSecondary, marginTop: 2 }]}>
                 {mostrarCache
-                  ? 'Todos verão o valor no card.'
+                  ? 'Todos verão “até R$ …” no card.'
                   : 'O valor só aparece quando alguém demonstrar interesse.'}
               </Text>
             </View>
@@ -613,9 +629,37 @@ export default function PublicarFeedScreen() {
             <View style={[styles.lockHint, { backgroundColor: `${colors.primary}12` }]}>
               <Ionicons name="lock-closed" size={16} color={colors.primary} />
               <Text style={[styles.lockHintText, { color: colors.textSecondary }]}>
-                Com a opção desligada, o cachê fica oculto no feed e só é revelado na negociação.
+                Com a opção desligada, o teto fica oculto no feed e só é revelado na negociação.
               </Text>
             </View>
+          ) : null}
+
+          <Text style={[styles.label, { color: colors.text }]}>Cidade e região *</Text>
+          <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
+            Nunca é só o município: quem busca vê cidade e região. Começa com o local do seu perfil.
+          </Text>
+          <BrazilPlaceSearchField
+            value={cidade}
+            onChangeText={setCidade}
+            onSelectPlace={(place) => {
+              setCidade(place.city);
+              if (place.uf) setEstadoUf(place.uf);
+            }}
+            placeholder="Cidade"
+            citiesOnly
+          />
+
+          <Text style={[styles.label, { color: colors.text }]}>Estado da região *</Text>
+          <BrazilStateFieldButton
+            selectedUf={estadoUf}
+            onPress={() => setShowEstados(true)}
+            colors={colors}
+          />
+          {cidade.trim() || estadoUf.trim() ? (
+            <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
+              No feed aparece:{' '}
+              {formatCityAndRegion({ city: cidade, state_uf: estadoUf }) || 'cidade e região'}
+            </Text>
           ) : null}
 
           <TouchableOpacity
@@ -848,30 +892,11 @@ export default function PublicarFeedScreen() {
             Quem ver seu anúncio poderá entrar em contato por este número. Se o artista já tem WhatsApp salvo, ele aparece aqui.
           </Text>
 
-          <Text style={[styles.label, { color: colors.text }]}>Cidade *</Text>
-          <BrazilPlaceSearchField
-            value={cidade}
-            onChangeText={setCidade}
-            onSelectPlace={(place) => {
-              setCidade(place.city);
-              if (place.uf) setEstadoUf(place.uf);
-            }}
-            placeholder="Digite a cidade"
-            citiesOnly
-          />
-
-          <Text style={[styles.label, { color: colors.text }]}>Estado *</Text>
-          <BrazilStateFieldButton
-            selectedUf={estadoUf}
-            onPress={() => setShowEstados(true)}
-            colors={colors}
-          />
-
           <Text style={[styles.label, { color: colors.text }]}>Observações (opcional)</Text>
           <TextInput
             value={observacao}
             onChangeText={setObservacao}
-            placeholder="Formato do show, região da cidade, etc."
+            placeholder="Bairro, deslocamento, formato do show…"
             placeholderTextColor={colors.textSecondary}
             multiline
             style={[

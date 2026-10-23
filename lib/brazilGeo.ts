@@ -120,3 +120,23 @@ export function formatEventLocationSlash(ev: {
   if (uf) return uf;
   return '';
 }
+
+/** Oportunidade no feed: nunca só a cidade — cobre a região. */
+export function formatCityAndRegion(ev: {
+  city?: string | null;
+  state_uf?: string | null;
+}): string {
+  const slash = formatEventLocationSlash(ev);
+  if (!slash) return '';
+  const uf =
+    ev.state_uf != null && String(ev.state_uf).trim()
+      ? String(ev.state_uf).trim().toUpperCase().slice(0, 2)
+      : '';
+  if (uf && slash.includes('/')) {
+    const cityOnly = slash.slice(0, slash.lastIndexOf('/')).trim();
+    if (cityOnly) return `${cityOnly} e região (${uf})`;
+  }
+  if (uf && slash === uf) return `Região ${uf}`;
+  if (slash.toLowerCase().includes('região')) return slash;
+  return `${slash} e região`;
+}

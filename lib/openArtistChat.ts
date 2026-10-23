@@ -89,10 +89,6 @@ export function openArtistChatInApp(opts: {
   otherArtistImage?: string | null;
   showContext?: ShowChatContext | string | null;
 }) {
-  if (!opts.isAdmin) {
-    Alert.alert('Conversa', 'Somente o administrador pode conversar com outros artistas.');
-    return;
-  }
   if (!opts.myArtistId) {
     Alert.alert('Conversa', 'Selecione um artista para iniciar o bate-papo.');
     return;

@@ -20,12 +20,14 @@ export default function BrazilStatePickerModal({
   onClose,
   selectedUf,
   onSelect,
+  todosLabel,
 }: {
   visible: boolean;
   onClose: () => void;
   selectedUf: string;
   /** `null` = limpar seleção */
   onSelect: (uf: string | null) => void;
+  todosLabel?: string;
 }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
@@ -90,7 +92,7 @@ export default function BrazilStatePickerModal({
             autoCorrect={false}
             autoCapitalize="none"
           />
-          {selectedUf ? (
+          {todosLabel || selectedUf ? (
             <TouchableOpacity
               style={[styles.clearBtn, { borderColor: colors.border }]}
               onPress={() => {
@@ -99,7 +101,9 @@ export default function BrazilStatePickerModal({
                 onClose();
               }}
             >
-              <Text style={{ color: colors.error, fontWeight: '600' }}>Limpar estado</Text>
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>
+                {todosLabel || 'Limpar estado'}
+              </Text>
             </TouchableOpacity>
           ) : null}
           <FlatList

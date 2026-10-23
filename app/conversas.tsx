@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import OptimizedImage from '../components/OptimizedImage';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
-import { usePermissions } from '../contexts/PermissionsContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { parseQuotedChatMessage } from '../lib/openArtistChat';
 import {
@@ -39,7 +38,6 @@ function formatWhen(iso: string | null): string {
 
 export default function ConversasScreen() {
   const { colors } = useTheme();
-  const { isAdmin } = usePermissions();
   const { activeArtist } = useActiveArtistContext();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,13 +91,7 @@ export default function ConversasScreen() {
         <View style={styles.iconBtn} />
       </View>
 
-      {!isAdmin ? (
-        <View style={styles.center}>
-          <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
-            Somente o administrador pode conversar com outros artistas.
-          </Text>
-        </View>
-      ) : !activeArtist?.id ? (
+      {!activeArtist?.id ? (
         <View style={styles.center}>
           <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
             Selecione um artista para ver as conversas.
