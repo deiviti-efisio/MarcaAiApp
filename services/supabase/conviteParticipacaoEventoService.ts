@@ -64,6 +64,7 @@ export interface ArtistaBuscaConvite {
   show_whatsapp?: boolean;
   same_city?: boolean;
   same_state?: boolean;
+  tem_show_hoje?: boolean;
 }
 
 export interface ResumoAvaliacaoArtistaConvite {
@@ -139,6 +140,11 @@ function mapArtistaBuscaRow(row: Record<string, unknown>): ArtistaBuscaConvite {
     work_roles: row.work_roles,
     city: row.city != null ? String(row.city) : null,
     state: row.state != null ? String(row.state) : null,
+    tem_show_hoje:
+      row.tem_show_hoje === true ||
+      row.tem_show_hoje === 't' ||
+      row.tem_show_hoje === 'true' ||
+      row.tem_show_hoje === 1,
   };
 }
 

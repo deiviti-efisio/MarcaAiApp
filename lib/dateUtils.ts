@@ -1,3 +1,25 @@
+/** Extrai YYYY-MM-DD sem converter fuso (DATE do Postgres / ISO). */
+export function toCalendarYmd(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const raw = String(value ?? '').trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  return raw.split('T')[0] || '';
+}
+
+export function todayCalendarYmd(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 /**
  * Data de calendário no padrão DD/MM/AAAA (ex.: 01/03/2026).
  * Aceita "YYYY-MM-DD" ou ISO com hora; usa só a parte da data, sem conversão de fuso.

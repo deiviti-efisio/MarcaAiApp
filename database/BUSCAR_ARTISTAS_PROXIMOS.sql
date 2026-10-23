@@ -26,6 +26,12 @@ CREATE INDEX IF NOT EXISTS idx_artists_feed_id_available
   ON public.artists (id)
   WHERE is_available_for_gigs IS TRUE;
 
+CREATE INDEX IF NOT EXISTS idx_events_artist_show_hoje
+  ON public.events (artist_id, event_date)
+  WHERE COALESCE(confirmed, false)
+    AND COALESCE(ativo, true)
+    AND feed_tipo IS NULL;
+
 DROP FUNCTION IF EXISTS public.listar_artistas_feed(uuid, text, text, text, text, integer, integer);
 DROP FUNCTION IF EXISTS public.buscar_artistas_proximos(uuid, text, text, text, text);
 DROP FUNCTION IF EXISTS public.buscar_artistas_proximos(uuid, text, text, text, text, integer, integer);
@@ -63,7 +69,8 @@ RETURNS TABLE (
   musical_style text,
   work_roles jsonb,
   city text,
-  state text
+  state text,
+  tem_show_hoje boolean
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -78,7 +85,16 @@ AS $$
     a.musical_style,
     a.work_roles,
     a.city,
-    a.state
+    a.state,
+    EXISTS (
+      SELECT 1
+      FROM public.events e
+      WHERE e.artist_id = a.id
+        AND COALESCE(e.confirmed, false) = true
+        AND COALESCE(e.ativo, true) = true
+        AND e.feed_tipo IS NULL
+        AND e.event_date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    )
   FROM public.artists a
   WHERE a.is_available_for_gigs IS TRUE
     AND (p_artista_atual_id IS NULL OR a.id <> p_artista_atual_id)
@@ -155,7 +171,8 @@ RETURNS TABLE (
   musical_style text,
   work_roles jsonb,
   city text,
-  state text
+  state text,
+  tem_show_hoje boolean
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -170,7 +187,16 @@ AS $$
     a.musical_style,
     a.work_roles,
     a.city,
-    a.state
+    a.state,
+    EXISTS (
+      SELECT 1
+      FROM public.events e
+      WHERE e.artist_id = a.id
+        AND COALESCE(e.confirmed, false) = true
+        AND COALESCE(e.ativo, true) = true
+        AND e.feed_tipo IS NULL
+        AND e.event_date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    )
   FROM public.artists a
   WHERE (
       NULLIF(trim(p_estado), '') IS NULL

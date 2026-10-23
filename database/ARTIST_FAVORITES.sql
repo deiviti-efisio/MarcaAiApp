@@ -44,7 +44,8 @@ RETURNS TABLE (
   musical_style text,
   work_roles jsonb,
   city text,
-  state text
+  state text,
+  tem_show_hoje boolean
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -58,7 +59,16 @@ AS $$
     a.musical_style,
     a.work_roles,
     a.city,
-    a.state
+    a.state,
+    EXISTS (
+      SELECT 1
+      FROM public.events e
+      WHERE e.artist_id = a.id
+        AND COALESCE(e.confirmed, false) = true
+        AND COALESCE(e.ativo, true) = true
+        AND e.feed_tipo IS NULL
+        AND e.event_date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    )
   FROM public.artist_favorites f
   JOIN public.artists a ON a.id = f.artist_id
   WHERE f.user_id = auth.uid()

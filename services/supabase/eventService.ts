@@ -1,4 +1,5 @@
 import { isAbortError } from "../../lib/abortError";
+import { toCalendarYmd } from "../../lib/dateUtils";
 import { supabase } from "../../lib/supabase";
 import { cacheService } from "../cacheService";
 import { getUserPermissions, hasPermission } from "./permissionsService";
@@ -1167,7 +1168,7 @@ export const listarAgendaPublicaArtista = async (
     }
     const events = ((data ?? []) as PublicAgendaEvent[]).map((item) => ({
       ...item,
-      event_date: String(item.event_date || "").split("T")[0],
+      event_date: toCalendarYmd(item.event_date),
       start_time: String(item.start_time || "").slice(0, 5),
       end_time: String(item.end_time || "").slice(0, 5),
     }));

@@ -25,6 +25,7 @@ import {
   alternarArtistaFavorito,
   listarIdsArtistasFavoritos,
 } from '../services/supabase/artistFavoritesService';
+import { todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
 import { listarAgendaPublicaArtista, type PublicAgendaEvent } from '../services/supabase/eventService';
 
 function styleChips(artist: Artist | null): string[] {
@@ -116,6 +117,7 @@ export default function PerfilArtistaScreen() {
     : '';
   const chips = styleChips(artist);
   const initial = (artist?.name || '?').trim().charAt(0).toUpperCase();
+  const temShowHoje = publicEvents.some((item) => toCalendarYmd(item.event_date) === todayCalendarYmd());
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={['top']}>
@@ -190,6 +192,12 @@ export default function PerfilArtistaScreen() {
 
           <View style={styles.identity}>
             <Text style={[styles.name, { color: colors.text }]}>{artist.name}</Text>
+            {temShowHoje ? (
+              <View style={[styles.showHojeBadge, { backgroundColor: `${colors.primary}18` }]}>
+                <Ionicons name="musical-notes" size={14} color={colors.primary} />
+                <Text style={[styles.showHojeText, { color: colors.primary }]}>Show hoje</Text>
+              </View>
+            ) : null}
             {chips.length ? (
               <Text style={[styles.roles, { color: colors.textSecondary }]} numberOfLines={2}>
                 {chips.slice(0, 3).join(' · ')}
@@ -357,6 +365,17 @@ const styles = StyleSheet.create({
   avatarLetter: { fontSize: 32, fontWeight: '700' },
   identity: { paddingHorizontal: 20, paddingTop: 8 },
   name: { fontSize: 26, fontWeight: '800' },
+  showHojeBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  showHojeText: { fontSize: 13, fontWeight: '800' },
   roles: { marginTop: 4, fontSize: 14 },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   locText: { fontSize: 13 },

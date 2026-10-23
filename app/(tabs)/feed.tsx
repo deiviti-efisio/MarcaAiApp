@@ -955,6 +955,9 @@ export default function FeedScreen() {
           <Text style={[styles.artistNameRow, { color: colors.text }]} numberOfLines={1}>
             {item.name}
           </Text>
+          {item.tem_show_hoje ? (
+            <Text style={[styles.artistShowHoje, { color: colors.primary }]}>tem show hoje</Text>
+          ) : null}
           {genre ? (
             <Text style={[styles.artistStyle, { color: colors.textSecondary }]} numberOfLines={1}>
               {genre}
@@ -1876,6 +1879,7 @@ const styles = StyleSheet.create({
   artistAvatarInitial: { fontSize: 18, fontWeight: '600' },
   artistCopy: { flex: 1, minWidth: 0 },
   artistNameRow: { fontSize: 15, fontWeight: '700' },
+  artistShowHoje: { marginTop: 2, fontSize: 12, fontWeight: '800' },
   artistStyle: { fontSize: 13, marginTop: 2, fontWeight: '400' },
   artistPlace: { fontSize: 12, marginTop: 2 },
   artistRoles: {

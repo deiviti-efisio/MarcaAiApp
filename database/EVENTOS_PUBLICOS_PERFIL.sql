@@ -46,9 +46,20 @@ AS $$
   FROM public.events e
   WHERE e.artist_id = p_artist_id
     AND COALESCE(e.confirmed, false) = true
-    AND COALESCE(e.is_public, false) = true
     AND COALESCE(e.ativo, true) = true
     AND e.feed_tipo IS NULL
+    AND e.event_date >= date_trunc(
+      'month',
+      (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    )::date
+    AND e.event_date < (
+      date_trunc('month', (NOW() AT TIME ZONE 'America/Sao_Paulo')::date)
+      + interval '1 month'
+    )::date
+    AND (
+      COALESCE(e.is_public, false) = true
+      OR e.event_date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+    )
   ORDER BY e.event_date ASC, e.start_time ASC NULLS LAST;
 $$;
 

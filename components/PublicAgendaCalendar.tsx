@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatEventLocationSlash } from '../lib/brazilGeo';
-import { weekdayFromCalendarDate } from '../lib/dateUtils';
+import { toCalendarYmd, todayCalendarYmd, weekdayFromCalendarDate } from '../lib/dateUtils';
 import type { PublicAgendaEvent } from '../services/supabase/eventService';
 
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -32,7 +32,7 @@ function ymd(year: number, month: number, day: number): string {
 }
 
 function parseYmd(value: string): { y: number; m: number; d: number } | null {
-  const part = String(value || '').trim().split('T')[0];
+  const part = toCalendarYmd(value);
   const bits = part.split('-');
   if (bits.length < 3) return null;
   const y = Number(bits[0]);
@@ -40,11 +40,6 @@ function parseYmd(value: string): { y: number; m: number; d: number } | null {
   const d = Number(bits[2]);
   if (!y || !m || !d) return null;
   return { y, m: m - 1, d };
-}
-
-function todayYmd(): string {
-  const now = new Date();
-  return ymd(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 function formatClock(value?: string | null): string {
@@ -84,31 +79,17 @@ export default function PublicAgendaCalendar({
     background: string;
   };
 }) {
-  const firstPublic = events[0]?.event_date;
-  const initial = parseYmd(firstPublic || '') || {
-    y: new Date().getFullYear(),
-    m: new Date().getMonth(),
-    d: new Date().getDate(),
-  };
-  const [viewYear, setViewYear] = useState(initial.y);
-  const [viewMonth, setViewMonth] = useState(initial.m);
-  const [selected, setSelected] = useState(firstPublic || ymd(initial.y, initial.m, initial.d));
-  const today = todayYmd();
-
-  useEffect(() => {
-    if (!events.length) return;
-    const next = events[0].event_date;
-    const parsed = parseYmd(next);
-    if (!parsed) return;
-    setViewYear(parsed.y);
-    setViewMonth(parsed.m);
-    setSelected(next);
-  }, [events]);
+  const now = new Date();
+  const viewYear = now.getFullYear();
+  const viewMonth = now.getMonth();
+  const today = todayCalendarYmd();
+  const [selected, setSelected] = useState(today);
 
   const byDate = useMemo(() => {
     const map = new Map<string, PublicAgendaEvent[]>();
     events.forEach((item) => {
-      const key = String(item.event_date).split('T')[0];
+      const key = toCalendarYmd(item.event_date);
+      if (!key) return;
       const list = map.get(key) ?? [];
       list.push(item);
       map.set(key, list);
@@ -137,17 +118,58 @@ export default function PublicAgendaCalendar({
   const selectedEvents = byDate.get(selected) ?? [];
   const monthPrefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
   const monthEvents = useMemo(
-    () => events.filter((item) => String(item.event_date).startsWith(monthPrefix)),
+    () => events.filter((item) => toCalendarYmd(item.event_date).startsWith(monthPrefix)),
     [events, monthPrefix]
   );
 
-  const shiftMonth = (delta: number) => {
-    const next = new Date(viewYear, viewMonth + delta, 1);
-    setViewYear(next.getFullYear());
-    setViewMonth(next.getMonth());
-  };
+  const todayEvents = byDate.get(today) ?? [];
+  const otherSelected =
+    selected === today
+      ? []
+      : selectedEvents.filter((item) => toCalendarYmd(item.event_date) !== today);
 
-  const listEvents = selectedEvents.length > 0 ? selectedEvents : [];
+  const renderEventCard = (item: PublicAgendaEvent) => {
+    const dateKey = toCalendarYmd(item.event_date);
+    const time = formatTimeRange(item.start_time, item.end_time);
+    const place = formatEventLocationSlash(item);
+    const tag = TAG_LABEL[String(item.tag || '').toLowerCase()] || '';
+    const isTodayShow = dateKey === today;
+    return (
+      <View
+        key={item.id}
+        style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      >
+        <View style={[styles.dateBadge, { backgroundColor: colors.primary }]}>
+          <Text style={styles.dateBadgeDay}>{dayNumber(dateKey)}</Text>
+          <Text style={styles.dateBadgeWeek}>{isTodayShow ? 'hoje' : weekdayShort(dateKey)}</Text>
+        </View>
+        <View style={styles.cardBody}>
+          {isTodayShow ? (
+            <Text style={[styles.tag, { color: colors.primary }]}>Show hoje</Text>
+          ) : tag ? (
+            <Text style={[styles.tag, { color: colors.primary }]}>{tag}</Text>
+          ) : null}
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+            {item.name}
+          </Text>
+          {time ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.metaText, { color: colors.textSecondary }]}>{time}</Text>
+            </View>
+          ) : null}
+          {place ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.metaText, { color: colors.textSecondary }]} numberOfLines={1}>
+                {place}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <View>
@@ -155,17 +177,15 @@ export default function PublicAgendaCalendar({
         Datas que o artista deixou públicas.
       </Text>
 
+      {todayEvents.length > 0 ? (
+        <View style={[styles.listWrap, { marginBottom: 16 }]}>{todayEvents.map(renderEventCard)}</View>
+      ) : null}
+
       <View style={[styles.calCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.calHead}>
-          <TouchableOpacity onPress={() => shiftMonth(-1)} style={styles.navBtn} hitSlop={10}>
-            <Ionicons name="chevron-back" size={20} color={colors.text} />
-          </TouchableOpacity>
           <Text style={[styles.monthTitle, { color: colors.text }]}>
             {MONTHS[viewMonth]} {viewYear}
           </Text>
-          <TouchableOpacity onPress={() => shiftMonth(1)} style={styles.navBtn} hitSlop={10}>
-            <Ionicons name="chevron-forward" size={20} color={colors.text} />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.weekRow}>
@@ -220,47 +240,10 @@ export default function PublicAgendaCalendar({
       </View>
 
       <View style={styles.listWrap}>
-        {listEvents.length > 0 ? (
-          listEvents.map((item) => {
-            const dateKey = String(item.event_date).split('T')[0];
-            const time = formatTimeRange(item.start_time, item.end_time);
-            const place = formatEventLocationSlash(item);
-            const tag = TAG_LABEL[String(item.tag || '').toLowerCase()] || '';
-            return (
-              <View
-                key={item.id}
-                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <View style={[styles.dateBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.dateBadgeDay}>{dayNumber(dateKey)}</Text>
-                  <Text style={styles.dateBadgeWeek}>{weekdayShort(dateKey)}</Text>
-                </View>
-                <View style={styles.cardBody}>
-                  {tag ? (
-                    <Text style={[styles.tag, { color: colors.primary }]}>{tag}</Text>
-                  ) : null}
-                  <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-                  {time ? (
-                    <View style={styles.metaRow}>
-                      <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-                      <Text style={[styles.metaText, { color: colors.textSecondary }]}>{time}</Text>
-                    </View>
-                  ) : null}
-                  {place ? (
-                    <View style={styles.metaRow}>
-                      <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
-                      <Text style={[styles.metaText, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {place}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            );
-          })
-        ) : (
+        {otherSelected.length > 0
+          ? otherSelected.map(renderEventCard)
+          : todayEvents.length === 0
+            ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
               {events.length === 0
@@ -270,7 +253,16 @@ export default function PublicAgendaCalendar({
                   : 'Toque numa data marcada para ver o compromisso.'}
             </Text>
           </View>
-        )}
+              )
+            : selected !== today
+              ? (
+          <View style={[styles.emptyBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+              Toque numa data marcada para ver o compromisso.
+            </Text>
+          </View>
+              )
+            : null}
       </View>
     </View>
   );
@@ -293,16 +285,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   calHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
+    paddingVertical: 6,
   },
   monthTitle: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
   weekRow: { flexDirection: 'row', marginBottom: 6, paddingHorizontal: 2 },
