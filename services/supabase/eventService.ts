@@ -1,5 +1,5 @@
 import { isAbortError } from "../../lib/abortError";
-import { toCalendarYmd } from "../../lib/dateUtils";
+import { isEventDateAlreadyPast, toCalendarYmd } from "../../lib/dateUtils";
 import { supabase } from "../../lib/supabase";
 import { cacheService } from "../cacheService";
 import { getUserPermissions, hasPermission } from "./permissionsService";
@@ -1303,13 +1303,20 @@ export const listarShowsDestaqueArtista = async (
       console.warn("Shows em destaque indisponíveis:", error.message);
       return { shows: [], error: error.message };
     }
-    const shows = ((data ?? []) as FeaturedShow[]).map((item) => ({
-      ...item,
-      event_date: String(item.event_date || "").slice(0, 10),
-      start_time: String(item.start_time || "").slice(0, 5),
-      end_time: String(item.end_time || "").slice(0, 5),
-      highlight_image_url: item.highlight_image_url?.trim() || null,
-    }));
+    const shows = ((data ?? []) as FeaturedShow[])
+      .map((item) => ({
+        ...item,
+        event_date: String(item.event_date || "").slice(0, 10),
+        start_time: String(item.start_time || "").slice(0, 5),
+        end_time: String(item.end_time || "").slice(0, 5),
+        highlight_image_url: item.highlight_image_url?.trim() || null,
+      }))
+      .filter((item) => !isEventDateAlreadyPast(item.event_date))
+      .sort((a, b) => {
+        const dateCmp = a.event_date.localeCompare(b.event_date);
+        if (dateCmp !== 0) return dateCmp;
+        return String(a.start_time || "").localeCompare(String(b.start_time || ""));
+      });
     return { shows, error: null };
   } catch (error: any) {
     return { shows: [], error: error?.message || "Erro ao carregar shows em destaque" };

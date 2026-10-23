@@ -1,4 +1,4 @@
--- Show especial / destaque no perfil do artista (cartaz com imagem, estilo YouTube).
+-- Show especial / destaque no perfil do artista (cartaz com imagem, estilo calendário).
 -- Execute no SQL Editor do Supabase.
 
 ALTER TABLE public.events
@@ -12,8 +12,14 @@ COMMENT ON COLUMN public.events.is_featured IS
 COMMENT ON COLUMN public.events.highlight_image_url IS
   'Imagem/cartaz do show em destaque no perfil.';
 
+-- Show que já passou sai do destaque.
+UPDATE public.events
+SET is_featured = false
+WHERE COALESCE(is_featured, false) = true
+  AND event_date < (NOW() AT TIME ZONE 'America/Sao_Paulo')::date;
+
 CREATE INDEX IF NOT EXISTS idx_events_featured_artist
-  ON public.events (artist_id, event_date DESC)
+  ON public.events (artist_id, event_date ASC)
   WHERE COALESCE(is_featured, false)
     AND COALESCE(confirmed, false)
     AND COALESCE(ativo, true)
@@ -54,7 +60,8 @@ AS $$
     AND COALESCE(e.confirmed, false) = true
     AND COALESCE(e.ativo, true) = true
     AND e.feed_tipo IS NULL
-  ORDER BY e.event_date DESC, e.start_time DESC NULLS LAST
+    AND e.event_date >= (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+  ORDER BY e.event_date ASC, e.start_time ASC NULLS LAST
   LIMIT 12;
 $$;
 

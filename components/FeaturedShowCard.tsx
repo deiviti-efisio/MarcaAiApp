@@ -5,6 +5,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { formatCalendarDate } from '../lib/dateUtils';
 import type { FeaturedShow } from '../services/supabase/eventService';
 
+function showSubtitle(show: FeaturedShow): string {
+  const place = [show.city, show.state_uf].filter(Boolean).join(' · ');
+  const dateLabel = formatCalendarDate(show.event_date);
+  const time = String(show.start_time || '').slice(0, 5);
+  const timeLabel = time && time !== '00:00' ? time : '';
+  return [dateLabel, timeLabel, place].filter(Boolean).join(' · ');
+}
+
 export default function FeaturedShowCard({
   show,
   colors,
@@ -12,11 +20,6 @@ export default function FeaturedShowCard({
   show: FeaturedShow;
   colors: { text: string; textSecondary: string; primary: string; surface: string; border: string };
 }) {
-  const place = [show.city, show.state_uf].filter(Boolean).join(' · ');
-  const dateLabel = formatCalendarDate(show.event_date);
-  const time = String(show.start_time || '').slice(0, 5);
-  const timeLabel = time && time !== '00:00' ? time : '';
-
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.media}>
@@ -37,9 +40,37 @@ export default function FeaturedShowCard({
           {show.name}
         </Text>
         <Text style={[styles.sub, { color: colors.textSecondary }]} numberOfLines={1}>
-          {[dateLabel, timeLabel, place].filter(Boolean).join(' · ')}
+          {showSubtitle(show)}
         </Text>
       </View>
+    </View>
+  );
+}
+
+export function FeaturedShowMini({
+  show,
+  colors,
+}: {
+  show: FeaturedShow;
+  colors: { text: string; textSecondary: string; primary: string; surface: string; border: string };
+}) {
+  return (
+    <View style={[styles.mini, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.miniMedia}>
+        {show.highlight_image_url ? (
+          <Image source={{ uri: show.highlight_image_url }} style={styles.mediaFill} contentFit="cover" />
+        ) : (
+          <View style={[styles.mediaFill, { backgroundColor: `${colors.primary}22` }]}>
+            <Ionicons name="mic" size={18} color={colors.primary} />
+          </View>
+        )}
+      </View>
+      <Text style={[styles.miniName, { color: colors.text }]} numberOfLines={2}>
+        {show.name}
+      </Text>
+      <Text style={[styles.miniSub, { color: colors.textSecondary }]} numberOfLines={1}>
+        {formatCalendarDate(show.event_date)}
+      </Text>
     </View>
   );
 }
@@ -79,4 +110,30 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 16, fontWeight: '800' },
   sub: { fontSize: 13, marginTop: 4 },
+  mini: {
+    width: 128,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  miniMedia: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#111',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniName: {
+    fontSize: 12,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  miniSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+    marginTop: 2,
+  },
 });

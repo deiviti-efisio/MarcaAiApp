@@ -18,7 +18,7 @@ import OptimizedImage from '../components/OptimizedImage';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
-import FeaturedShowCard from '../components/FeaturedShowCard';
+import FeaturedShowCard, { FeaturedShowMini } from '../components/FeaturedShowCard';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
@@ -26,7 +26,7 @@ import {
   alternarArtistaFavorito,
   listarIdsArtistasFavoritos,
 } from '../services/supabase/artistFavoritesService';
-import { todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
+import { isEventDateAlreadyPast, todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
 import {
   listarAgendaPublicaArtista,
   listarShowsDestaqueArtista,
@@ -62,6 +62,7 @@ export default function PerfilArtistaScreen() {
   const [artist, setArtist] = useState<Artist | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicAgendaEvent[]>([]);
   const [featuredShows, setFeaturedShows] = useState<FeaturedShow[]>([]);
+  const [showMoreFeatured, setShowMoreFeatured] = useState(false);
   const [favorito, setFavorito] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
@@ -83,7 +84,8 @@ export default function PerfilArtistaScreen() {
     ]);
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
-    setFeaturedShows(featuredRes.shows);
+    setFeaturedShows(featuredRes.shows.filter((item) => !isEventDateAlreadyPast(item.event_date)));
+    setShowMoreFeatured(false);
     setFavorito(favoriteIds.has(artistId));
   }, [artistId]);
 
@@ -124,6 +126,8 @@ export default function PerfilArtistaScreen() {
     (item) => item.kind !== 'youtube' && item.kind !== 'instagram' && item.kind !== 'spotify'
   );
   const videoSubtitle = (artist?.bio || '').trim();
+  const featuredHero = featuredShows[0] ?? null;
+  const featuredOthers = featuredShows.slice(1);
 
   const locationLine = artist
     ? [artist.city, artist.state].filter(Boolean).join(' · ')
@@ -325,17 +329,38 @@ export default function PerfilArtistaScreen() {
             </View>
           </View>
 
-          {featuredShows.length ? (
+          {featuredHero ? (
             <View style={[styles.section, styles.sectionPad]}>
               <View style={styles.sectionHead}>
                 <Ionicons name="star" size={18} color={colors.primary} />
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Shows em destaque</Text>
               </View>
-              <View style={styles.videoStack}>
-                {featuredShows.map((show) => (
-                  <FeaturedShowCard key={show.id} show={show} colors={colors} />
-                ))}
-              </View>
+              <FeaturedShowCard show={featuredHero} colors={colors} />
+              {featuredOthers.length ? (
+                <View style={styles.moreFeaturedRow}>
+                  {showMoreFeatured ? (
+                    featuredOthers.map((show) => (
+                      <FeaturedShowMini key={show.id} show={show} colors={colors} />
+                    ))
+                  ) : null}
+                  <TouchableOpacity
+                    style={[
+                      styles.morePlus,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                    ]}
+                    onPress={() => setShowMoreFeatured((open) => !open)}
+                    accessibilityLabel={
+                      showMoreFeatured
+                        ? 'Ocultar outros shows em destaque'
+                        : `Ver mais ${featuredOthers.length} shows em destaque`
+                    }
+                  >
+                    <Text style={[styles.morePlusText, { color: colors.primary }]}>
+                      {showMoreFeatured ? '–' : `+${featuredOthers.length}`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -500,6 +525,22 @@ const styles = StyleSheet.create({
   section: { marginTop: 24, paddingLeft: 20 },
   sectionPad: { paddingRight: 20 },
   videoStack: { gap: 12 },
+  moreFeaturedRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+  },
+  morePlus: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  morePlusText: { fontSize: 18, fontWeight: '800' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, paddingRight: 20 },
   sectionTitle: { fontSize: 17, fontWeight: '700' },
   previewRow: { paddingRight: 20 },
