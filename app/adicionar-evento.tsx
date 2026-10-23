@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -36,6 +38,7 @@ import { getArtists } from '../services/supabase/artistService';
 import { getCurrentUser } from '../services/supabase/authService';
 import { uploadEventContractFile } from '../services/supabase/eventContractUploadService';
 import { createEvent, CreateExpenseData, getRecentEventNameSuggestions, type RecentEventSuggestion } from '../services/supabase/eventService';
+import { uploadImageToSupabase } from '../services/supabase/imageUploadService';
 import { useActiveArtist } from '../services/useActiveArtist';
 import type { SpokenEventDraft, SpokenFieldKey } from '../utils/parseSpokenEvent';
 import {
@@ -63,6 +66,7 @@ interface EventoForm {
   horarioFim: Date;
   status: 'confirmado' | 'a_confirmar';
   isPublic: boolean;
+  isFeatured: boolean;
   descricao: string;
   descricaoViewer: string;
   tag: 'ensaio' | 'evento' | 'reunião';
@@ -373,6 +377,7 @@ export default function AdicionarEventoScreen() {
     horarioFim: voiceEnd ? timeFromHHmm(voiceEnd, 0, 0) : createDefaultTime(0, 0),
     status: voiceConfirmed === '0' ? 'a_confirmar' : 'confirmado',
     isPublic: false,
+    isFeatured: false,
     descricao: voiceDesc,
     descricaoViewer: '',
     tag: voiceTag === 'ensaio' || voiceTag === 'reunião' || voiceTag === 'evento' ? voiceTag : 'evento',
@@ -403,6 +408,7 @@ export default function AdicionarEventoScreen() {
   const [contractUri, setContractUri] = useState<string | null>(null);
   const [contractName, setContractName] = useState<string | null>(null);
   const [contractMime, setContractMime] = useState<string | null>(null);
+  const [highlightImageUri, setHighlightImageUri] = useState<string | null>(null);
   const { activeArtist: contextArtist } = useActiveArtistContext();
   const { activeArtist: storedArtist } = useActiveArtist();
   const artistId = contextArtist?.id || storedArtist?.id;
@@ -588,7 +594,7 @@ export default function AdicionarEventoScreen() {
           value: parseFloat(despesa.valor) / 100, // Converter centavos para reais
         }));
 
-      const eventData = {
+      const eventData: Parameters<typeof createEvent>[0] = {
         artist_id: saveArtistId,
         user_id: user.id,
         name: form.nome.trim(),
@@ -605,12 +611,27 @@ export default function AdicionarEventoScreen() {
           : null,
         contractor_phone: form.telefoneContratante.trim() || undefined,
         confirmed: form.status === 'confirmado',
-        is_public: form.status === 'confirmado' && form.isPublic,
+        is_public: form.status === 'confirmado' && (form.isPublic || form.isFeatured),
+        is_featured: form.status === 'confirmado' && form.isFeatured,
+        highlight_image_url: null as string | null,
         tag: form.tag,
         contract_url: contractUrl ?? null,
         contract_file_name: contractFileName ?? null,
         expenses: expensesData
       };
+
+      if (form.status === 'confirmado' && form.isFeatured && highlightImageUri) {
+        const uploaded = await uploadImageToSupabase(
+          highlightImageUri,
+          'image_artists',
+          `highlight_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+        );
+        if (!uploaded.success || !uploaded.url) {
+          Alert.alert('Erro', uploaded.error || 'Não foi possível enviar a imagem do destaque.');
+          return;
+        }
+        eventData.highlight_image_url = uploaded.url;
+      }
 
       const result = await createEvent(eventData);
 
@@ -1094,7 +1115,7 @@ export default function AdicionarEventoScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
                 form.status === 'a_confirmar' && [styles.statusButtonActive, { backgroundColor: colors.warning, borderColor: colors.warning }]
               ]}
-              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false }))}
+              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false, isFeatured: false }))}
             >
               <Ionicons 
                 name="time" 
@@ -1152,12 +1173,94 @@ export default function AdicionarEventoScreen() {
               </View>
               <Switch
                 value={form.isPublic}
-                onValueChange={(value) => updateForm('isPublic', value)}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    isPublic: value,
+                    isFeatured: value ? prev.isFeatured : false,
+                  }))
+                }
                 trackColor={{ false: colors.border, true: colors.primary + '80' }}
                 thumbColor={Platform.OS === 'android' ? (form.isPublic ? colors.primary : '#f4f3f4') : undefined}
                 ios_backgroundColor={colors.border}
               />
             </View>
+          </View>
+        ) : null}
+
+        {form.status === 'confirmado' ? (
+          <View style={styles.inputGroup}>
+            <View
+              style={[
+                styles.publicSwitchRow,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={[styles.label, { color: colors.text, marginBottom: 4 }]}>
+                  Destacar show no perfil
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                  Aparece como show especial no perfil, com cartaz. Opcional: adicione uma imagem.
+                </Text>
+              </View>
+              <Switch
+                value={form.isFeatured}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    isFeatured: value,
+                    isPublic: value ? true : prev.isPublic,
+                  }))
+                }
+                trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                thumbColor={Platform.OS === 'android' ? (form.isFeatured ? colors.primary : '#f4f3f4') : undefined}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+            {form.isFeatured ? (
+              <TouchableOpacity
+                style={[
+                  styles.highlightPicker,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ]}
+                onPress={async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      allowsEditing: true,
+                      aspect: [16, 9],
+                      quality: 0.85,
+                    });
+                    if (!result.canceled && result.assets[0]?.uri) {
+                      setHighlightImageUri(result.assets[0].uri);
+                    }
+                  } catch {
+                    Alert.alert('Permissão', 'Permita o acesso à galeria para escolher a imagem do destaque.');
+                  }
+                }}
+                activeOpacity={0.85}
+              >
+                {highlightImageUri ? (
+                  <Image source={{ uri: highlightImageUri }} style={styles.highlightPreview} contentFit="cover" />
+                ) : (
+                  <View style={styles.highlightPlaceholder}>
+                    <Ionicons name="image-outline" size={28} color={colors.primary} />
+                    <Text style={{ color: colors.text, fontWeight: '700', marginTop: 8 }}>
+                      Adicionar cartaz
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                      Imagem 16:9, como no YouTube
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            {form.isFeatured && highlightImageUri ? (
+              <TouchableOpacity onPress={() => setHighlightImageUri(null)} style={{ marginTop: 8 }}>
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>Remover imagem</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -1644,6 +1747,22 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  highlightPicker: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  highlightPreview: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+  },
+  highlightPlaceholder: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     fontSize: 16,

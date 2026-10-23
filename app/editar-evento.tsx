@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -20,6 +22,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { removeEventContractByUrl, uploadEventContractFile } from '../services/supabase/eventContractUploadService';
 import { getEventById, updateEvent, UpdateEventData } from '../services/supabase/eventService';
+import { uploadImageToSupabase } from '../services/supabase/imageUploadService';
 import {
     extractNumericValueString,
     formatCurrencyBRLFromAmount,
@@ -46,6 +49,7 @@ interface EventoForm {
   horarioFim: Date;
   status: 'confirmado' | 'a_confirmar';
   isPublic: boolean;
+  isFeatured: boolean;
   descricao: string;
   descricaoViewer: string;
   tag: 'ensaio' | 'evento' | 'reunião';
@@ -287,6 +291,7 @@ export default function EditarEventoScreen() {
     horarioFim: createDefaultTime(0, 0),
     status: 'a_confirmar',
     isPublic: false,
+    isFeatured: false,
     descricao: '',
     descricaoViewer: '',
     tag: 'evento', // Valor padrão
@@ -310,6 +315,8 @@ export default function EditarEventoScreen() {
   const [isInviteParticipationEvent, setIsInviteParticipationEvent] = useState(false);
   const [loadedAsUnconfirmed, setLoadedAsUnconfirmed] = useState(false);
   const [showConfirmedCongratsModal, setShowConfirmedCongratsModal] = useState(false);
+  const [highlightImageUri, setHighlightImageUri] = useState<string | null>(null);
+  const [highlightDirty, setHighlightDirty] = useState(false);
 
   const getContractDisplayName = (url: string) => {
     const last = url.split('?')[0]?.split('#')[0]?.split('/').pop() || 'contrato';
@@ -385,12 +392,15 @@ export default function EditarEventoScreen() {
           horarioInicio: startTime,
           horarioFim: endTime,
           status: (event.confirmed ? 'confirmado' : 'a_confirmar') as 'confirmado' | 'a_confirmar',
-          isPublic: Boolean(event.confirmed && event.is_public),
+          isPublic: Boolean(event.confirmed && (event.is_public || event.is_featured)),
+          isFeatured: Boolean(event.confirmed && event.is_featured),
           descricao: event.description || '',
           descricaoViewer: event.viewer_description || '',
           tag: event.tag || 'evento', // Carregar tag existente ou usar padrão
         });
         setLoadedAsUnconfirmed(!event.confirmed);
+        setHighlightImageUri(event.highlight_image_url?.trim() || null);
+        setHighlightDirty(false);
         setRemoteContractUrl(event.contract_url ?? null);
         setRemoteContractFileName((event as any)?.contract_file_name ?? null);
         setIsInviteParticipationEvent(Boolean(event.convite_participacao_id));
@@ -495,7 +505,8 @@ export default function EditarEventoScreen() {
         start_time: form.horarioInicio.toTimeString().split(' ')[0].substring(0, 5),
         end_time: form.horarioFim.toTimeString().split(' ')[0].substring(0, 5),
         confirmed: form.status === 'confirmado',
-        is_public: form.status === 'confirmado' && form.isPublic,
+        is_public: form.status === 'confirmado' && (form.isPublic || form.isFeatured),
+        is_featured: form.status === 'confirmado' && form.isFeatured,
         tag: form.tag,
       };
 
@@ -513,6 +524,23 @@ export default function EditarEventoScreen() {
       } else if (removeContractRequested) {
         updateData.contract_url = null;
         updateData.contract_file_name = null;
+      }
+
+      if (highlightDirty) {
+        if (highlightImageUri && !highlightImageUri.startsWith('http')) {
+          const uploaded = await uploadImageToSupabase(
+            highlightImageUri,
+            'image_artists',
+            `highlight_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`,
+          );
+          if (!uploaded.success || !uploaded.url) {
+            Alert.alert('Erro', uploaded.error || 'Não foi possível enviar a imagem do destaque.');
+            return;
+          }
+          updateData.highlight_image_url = uploaded.url;
+        } else {
+          updateData.highlight_image_url = highlightImageUri;
+        }
       }
 
       const result = await updateEvent(eventId, updateData, currentUserId || undefined);
@@ -845,7 +873,7 @@ export default function EditarEventoScreen() {
                 { backgroundColor: colors.surface, borderColor: colors.border },
                 form.status === 'a_confirmar' && [styles.statusButtonActive, { backgroundColor: colors.warning, borderColor: colors.warning }]
               ]}
-              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false }))}
+              onPress={() => setForm((prev) => ({ ...prev, status: 'a_confirmar', isPublic: false, isFeatured: false }))}
             >
               <Ionicons 
                 name="time" 
@@ -903,12 +931,101 @@ export default function EditarEventoScreen() {
               </View>
               <Switch
                 value={form.isPublic}
-                onValueChange={(value) => updateForm('isPublic', value)}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    isPublic: value,
+                    isFeatured: value ? prev.isFeatured : false,
+                  }))
+                }
                 trackColor={{ false: colors.border, true: colors.primary + '80' }}
                 thumbColor={Platform.OS === 'android' ? (form.isPublic ? colors.primary : '#f4f3f4') : undefined}
                 ios_backgroundColor={colors.border}
               />
             </View>
+          </View>
+        ) : null}
+
+        {form.status === 'confirmado' ? (
+          <View style={styles.inputGroup}>
+            <View
+              style={[
+                styles.publicSwitchRow,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={[styles.label, { color: colors.text, marginBottom: 4 }]}>
+                  Destacar show no perfil
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                  Aparece como show especial no perfil, com cartaz. Opcional: adicione uma imagem.
+                </Text>
+              </View>
+              <Switch
+                value={form.isFeatured}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    isFeatured: value,
+                    isPublic: value ? true : prev.isPublic,
+                  }))
+                }
+                trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                thumbColor={Platform.OS === 'android' ? (form.isFeatured ? colors.primary : '#f4f3f4') : undefined}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+            {form.isFeatured ? (
+              <TouchableOpacity
+                style={[
+                  styles.highlightPicker,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ]}
+                onPress={async () => {
+                  try {
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      allowsEditing: true,
+                      aspect: [16, 9],
+                      quality: 0.85,
+                    });
+                    if (!result.canceled && result.assets[0]?.uri) {
+                      setHighlightImageUri(result.assets[0].uri);
+                      setHighlightDirty(true);
+                    }
+                  } catch {
+                    Alert.alert('Permissão', 'Permita o acesso à galeria para escolher a imagem do destaque.');
+                  }
+                }}
+                activeOpacity={0.85}
+              >
+                {highlightImageUri ? (
+                  <Image source={{ uri: highlightImageUri }} style={styles.highlightPreview} contentFit="cover" />
+                ) : (
+                  <View style={styles.highlightPlaceholder}>
+                    <Ionicons name="image-outline" size={28} color={colors.primary} />
+                    <Text style={{ color: colors.text, fontWeight: '700', marginTop: 8 }}>
+                      Adicionar cartaz
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                      Imagem 16:9, como no YouTube
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            {form.isFeatured && highlightImageUri ? (
+              <TouchableOpacity
+                onPress={() => {
+                  setHighlightImageUri(null);
+                  setHighlightDirty(true);
+                }}
+                style={{ marginTop: 8 }}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>Remover imagem</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -1291,6 +1408,22 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  highlightPicker: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  highlightPreview: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+  },
+  highlightPlaceholder: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputHint: {
     marginTop: 8,

@@ -68,6 +68,9 @@ export interface Event {
   confirmed: boolean;
   /** Data visível no calendário público do perfil (sem cachê). */
   is_public?: boolean;
+  /** Show especial em destaque no perfil (cartaz). */
+  is_featured?: boolean;
+  highlight_image_url?: string | null;
   tag: "ensaio" | "evento" | "reunião";
   ativo?: boolean;
   update_ativo?: string | null;
@@ -247,6 +250,8 @@ export interface CreateEventData {
   contractor_phone?: string;
   confirmed?: boolean;
   is_public?: boolean;
+  is_featured?: boolean;
+  highlight_image_url?: string | null;
   tag?: "ensaio" | "evento" | "reunião";
   expenses?: CreateExpenseData[];
   contract_url?: string | null;
@@ -274,6 +279,8 @@ export interface UpdateEventData {
   end_time?: string;
   confirmed?: boolean;
   is_public?: boolean;
+  is_featured?: boolean;
+  highlight_image_url?: string | null;
   tag?: "ensaio" | "evento" | "reunião";
   contract_url?: string | null;
   contract_file_name?: string | null;
@@ -311,7 +318,11 @@ export const createEvent = async (
           : null,
       contractor_phone: eventData.contractor_phone || null,
       confirmed: eventData.confirmed || false,
-      is_public: Boolean(eventData.confirmed) && Boolean(eventData.is_public),
+      is_public:
+        Boolean(eventData.confirmed) &&
+        Boolean(eventData.is_public || eventData.is_featured),
+      is_featured: Boolean(eventData.confirmed) && Boolean(eventData.is_featured),
+      highlight_image_url: eventData.highlight_image_url ?? null,
       tag: eventData.tag || "evento", // Default para 'evento' se não especificado
       contract_url: eventData.contract_url ?? null,
       contract_file_name: eventData.contract_file_name ?? null,
@@ -326,8 +337,13 @@ export const createEvent = async (
       .select()
       .single();
 
-    if (eventError && /is_public|PGRST204/i.test(eventError.message || "")) {
-      const { is_public: _omitPublic, ...withoutPublic } = insertPayload;
+    if (eventError && /is_public|is_featured|highlight_image_url|PGRST204/i.test(eventError.message || "")) {
+      const {
+        is_public: _omitPublic,
+        is_featured: _omitFeatured,
+        highlight_image_url: _omitHighlight,
+        ...withoutPublic
+      } = insertPayload;
       const retry = await supabase.from("events").insert(withoutPublic).select().single();
       event = retry.data;
       eventError = retry.error;
@@ -690,8 +706,16 @@ export const updateEvent = async (
     };
     if (eventData.confirmed === false) {
       patch.is_public = false;
-    } else if (eventData.confirmed === true && eventData.is_public != null) {
-      patch.is_public = Boolean(eventData.is_public);
+      patch.is_featured = false;
+    } else if (eventData.confirmed === true) {
+      if (eventData.is_featured != null) {
+        patch.is_featured = Boolean(eventData.is_featured);
+      }
+      if (eventData.is_featured) {
+        patch.is_public = true;
+      } else if (eventData.is_public != null) {
+        patch.is_public = Boolean(eventData.is_public);
+      }
     }
 
     let { data, error } = await supabase
@@ -701,8 +725,13 @@ export const updateEvent = async (
       .select()
       .single();
 
-    if (error && /is_public|PGRST204/i.test(error.message || "")) {
-      const { is_public: _omitPublic, ...withoutPublic } = patch;
+    if (error && /is_public|is_featured|highlight_image_url|PGRST204/i.test(error.message || "")) {
+      const {
+        is_public: _omitPublic,
+        is_featured: _omitFeatured,
+        highlight_image_url: _omitHighlight,
+        ...withoutPublic
+      } = patch;
       const retry = await supabase
         .from("events")
         .update(withoutPublic)
@@ -1228,6 +1257,18 @@ export interface PublicAgendaEvent {
   tag?: string | null;
 }
 
+export interface FeaturedShow {
+  id: string;
+  name: string;
+  event_date: string;
+  start_time: string;
+  end_time: string;
+  city?: string | null;
+  state_uf?: string | null;
+  tag?: string | null;
+  highlight_image_url?: string | null;
+}
+
 export const listarAgendaPublicaArtista = async (
   artistId: string,
 ): Promise<{ events: PublicAgendaEvent[]; error: string | null }> => {
@@ -1248,5 +1289,29 @@ export const listarAgendaPublicaArtista = async (
     return { events, error: null };
   } catch (error: any) {
     return { events: [], error: error?.message || "Erro ao carregar agenda pública" };
+  }
+};
+
+export const listarShowsDestaqueArtista = async (
+  artistId: string,
+): Promise<{ shows: FeaturedShow[]; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.rpc("listar_shows_destaque_artista", {
+      p_artist_id: artistId,
+    });
+    if (error) {
+      console.warn("Shows em destaque indisponíveis:", error.message);
+      return { shows: [], error: error.message };
+    }
+    const shows = ((data ?? []) as FeaturedShow[]).map((item) => ({
+      ...item,
+      event_date: String(item.event_date || "").slice(0, 10),
+      start_time: String(item.start_time || "").slice(0, 5),
+      end_time: String(item.end_time || "").slice(0, 5),
+      highlight_image_url: item.highlight_image_url?.trim() || null,
+    }));
+    return { shows, error: null };
+  } catch (error: any) {
+    return { shows: [], error: error?.message || "Erro ao carregar shows em destaque" };
   }
 };

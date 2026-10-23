@@ -18,6 +18,7 @@ import OptimizedImage from '../components/OptimizedImage';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
+import FeaturedShowCard from '../components/FeaturedShowCard';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
@@ -26,7 +27,12 @@ import {
   listarIdsArtistasFavoritos,
 } from '../services/supabase/artistFavoritesService';
 import { todayCalendarYmd, toCalendarYmd } from '../lib/dateUtils';
-import { listarAgendaPublicaArtista, type PublicAgendaEvent } from '../services/supabase/eventService';
+import {
+  listarAgendaPublicaArtista,
+  listarShowsDestaqueArtista,
+  type FeaturedShow,
+  type PublicAgendaEvent,
+} from '../services/supabase/eventService';
 import { maskBrazilMobile, openWhatsAppConversation } from '../utils/brazilPhone';
 
 function styleChips(artist: Artist | null): string[] {
@@ -55,6 +61,7 @@ export default function PerfilArtistaScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [artist, setArtist] = useState<Artist | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicAgendaEvent[]>([]);
+  const [featuredShows, setFeaturedShows] = useState<FeaturedShow[]>([]);
   const [favorito, setFavorito] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
@@ -68,13 +75,15 @@ export default function PerfilArtistaScreen() {
       setLoading(false);
       return;
     }
-    const [profileRes, agendaRes, favoriteIds] = await Promise.all([
+    const [profileRes, agendaRes, featuredRes, favoriteIds] = await Promise.all([
       getArtistPublicProfile(artistId),
       listarAgendaPublicaArtista(artistId),
+      listarShowsDestaqueArtista(artistId),
       listarIdsArtistasFavoritos(),
     ]);
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
+    setFeaturedShows(featuredRes.shows);
     setFavorito(favoriteIds.has(artistId));
   }, [artistId]);
 
@@ -315,6 +324,20 @@ export default function PerfilArtistaScreen() {
               ))}
             </View>
           </View>
+
+          {featuredShows.length ? (
+            <View style={[styles.section, styles.sectionPad]}>
+              <View style={styles.sectionHead}>
+                <Ionicons name="star" size={18} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Shows em destaque</Text>
+              </View>
+              <View style={styles.videoStack}>
+                {featuredShows.map((show) => (
+                  <FeaturedShowCard key={show.id} show={show} colors={colors} />
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           {youtubePreviews.length ? (
             <View style={[styles.section, styles.sectionPad]}>
