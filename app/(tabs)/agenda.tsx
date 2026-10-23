@@ -694,6 +694,7 @@ export default function AgendaScreen() {
       const { data } = await supabase
         .from("events")
         .select("id, convite_participacao_id")
+        .eq("ativo", true)
         .in("id", eventIds);
 
       const map: Record<string, string> = {};

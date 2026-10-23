@@ -21,6 +21,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
+import {
+  alternarArtistaFavorito,
+  listarIdsArtistasFavoritos,
+} from '../services/supabase/artistFavoritesService';
 import { listarAgendaPublicaArtista, type PublicAgendaEvent } from '../services/supabase/eventService';
 
 function styleChips(artist: Artist | null): string[] {
@@ -49,6 +53,7 @@ export default function PerfilArtistaScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [artist, setArtist] = useState<Artist | null>(null);
   const [publicEvents, setPublicEvents] = useState<PublicAgendaEvent[]>([]);
+  const [favorito, setFavorito] = useState(false);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
   const previews = useMemo(
@@ -61,12 +66,14 @@ export default function PerfilArtistaScreen() {
       setLoading(false);
       return;
     }
-    const [profileRes, agendaRes] = await Promise.all([
+    const [profileRes, agendaRes, favoriteIds] = await Promise.all([
       getArtistPublicProfile(artistId),
       listarAgendaPublicaArtista(artistId),
+      listarIdsArtistasFavoritos(),
     ]);
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
+    setFavorito(favoriteIds.has(artistId));
   }, [artistId]);
 
   useEffect(() => {
@@ -126,7 +133,21 @@ export default function PerfilArtistaScreen() {
             <Ionicons name="create-outline" size={20} color={colors.text} />
           </TouchableOpacity>
         ) : (
-          <View style={styles.iconBtn} />
+          <TouchableOpacity
+            onPress={() => {
+              if (!artistId) return;
+              const was = favorito;
+              setFavorito(!was);
+              void alternarArtistaFavorito(artistId, was).then(({ favorite, error }) => {
+                if (error) setFavorito(was);
+                else setFavorito(favorite);
+              });
+            }}
+            style={styles.iconBtn}
+            hitSlop={10}
+          >
+            <Ionicons name={favorito ? 'heart' : 'heart-outline'} size={22} color={favorito ? '#EF4444' : colors.text} />
+          </TouchableOpacity>
         )}
       </View>
 

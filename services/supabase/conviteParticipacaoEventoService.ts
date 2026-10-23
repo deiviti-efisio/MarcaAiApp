@@ -143,6 +143,90 @@ function mapArtistaBuscaRow(row: Record<string, unknown>): ArtistaBuscaConvite {
 
 export const ARTISTAS_BUSCA_PAGE_SIZE = 20;
 
+function isMissingRpc(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  const msg = String(e.message || '').toLowerCase();
+  return (
+    e.code === 'PGRST202' ||
+    e.code === '42883' ||
+    msg.includes('could not find the function') ||
+    msg.includes('schema cache') ||
+    (msg.includes('function') && msg.includes('does not exist'))
+  );
+}
+
+function abortedResult(signal?: AbortSignal, error?: unknown) {
+  return Boolean(signal?.aborted || isAbortError(error));
+}
+
+/** Todos os artistas, sem filtro. Tenta RPC rápida e cai para outra se ainda não existir no banco. */
+export async function listarTodosArtistas(params: {
+  limit?: number;
+  offset?: number;
+  abortSignal?: AbortSignal;
+}): Promise<{ artists: ArtistaBuscaConvite[]; hasMore: boolean; error: string | null; aborted?: boolean }> {
+  const limit = Math.min(Math.max(params.limit ?? ARTISTAS_BUSCA_PAGE_SIZE, 1), 40);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const signal = params.abortSignal;
+
+  const finish = (data: unknown[] | null) => {
+    const artists = ((data || []) as Record<string, unknown>[]).map(mapArtistaBuscaRow);
+    return { artists, hasMore: artists.length >= limit, error: null as string | null };
+  };
+
+  try {
+    let todos = supabase.rpc('listar_todos_artistas', { p_limit: limit, p_offset: offset });
+    if (signal) todos = todos.abortSignal(signal);
+    const first = await todos;
+    if (abortedResult(signal, first.error)) {
+      return { artists: [], hasMore: false, error: null, aborted: true };
+    }
+    if (!first.error) return finish((first.data || []) as unknown[]);
+
+    if (isMissingRpc(first.error)) {
+      let prox = supabase.rpc('buscar_artistas_proximos', {
+        p_artista_atual_id: null,
+        p_cidade: null,
+        p_estado: null,
+        p_termo: null,
+        p_funcao: null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (signal) prox = prox.abortSignal(signal);
+      const second = await prox;
+      if (abortedResult(signal, second.error)) {
+        return { artists: [], hasMore: false, error: null, aborted: true };
+      }
+      if (!second.error) return finish((second.data || []) as unknown[]);
+      if (!isMissingRpc(second.error)) {
+        return { artists: [], hasMore: false, error: second.error.message };
+      }
+    } else {
+      return { artists: [], hasMore: false, error: first.error.message };
+    }
+
+    let table = supabase
+      .from('artists')
+      .select('id, name, profile_url, musical_style, work_roles, city, state')
+      .order('name', { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (signal) table = table.abortSignal(signal);
+    const third = await table;
+    if (abortedResult(signal, third.error)) {
+      return { artists: [], hasMore: false, error: null, aborted: true };
+    }
+    if (third.error) return { artists: [], hasMore: false, error: third.error.message };
+    return finish((third.data || []) as unknown[]);
+  } catch (error) {
+    if (abortedResult(signal, error)) {
+      return { artists: [], hasMore: false, error: null, aborted: true };
+    }
+    return { artists: [], hasMore: false, error: 'Erro de conexão' };
+  }
+}
+
 export async function listarArtistasProximos(params: {
   artistaAtualId?: string | null;
   cidade?: string | null;
@@ -164,7 +248,7 @@ export async function listarArtistasProximos(params: {
     let query = supabase.rpc('buscar_artistas_proximos', {
       p_artista_atual_id: params.artistaAtualId ?? null,
       p_cidade: cidade.length >= 2 ? cidade : null,
-      p_estado: estado || null,
+      p_estado: estado.length > 0 ? estado : null,
       p_termo: termo.length >= 2 ? termo : null,
       p_funcao: funcao.length >= 2 ? funcao : null,
       p_limit: limit,

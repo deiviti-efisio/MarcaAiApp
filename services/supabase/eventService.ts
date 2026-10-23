@@ -82,13 +82,37 @@ export interface Event {
   updated_at: string;
 }
 
-function excludeFeedMarketplaceEvents<T extends { feed_tipo?: string | null }>(
-  events: T[] | null | undefined,
-): T[] {
+const EVENT_AGENDA_SELECT =
+  "id, artist_id, created_by, name, description, viewer_description, event_date, start_time, end_time, value, paid_amount, city, state_uf, contractor_phone, confirmed, tag, created_at, updated_at, convite_participacao_id, is_public, ativo, feed_tipo";
+
+function excludeFeedMarketplaceEvents<
+  T extends { id?: string; feed_tipo?: string | null; ativo?: boolean | null },
+>(events: T[] | null | undefined): T[] {
+  const seen = new Set<string>();
   return (events ?? []).filter((event) => {
+    if (event.ativo !== true) return false;
     const tipo = event.feed_tipo;
-    return tipo == null || String(tipo).trim() === "";
+    if (tipo != null && String(tipo).trim() !== "") return false;
+    const id = event.id != null ? String(event.id) : "";
+    if (id) {
+      if (seen.has(id)) return false;
+      seen.add(id);
+    }
+    return true;
   });
+}
+
+function maskEventValueForRole<T extends { created_by?: string; value?: unknown; paid_amount?: unknown }>(
+  row: T,
+  role: string | null | undefined,
+  userId: string | null | undefined,
+): T {
+  const canSee =
+    role === "admin" ||
+    role === "owner" ||
+    (role === "vendedor" && !!userId && row.created_by === userId);
+  if (canSee) return row;
+  return { ...row, value: null, paid_amount: null };
 }
 
 export interface EventExpense {
@@ -377,8 +401,10 @@ export const getRecentEventNameSuggestions = async (
 
     const { data, error } = await supabase
       .from("events")
-      .select("name, value, event_date, created_at, feed_tipo")
+      .select("name, value, event_date, created_at, feed_tipo, ativo")
       .eq("artist_id", artistId)
+      .eq("ativo", true)
+      .is("feed_tipo", null)
       .order("event_date", { ascending: false })
       .limit(80);
 
@@ -736,17 +762,28 @@ export const getEventsWithPermissions = async (
       return { events: null, error: "Sem permissão para visualizar eventos" };
     }
 
-    // Usar a função do banco que filtra por role
-    const { data, error } = await supabase.rpc("get_events_by_role", {
-      p_artist_id: artistId,
-    });
+    const { data: userRes } = await supabase.auth.getUser();
+    let query = supabase
+      .from("events")
+      .select(EVENT_AGENDA_SELECT)
+      .eq("artist_id", artistId)
+      .eq("ativo", true)
+      .is("feed_tipo", null)
+      .order("event_date", { ascending: false });
+    const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar eventos:", error);
       return { events: null, error: error.message };
     }
 
-    return { events: excludeFeedMarketplaceEvents(data as Event[]), error: null };
+    const role = (await getUserPermissions(userId, artistId))?.role;
+    const events = excludeFeedMarketplaceEvents(
+      ((data || []) as Event[]).map((row) =>
+        maskEventValueForRole(row, role, userRes.user?.id),
+      ),
+    );
+    return { events, error: null };
   } catch (error) {
     console.error("Erro ao buscar eventos:", error);
     return { events: null, error: "Erro ao buscar eventos" };
@@ -946,9 +983,28 @@ export const getEventsByArtistWithRole = async (
       artistId,
     );
 
-    let query = supabase.rpc("get_events_by_role", {
-      p_artist_id: artistId,
-    });
+    const { data: userRes, error: userError } = await supabase.auth.getUser();
+    if (userError || !userRes.user) {
+      return { events: null, error: "Usuário não autenticado" };
+    }
+
+    const permissions = await getUserPermissions(userRes.user.id, artistId);
+    if (!permissions) {
+      return {
+        events: null,
+        error: "Usuário não tem acesso a este artista",
+        errorCode: "P0001",
+      };
+    }
+
+    let query = supabase
+      .from("events")
+      .select(EVENT_AGENDA_SELECT)
+      .eq("artist_id", artistId)
+      .eq("ativo", true)
+      .is("feed_tipo", null)
+      .order("event_date", { ascending: false })
+      .order("start_time", { ascending: false });
     if (abortSignal) query = query.abortSignal(abortSignal);
     const { data, error } = await query;
 
@@ -964,8 +1020,14 @@ export const getEventsByArtistWithRole = async (
       };
     }
 
-    console.log("✅ Eventos carregados com filtragem:", data?.length || 0);
-    return { events: excludeFeedMarketplaceEvents(data as EventWithRole[]), error: null };
+    const events = excludeFeedMarketplaceEvents(
+      ((data || []) as EventWithRole[]).map((row) => ({
+        ...maskEventValueForRole(row, permissions.role, userRes.user.id),
+        user_role: permissions.role,
+      })),
+    );
+    console.log("✅ Eventos carregados com filtragem:", events.length);
+    return { events, error: null };
   } catch (error: any) {
     if (abortSignal?.aborted || isAbortError(error)) {
       return { events: null, error: null, aborted: true };
@@ -1014,7 +1076,7 @@ export const getEventsByMonthWithRole = async (
       return { success: false, error, errorCode };
     }
 
-    // Filtrar por mês no cliente (eventos ativos vêm da RPC get_events_by_role no banco)
+    // Filtrar por mês no cliente (só eventos com ativo = true)
     const filteredEvents =
       events?.filter(
         (event) => event.event_date >= startDate && event.event_date <= endDate,
@@ -1042,17 +1104,39 @@ export const getEventByIdWithRole = async (
   try {
     console.log("🔐 Buscando evento por ID com role:", eventId);
 
-    const { data, error } = await supabase.rpc("get_event_by_id_with_role", {
-      p_event_id: eventId,
-    });
+    const { data: userRes, error: userError } = await supabase.auth.getUser();
+    if (userError || !userRes.user) {
+      return { event: null, error: "Usuário não autenticado" };
+    }
+
+    const { data, error } = await supabase
+      .from("events")
+      .select(EVENT_AGENDA_SELECT)
+      .eq("id", eventId)
+      .eq("ativo", true)
+      .is("feed_tipo", null)
+      .maybeSingle();
 
     if (error) {
       console.error("❌ Erro ao buscar evento:", error);
       return { event: null, error: error.message };
     }
+    if (!data) {
+      return { event: null, error: "Evento não encontrado" };
+    }
 
-    console.log("✅ Evento carregado:", data?.[0]);
-    return { event: data?.[0] || null, error: null };
+    const permissions = await getUserPermissions(userRes.user.id, data.artist_id);
+    if (!permissions) {
+      return { event: null, error: "Usuário não tem acesso a este evento" };
+    }
+
+    const event = maskEventValueForRole(
+      { ...(data as EventWithRole), user_role: permissions.role },
+      permissions.role,
+      userRes.user.id,
+    );
+    console.log("✅ Evento carregado:", event.id);
+    return { event, error: null };
   } catch (error) {
     console.error("❌ Erro ao buscar evento:", error);
     return { event: null, error: "Erro ao buscar evento" };

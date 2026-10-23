@@ -192,46 +192,101 @@ BEGIN
       RETURN;
     END IF;
 
-    INSERT INTO events (
-      artist_id,
-      created_by,
-      updated_by,
-      name,
-      description,
-      event_date,
-      start_time,
-      end_time,
-      value,
-      city,
-      state_uf,
-      contractor_phone,
-      confirmed,
-      tag,
-      convite_participacao_id,
-      created_at,
-      updated_at,
-      ativo
-    ) VALUES (
-      v_convite.artista_convidado_id,
-      v_uid,
-      v_uid,
-      v_nome_evento,
-      NULLIF(TRIM(v_convite.mensagem), ''),
-      v_data,
-      v_start,
-      v_end,
-      v_cache,
-      v_city,
-      v_uf,
-      v_convite.telefone_contratante,
-      true,
-      'evento',
-      v_convite.id,
-      NOW(),
-      NOW(),
-      true
-    )
-    RETURNING id INTO evento_id;
+    -- Não duplicar: se o convidado já tem o evento (anúncio/rascunho), só reativa.
+    SELECT e.id
+    INTO evento_id
+    FROM events e
+    WHERE COALESCE(e.ativo, true) = true
+      AND e.artist_id = v_convite.artista_convidado_id
+      AND (
+        e.convite_participacao_id = v_convite.id
+        OR e.id = v_convite.evento_origem_id
+        OR e.id = v_convite.grupo_disputa_id
+      )
+    ORDER BY CASE
+      WHEN e.convite_participacao_id = v_convite.id THEN 0
+      WHEN e.id = v_convite.evento_origem_id THEN 1
+      ELSE 2
+    END
+    LIMIT 1;
+
+    IF evento_id IS NULL THEN
+      SELECT e.id
+      INTO evento_id
+      FROM events e
+      WHERE e.artist_id = v_convite.artista_convidado_id
+        AND (
+          e.convite_participacao_id = v_convite.id
+          OR e.id = v_convite.evento_origem_id
+          OR e.id = v_convite.grupo_disputa_id
+        )
+      ORDER BY CASE WHEN COALESCE(e.ativo, true) THEN 0 ELSE 1 END
+      LIMIT 1;
+    END IF;
+
+    IF evento_id IS NOT NULL THEN
+      UPDATE events
+      SET
+        ativo = true,
+        confirmed = true,
+        feed_tipo = NULL,
+        name = COALESCE(v_nome_evento, name),
+        event_date = COALESCE(v_data, event_date),
+        start_time = COALESCE(v_start, start_time),
+        end_time = COALESCE(v_end, end_time),
+        value = COALESCE(v_cache, value),
+        city = COALESCE(v_city, city),
+        state_uf = COALESCE(v_uf, state_uf),
+        convite_participacao_id = COALESCE(convite_participacao_id, v_convite.id),
+        updated_at = NOW()
+      WHERE id = evento_id;
+    ELSIF v_convite.artista_convidado_id IS DISTINCT FROM v_origem.artist_id THEN
+      INSERT INTO events (
+        artist_id,
+        created_by,
+        updated_by,
+        name,
+        description,
+        event_date,
+        start_time,
+        end_time,
+        value,
+        city,
+        state_uf,
+        contractor_phone,
+        confirmed,
+        tag,
+        convite_participacao_id,
+        created_at,
+        updated_at,
+        ativo
+      ) VALUES (
+        v_convite.artista_convidado_id,
+        v_uid,
+        v_uid,
+        v_nome_evento,
+        NULLIF(TRIM(v_convite.mensagem), ''),
+        v_data,
+        v_start,
+        v_end,
+        v_cache,
+        v_city,
+        v_uf,
+        v_convite.telefone_contratante,
+        true,
+        'evento',
+        v_convite.id,
+        NOW(),
+        NOW(),
+        true
+      )
+      RETURNING id INTO evento_id;
+    ELSE
+      evento_id := v_origem.id;
+      UPDATE events
+      SET ativo = true, confirmed = true, feed_tipo = NULL, updated_at = NOW()
+      WHERE id = evento_id;
+    END IF;
 
     INSERT INTO event_expenses (
       event_id,
@@ -316,5 +371,104 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.rpc_aceitar_convite_participacao_evento(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.rpc_app_aceitar_convite_participacao_evento(UUID) TO authenticated;
+
+-- Anúncio do feed vira evento; rascunho do interessado entra na agenda.
+-- NÃO apaga o evento do dono (ativo=false) nem cria segunda linha no mesmo artista.
+CREATE OR REPLACE FUNCTION public.trg_feed_apos_aceitar_convite()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status = 'aceito' AND OLD.status IS DISTINCT FROM 'aceito' THEN
+    UPDATE events
+    SET
+      feed_tipo = NULL,
+      confirmed = true,
+      ativo = true,
+      updated_at = NOW()
+    WHERE id = NEW.evento_origem_id
+      AND feed_tipo = 'demanda';
+
+    UPDATE events
+    SET
+      ativo = true,
+      confirmed = true,
+      feed_tipo = NULL,
+      updated_at = NOW()
+    WHERE id = NEW.evento_origem_id
+      AND artist_id = NEW.artista_que_convidou_id
+      AND feed_tipo IS NULL;
+
+    UPDATE events
+    SET
+      feed_tipo = NULL,
+      confirmed = true,
+      ativo = true,
+      updated_at = NOW()
+    WHERE id = NEW.grupo_disputa_id
+      AND feed_tipo = 'disponivel';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Cópia do convite no MESMO artista do evento original: considera apagada.
+UPDATE events copia
+SET
+  ativo = false,
+  update_ativo = NOW(),
+  updated_at = NOW()
+FROM convite_participacao_evento c
+JOIN events origem
+  ON origem.id = c.evento_origem_id
+WHERE copia.convite_participacao_id = c.id
+  AND copia.id IS DISTINCT FROM origem.id
+  AND copia.artist_id = origem.artist_id
+  AND COALESCE(copia.ativo, true) = true;
+
+-- Mesmo artista, mesma data e nome: mantém o original, apaga a cópia do convite.
+UPDATE events copia
+SET
+  ativo = false,
+  update_ativo = NOW(),
+  updated_at = NOW()
+FROM events original
+WHERE copia.convite_participacao_id IS NOT NULL
+  AND original.convite_participacao_id IS NULL
+  AND copia.id <> original.id
+  AND copia.artist_id = original.artist_id
+  AND copia.event_date = original.event_date
+  AND COALESCE(copia.ativo, true) = true
+  AND COALESCE(original.ativo, true) = true
+  AND original.feed_tipo IS NULL
+  AND (
+    lower(trim(coalesce(copia.name, ''))) = lower(trim(coalesce(original.name, '')))
+    OR copia.name ILIKE original.name || ' · %'
+  );
+
+UPDATE events e
+SET
+  ativo = false,
+  update_ativo = NOW(),
+  updated_at = NOW()
+WHERE COALESCE(e.ativo, true) = true
+  AND e.convite_participacao_id IS NOT NULL
+  AND e.id NOT IN (
+    SELECT keep_id FROM (
+      SELECT DISTINCT ON (convite_participacao_id) id AS keep_id
+      FROM events
+      WHERE convite_participacao_id IS NOT NULL
+        AND COALESCE(ativo, true) = true
+      ORDER BY convite_participacao_id, created_at ASC
+    ) k
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_um_ativo_por_convite
+  ON public.events (convite_participacao_id)
+  WHERE convite_participacao_id IS NOT NULL
+    AND COALESCE(ativo, true) = true;
 
 NOTIFY pgrst, 'reload schema';

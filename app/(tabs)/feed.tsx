@@ -32,8 +32,6 @@ import { useActiveArtistContext } from '../../contexts/ActiveArtistContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../services/useNotifications';
 import { brazilUfFromStateName, formatEventLocationSlash } from '../../lib/brazilGeo';
-import { getCurrentUser } from '../../services/supabase/authService';
-import { getUserProfile } from '../../services/supabase/userService';
 import { formatCalendarDate, formatCalendarDateLongParts, weekdayFromCalendarDate } from '../../lib/dateUtils';
 import {
   ARTIST_WORK_ROLE_PRESETS,
@@ -52,9 +50,13 @@ import {
 import {
   ARTISTAS_BUSCA_PAGE_SIZE,
   aceitarConviteParticipacao,
-  listarArtistasProximos,
+  listarTodosArtistas,
   type ArtistaBuscaConvite,
 } from '../../services/supabase/conviteParticipacaoEventoService';
+import {
+  alternarArtistaFavorito,
+  listarIdsArtistasFavoritos,
+} from '../../services/supabase/artistFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
 
 function formatTime(t: string) {
@@ -102,6 +104,8 @@ export default function FeedScreen() {
   const artistasGenerationRef = useRef(0);
   const [artistasProntoGeo, setArtistasProntoGeo] = useState(false);
   const [filtroFuncao, setFiltroFuncao] = useState('');
+  const [filtroFavoritos, setFiltroFavoritos] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [estadoUf, setEstadoUf] = useState('');
   const [cidade, setCidade] = useState('');
   const [cidadeDebounced, setCidadeDebounced] = useState('');
@@ -131,11 +135,7 @@ export default function FeedScreen() {
   const marketplaceAbortRef = useRef<AbortController | null>(null);
   const artistasAbortRef = useRef<AbortController | null>(null);
   const feedFocusedRef = useRef(true);
-
-  const cancelFeedRequests = useCallback(() => {
-    marketplaceAbortRef.current?.abort();
-    artistasAbortRef.current?.abort();
-  }, []);
+  const verArtistasRef = useRef(false);
 
   const funcaoFilterOptions = useMemo(
     () => [...ARTIST_WORK_ROLE_PRESETS],
@@ -215,16 +215,17 @@ export default function FeedScreen() {
   }, [cidade]);
 
   const loadArtistas = useCallback(async (opts: { silent?: boolean; append?: boolean } = {}) => {
-    if (!verArtistas || !feedFocusedRef.current) return;
+    if (!verArtistasRef.current) return;
+    feedFocusedRef.current = true;
     const append = Boolean(opts.append);
     if (append) {
       if (!artistasHasMoreRef.current || loadingMoreArtistasRef.current) return;
       loadingMoreArtistasRef.current = true;
       setLoadingMoreArtistas(true);
-    } else if (!opts.silent) {
+    } else {
       artistasHasMoreRef.current = true;
       setArtistasHasMore(true);
-      setLoadingArtistas(true);
+      if (!opts.silent) setLoadingArtistas(true);
     }
     const generation = ++artistasGenerationRef.current;
     if (!append) {
@@ -236,12 +237,7 @@ export default function FeedScreen() {
     const abort = artistasAbortRef.current;
     const offset = append ? artistasLenRef.current : 0;
     try {
-      const { artists, hasMore, error: artistsError, aborted } = await listarArtistasProximos({
-        artistaAtualId: activeArtist?.id ?? null,
-        cidade: cidadeDebounced,
-        estado: estadoUf,
-        termo: buscaArtistaDebounced,
-        funcao: filtroFuncao,
+      const { artists, hasMore, error: artistsError, aborted } = await listarTodosArtistas({
         limit: ARTISTAS_BUSCA_PAGE_SIZE,
         offset,
         abortSignal: abort.signal,
@@ -276,49 +272,25 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [activeArtist?.id, cidadeDebounced, estadoUf, buscaArtistaDebounced, filtroFuncao, verArtistas]);
+  }, []);
 
   useEffect(() => {
     if (artistasProntoGeo) return;
-    if (cidade.trim() || estadoUf) {
-      seededNearRef.current = true;
-      setArtistasProntoGeo(true);
-      if (estadoUf) void AsyncStorage.setItem(FEED_ARTISTAS_UF_KEY, estadoUf);
-      return;
-    }
     seededNearRef.current = true;
     let cancelled = false;
     const geoAbort = new AbortController();
     void (async () => {
       try {
-        const [cached, artistRow, userRes] = await Promise.all([
-          AsyncStorage.getItem(FEED_ARTISTAS_UF_KEY),
-          activeArtist?.id
-            ? supabase
-                .from('artists')
-                .select('state')
-                .eq('id', activeArtist.id)
-                .abortSignal(geoAbort.signal)
-                .maybeSingle()
-            : Promise.resolve({ data: null as { state?: string } | null }),
-          getCurrentUser().then(async ({ user }) =>
-            user?.id ? getUserProfile(user.id) : { profile: null }
-          ),
-        ]);
+        if (!activeArtist?.id) return;
+        const { data } = await supabase
+          .rpc('estado_do_artista', { p_artista_id: activeArtist.id })
+          .abortSignal(geoAbort.signal);
         if (cancelled || geoAbort.signal.aborted) return;
-        const fromCache = (cached || '').trim().toUpperCase();
-        const fromArtist = String(artistRow.data?.state || '');
-        const fromUser = String(userRes.profile?.state || '');
+        const fromArtist = String(data || '');
         const uf =
           brazilUfFromStateName(fromArtist) ||
-          (fromArtist.trim().length === 2 ? fromArtist.trim().toUpperCase() : null) ||
-          brazilUfFromStateName(fromUser) ||
-          (fromUser.trim().length === 2 ? fromUser.trim().toUpperCase() : null) ||
-          (fromCache.length === 2 ? fromCache : null);
-        if (uf) {
-          setEstadoUf(uf);
-          void AsyncStorage.setItem(FEED_ARTISTAS_UF_KEY, uf);
-        }
+          (fromArtist.trim().length === 2 ? fromArtist.trim().toUpperCase() : null);
+        if (uf) setEstadoUf(uf);
       } finally {
         if (!cancelled) setArtistasProntoGeo(true);
       }
@@ -327,9 +299,13 @@ export default function FeedScreen() {
       cancelled = true;
       geoAbort.abort();
     };
-  }, [activeArtist?.id, cidade, estadoUf, artistasProntoGeo]);
+  }, [activeArtist?.id, artistasProntoGeo]);
 
   const skipNextFocusLoadRef = useRef(true);
+  const loadRef = useRef(load);
+  const loadArtistasRef = useRef(loadArtistas);
+  loadRef.current = load;
+  loadArtistasRef.current = loadArtistas;
 
   useEffect(() => {
     let cancelled = false;
@@ -358,6 +334,7 @@ export default function FeedScreen() {
     artistasLenRef.current = 0;
     artistasHasMoreRef.current = true;
     setArtistasHasMore(true);
+    setEstadoUf('');
     seededNearRef.current = false;
     setArtistasProntoGeo(false);
     skipNextFocusLoadRef.current = true;
@@ -368,52 +345,78 @@ export default function FeedScreen() {
     void load(false);
   }, [filtro, verMinhas, estadoUf, cidadeDebounced, filtroFuncao, activeArtist?.id, verArtistas, artistasProntoGeo, load]);
 
-  useEffect(() => {
-    if (!activeArtist?.id || !verArtistas) return;
-    void loadArtistas();
-  }, [
-    estadoUf,
-    cidadeDebounced,
-    filtroFuncao,
-    buscaArtistaDebounced,
-    verArtistas,
-    activeArtist?.id,
-    loadArtistas,
-  ]);
-
   useFocusEffect(
     useCallback(() => {
       feedFocusedRef.current = true;
       void loadUnreadCount();
       void refreshUnreadChats();
-      if (skipNextFocusLoadRef.current) {
-        skipNextFocusLoadRef.current = false;
-        return () => {
-          feedFocusedRef.current = false;
-          cancelFeedRequests();
-        };
-      }
-      if (verArtistas) {
-        if (artistasProntoGeo) void loadArtistas({ silent: true });
-      } else {
-        void load(true);
+      const skipFirst = skipNextFocusLoadRef.current;
+      skipNextFocusLoadRef.current = false;
+      if (!skipFirst) {
+        if (verArtistasRef.current) {
+          void loadArtistasRef.current();
+        } else {
+          void loadRef.current(true);
+        }
       }
       return () => {
         feedFocusedRef.current = false;
-        cancelFeedRequests();
+        marketplaceAbortRef.current?.abort();
+        artistasAbortRef.current?.abort();
       };
-    }, [activeArtist?.id, load, loadArtistas, verArtistas, artistasProntoGeo, loadUnreadCount, refreshUnreadChats, cancelFeedRequests])
+    }, [])
   );
+
+  useEffect(() => {
+    if (!verArtistas) return;
+    let cancelled = false;
+    void listarIdsArtistasFavoritos().then((ids) => {
+      if (!cancelled) setFavoriteIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [verArtistas, activeArtist?.id]);
+
+  const toggleFavorito = useCallback(async (artistId: string) => {
+    const wasFavorite = favoriteIds.has(artistId);
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (wasFavorite) next.delete(artistId);
+      else next.add(artistId);
+      return next;
+    });
+    const { favorite, error } = await alternarArtistaFavorito(artistId, wasFavorite);
+    if (error) {
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (wasFavorite) next.add(artistId);
+        else next.delete(artistId);
+        return next;
+      });
+      return;
+    }
+    if (filtroFavoritos && !favorite) {
+      setArtistasProximos((prev) => {
+        const next = prev.filter((item) => item.id !== artistId);
+        artistasLenRef.current = next.length;
+        return next;
+      });
+    }
+  }, [favoriteIds, filtroFavoritos]);
 
   const emptyCopy = useMemo(() => {
     if (verArtistas) {
+      if (filtroFavoritos) {
+        return 'Nenhum artista favorito neste filtro. Toque no coração para salvar.';
+      }
       if (buscaArtistaDebounced) {
         return 'Nenhum artista encontrado com esse nome.';
       }
       if (cidade.trim() || estadoUf) {
-        return 'Nenhum artista disponível nessa região. Amplie a cidade ou o estado.';
+        return 'Nenhum artista disponível nessa região. Amplie a cidade ou limpe o estado para ver todos.';
       }
-      return 'Nenhum artista disponível por perto. Informe cidade e UF, ou cadastre seu local no perfil.';
+      return 'Nenhum artista disponível no momento.';
     }
     if (filtroFuncao) {
       return `Nenhuma publicação com a função "${filtroFuncao}" neste filtro.`;
@@ -428,7 +431,7 @@ export default function FeedScreen() {
       return 'Você ainda não publicou no feed.';
     }
     return 'Ainda não há publicações no feed.';
-  }, [filtro, verMinhas, filtroFuncao, verArtistas, buscaArtistaDebounced, cidade, estadoUf]);
+  }, [filtro, verMinhas, filtroFuncao, filtroFavoritos, verArtistas, buscaArtistaDebounced, cidade, estadoUf]);
 
   const handlePublicar = () => {
     if (!activeArtist) {
@@ -931,6 +934,7 @@ export default function FeedScreen() {
     const place = [item.city, item.state].filter(Boolean).join(' / ');
     const genre = item.musical_style?.trim() || '';
     const roles = parseArtistStringArrayFromJson(item.work_roles).slice(0, 3);
+    const favorito = favoriteIds.has(item.id);
     const openProfile = () =>
       router.push({ pathname: '/perfil-artista', params: { artistId: item.id } });
     return (
@@ -978,6 +982,17 @@ export default function FeedScreen() {
             </View>
           ) : null}
         </View>
+        <TouchableOpacity
+          onPress={() => void toggleFavorito(item.id)}
+          hitSlop={10}
+          style={styles.artistHeartBtn}
+        >
+          <Ionicons
+            name={favorito ? 'heart' : 'heart-outline'}
+            size={20}
+            color={favorito ? '#EF4444' : colors.textSecondary}
+          />
+        </TouchableOpacity>
         <View style={[styles.artistFollow, { borderColor: colors.border, marginTop: roles.length ? 4 : 0 }]}>
           <Text style={[styles.artistFollowText, { color: colors.text }]}>Ver</Text>
         </View>
@@ -1102,6 +1117,7 @@ export default function FeedScreen() {
             ]}
             onPress={() => {
               artistasAbortRef.current?.abort();
+              verArtistasRef.current = false;
               setVerArtistas(false);
             }}
             activeOpacity={0.85}
@@ -1119,7 +1135,13 @@ export default function FeedScreen() {
               marketplaceAbortRef.current?.abort();
               loadGenerationRef.current += 1;
               setVerMinhas(false);
+              verArtistasRef.current = true;
+              feedFocusedRef.current = true;
               setVerArtistas(true);
+              setLoadingArtistas(true);
+              setArtistasProximos([]);
+              artistasLenRef.current = 0;
+              void loadArtistas();
             }}
             activeOpacity={0.85}
           >
@@ -1218,6 +1240,19 @@ export default function FeedScreen() {
               </Text>
               {(verArtistas ? loadingArtistas : loading) ? (
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
+              ) : null}
+              {verArtistas ? (
+                <TouchableOpacity
+                  style={styles.filterToggle}
+                  onPress={() => setFiltroFavoritos((v) => !v)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={filtroFavoritos ? 'heart' : 'heart-outline'}
+                    size={18}
+                    color={filtroFavoritos ? '#EF4444' : colors.textSecondary}
+                  />
+                </TouchableOpacity>
               ) : null}
               <TouchableOpacity
                 style={styles.filterToggle}
@@ -1837,6 +1872,10 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   artistRoleTagText: { fontSize: 11, fontWeight: '600' },
+  artistHeartBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
   artistFollow: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8,
