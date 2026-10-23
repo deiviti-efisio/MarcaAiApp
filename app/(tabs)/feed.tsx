@@ -1308,19 +1308,28 @@ export default function FeedScreen() {
                           },
                         ]}
                       >
-                        <BrazilPlaceSearchField
-                          compact
-                          citiesOnly
-                          uf={estadoUfArtistas}
+                        <Ionicons name="location-outline" size={15} color={colors.textSecondary} />
+                        <TextInput
                           value={cidadeArtistas}
                           onChangeText={setCidadeArtistas}
-                          onSelectPlace={(place) => {
-                            setCidadeArtistas(place.city);
-                            setCidadeArtistasDebounced(place.city);
-                            if (place.uf) setEstadoUfArtistas(place.uf);
-                          }}
                           placeholder="Digite a cidade"
+                          placeholderTextColor={colors.textSecondary}
+                          style={[styles.geoInput, { color: colors.text }]}
+                          autoCorrect={false}
+                          autoCapitalize="words"
+                          returnKeyType="search"
                         />
+                        {cidadeArtistas.trim() ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setCidadeArtistas('');
+                              setCidadeArtistasDebounced('');
+                            }}
+                            hitSlop={10}
+                          >
+                            <Ionicons name="close-circle" size={15} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     </View>
                     <View style={styles.funcaoRow}>
@@ -1809,17 +1818,16 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   geoField: {
-    height: 36,
+    height: 42,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
     paddingHorizontal: 10,
-    overflow: 'visible',
   },
-  geoUf: { width: 78, zIndex: 1 },
-  geoCity: { flex: 1, zIndex: 9, overflow: 'visible' },
+  geoUf: { width: 78 },
+  geoCity: { flex: 1, minWidth: 0 },
   geoFieldText: { flex: 1, fontSize: 14, fontWeight: '700' },
   geoInput: {
     flex: 1,

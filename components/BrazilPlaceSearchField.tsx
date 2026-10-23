@@ -80,7 +80,7 @@ export default function BrazilPlaceSearchField({
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]} pointerEvents="box-none">
       <View
         style={[
           compact ? styles.compactBox : styles.box,
@@ -109,6 +109,7 @@ export default function BrazilPlaceSearchField({
           autoCorrect={false}
           autoCapitalize="words"
           returnKeyType="search"
+          pointerEvents={editable ? 'auto' : 'none'}
         />
         {loading ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         {!loading && value.trim() && editable ? (
@@ -159,6 +160,7 @@ export default function BrazilPlaceSearchField({
 
 const styles = StyleSheet.create({
   wrap: { zIndex: 30, overflow: 'visible' },
+  wrapCompact: { flex: 1, minWidth: 0, alignSelf: 'stretch' },
   box: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -170,12 +172,21 @@ const styles = StyleSheet.create({
   },
   compactBox: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    height: '100%',
   },
   input: { flex: 1, fontSize: 16, paddingVertical: 0 },
-  compactInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
+  compactInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    paddingVertical: 0,
+    margin: 0,
+    height: 34,
+  },
   dropdown: {
     marginTop: 6,
     borderWidth: StyleSheet.hairlineWidth,

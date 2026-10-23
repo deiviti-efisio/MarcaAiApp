@@ -41,7 +41,8 @@ import {
   getArtistMonthRevenueGoal,
   upsertArtistMonthRevenueGoal,
 } from '../../services/supabase/artistMonthRevenueGoalService';
-import { getEventsByMonth, getEventsByYear } from '../../services/supabase/eventService';
+import { cacheService } from '../../services/cacheService';
+import { getEventsByMonth, getEventsByMonthWithRole, getEventsByYear } from '../../services/supabase/eventService';
 import {
   deleteStandaloneExpense,
   getExpenseTotalsByEventIds,
@@ -150,10 +151,13 @@ export default function FinanceiroScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { activeArtist, refreshActiveArtist } = useActiveArtistContext();
-  const { isAdmin, canViewFinancials, permissionsLoaded } = usePermissions();
-  const { unreadCount, loadUnreadCount } = useNotifications();
+  const { isAdmin, canViewFinancials, canViewOwnEventValue, permissionsLoaded } = usePermissions();
+  const { unreadCount } = useNotifications();
   const [hasAnyArtist, setHasAnyArtist] = useState(false);
-  const hasAccess = permissionsLoaded ? Boolean(isAdmin || canViewFinancials) : null;
+  const hasAccess = permissionsLoaded
+    ? Boolean(isAdmin || canViewFinancials || canViewOwnEventValue)
+    : null;
+  const showFinancials = hasAccess !== false;
   const isCheckingAccess = Boolean(activeArtist) && !permissionsLoaded;
   const [monthRevenueGoal, setMonthRevenueGoal] = useState<number | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -167,8 +171,10 @@ export default function FinanceiroScreen() {
   const [financeViewMode, setFinanceViewMode] = useState<FinanceViewMode>('month');
   const [annualSummaryYear, setAnnualSummaryYear] = useState(() => selectedDate.getFullYear());
   const [yearMonthSummaries, setYearMonthSummaries] = useState<YearMonthSummary[]>(emptyYearSummaries);
-  const financeFocusedRef = useRef(false);
-  const financeAbortRef = useRef<AbortController | null>(null);
+  const financeLoadSeqRef = useRef(0);
+  const loadFinancialDataRef = useRef<() => Promise<void>>(async () => {});
+  const loadAnnualFinancialDataRef = useRef<() => Promise<void>>(async () => {});
+  const loadMonthRevenueGoalRef = useRef<() => Promise<void>>(async () => {});
 
   const currentMonth = selectedDate.getMonth();
   const currentYear = selectedDate.getFullYear();
@@ -233,26 +239,70 @@ export default function FinanceiroScreen() {
 
 
   const loadFinancialData = React.useCallback(async () => {
-    if (!activeArtist || !financeFocusedRef.current) {
+    const artistId = activeArtist?.id;
+    if (!artistId) {
       return;
     }
 
-    financeAbortRef.current?.abort();
-    const abort = new AbortController();
-    financeAbortRef.current = abort;
+    const seq = ++financeLoadSeqRef.current;
+    const moneyOf = (raw: unknown) => {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : 0;
+    };
 
     try {
-      setIsLoading(true);
-
-      const { events: monthEvents, error: eventsError, aborted } = await getEventsByMonth(
-        activeArtist.id,
+      const cached = await cacheService.getEventsData<Array<Record<string, unknown>>>(
+        artistId,
         currentYear,
         currentMonth,
-        abort.signal
       );
-      if (aborted || abort.signal.aborted) return;
+      if (seq !== financeLoadSeqRef.current) return;
+      if (cached && cached.length > 0) {
+        setEvents(
+          cached.map((event) => ({
+            id: String(event.id || ''),
+            name: String(event.name || ''),
+            event_date: String(event.event_date || ''),
+            created_by: event.created_by ? String(event.created_by) : undefined,
+            city: event.city ? String(event.city) : undefined,
+            value: moneyOf(event.value),
+            expenses: Array.isArray(event.expenses) ? event.expenses : [],
+            totalExpenses: moneyOf(event.totalExpenses),
+          })),
+        );
+        setIsLoading(false);
+      } else {
+        setIsLoading(true);
+      }
 
-      if (eventsError) {
+      let monthEvents: Array<{
+        id: string;
+        name: string;
+        event_date: string;
+        value?: number | null;
+        created_by?: string;
+        city?: string | null;
+      }> | undefined;
+      let eventsError: string | null = null;
+
+      const tableResult = await getEventsByMonth(artistId, currentYear, currentMonth);
+      if (seq !== financeLoadSeqRef.current) return;
+      monthEvents = tableResult.events;
+      eventsError = tableResult.error;
+
+      const tableHasMoney = (monthEvents || []).some((event) => moneyOf(event.value) > 0);
+      if ((!monthEvents || monthEvents.length === 0 || !tableHasMoney) && !eventsError) {
+        const roleResult = await getEventsByMonthWithRole(artistId, currentYear, currentMonth);
+        if (seq !== financeLoadSeqRef.current) return;
+        if (roleResult.success && roleResult.events && roleResult.events.length > 0) {
+          monthEvents = roleResult.events;
+          eventsError = null;
+        } else if (!monthEvents?.length) {
+          eventsError = roleResult.error;
+        }
+      }
+
+      if (eventsError && !monthEvents?.length) {
         if (!maybeShowConnectionError(null, eventsError)) {
           Alert.alert('Erro ao Carregar Eventos', eventsError || 'Não foi possível carregar os eventos do mês.');
         }
@@ -260,28 +310,29 @@ export default function FinanceiroScreen() {
       }
 
       const ids = (monthEvents || []).map((event) => event.id);
-      const { byEventId, aborted: expensesAborted } = await getExpensesGroupedByEventIds(ids, abort.signal);
-      if (expensesAborted || abort.signal.aborted) return;
+      const { byEventId } = await getExpensesGroupedByEventIds(ids);
+      if (seq !== financeLoadSeqRef.current) return;
 
       const eventsWithExpenses = (monthEvents || []).map((event) => {
         const expenses = byEventId?.[event.id] || [];
-        const totalExpenses = expenses.reduce((sum, expense) => sum + expense.value, 0);
+        const totalExpenses = expenses.reduce((sum, expense) => sum + moneyOf(expense.value), 0);
         return {
           ...event,
+          value: moneyOf(event.value),
           expenses,
           totalExpenses,
         };
       });
 
       setEvents(eventsWithExpenses);
+      await cacheService.setEventsData(artistId, currentYear, currentMonth, eventsWithExpenses);
 
-      const { success: expensesSuccess, expenses: standalone, aborted: standaloneAborted } = await getStandaloneExpensesByArtist(
-        activeArtist.id,
+      const { success: expensesSuccess, expenses: standalone } = await getStandaloneExpensesByArtist(
+        artistId,
         currentMonth,
         currentYear,
-        abort.signal
       );
-      if (standaloneAborted || abort.signal.aborted) return;
+      if (seq !== financeLoadSeqRef.current) return;
 
       if (expensesSuccess && standalone) {
         setStandaloneExpenses(standalone);
@@ -289,6 +340,7 @@ export default function FinanceiroScreen() {
         setStandaloneExpenses([]);
       }
     } catch (error: unknown) {
+      if (seq !== financeLoadSeqRef.current) return;
       if (!maybeShowConnectionError(error)) {
         const msg =
           error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string'
@@ -300,28 +352,26 @@ export default function FinanceiroScreen() {
         );
       }
     } finally {
-      if (!abort.signal.aborted) setIsLoading(false);
+      if (seq === financeLoadSeqRef.current) setIsLoading(false);
     }
   }, [activeArtist?.id, currentYear, currentMonth]);
 
   const loadAnnualFinancialData = React.useCallback(async () => {
-    if (!activeArtist || !financeFocusedRef.current) {
+    const artistId = activeArtist?.id;
+    if (!artistId) {
       return;
     }
 
-    financeAbortRef.current?.abort();
-    const abort = new AbortController();
-    financeAbortRef.current = abort;
+    const seq = ++financeLoadSeqRef.current;
 
     try {
       setIsLoading(true);
 
-      const { events: yearEvents, error: eventsError, aborted } = await getEventsByYear(
-        activeArtist.id,
+      const { events: yearEvents, error: eventsError } = await getEventsByYear(
+        artistId,
         annualSummaryYear,
-        abort.signal
       );
-      if (aborted || abort.signal.aborted) return;
+      if (seq !== financeLoadSeqRef.current) return;
 
       if (eventsError) {
         if (!maybeShowConnectionError(null, eventsError)) {
@@ -331,11 +381,8 @@ export default function FinanceiroScreen() {
       }
 
       const ids = (yearEvents || []).map((e) => e.id);
-      const { success: totOk, totalsByEventId, error: totErr, aborted: totAborted } = await getExpenseTotalsByEventIds(
-        ids,
-        abort.signal
-      );
-      if (totAborted || abort.signal.aborted) return;
+      const { success: totOk, totalsByEventId, error: totErr } = await getExpenseTotalsByEventIds(ids);
+      if (seq !== financeLoadSeqRef.current) return;
 
       if (!totOk || !totalsByEventId) {
         if (!maybeShowConnectionError(null, totErr)) {
@@ -344,20 +391,20 @@ export default function FinanceiroScreen() {
         return;
       }
 
-      const { success: stOk, expenses: standaloneYear, aborted: stAborted } = await getStandaloneExpensesByArtistYear(
-        activeArtist.id,
+      const { success: stOk, expenses: standaloneYear } = await getStandaloneExpensesByArtistYear(
+        artistId,
         annualSummaryYear,
-        abort.signal
       );
-      if (stAborted || abort.signal.aborted) return;
+      if (seq !== financeLoadSeqRef.current) return;
 
       const buckets = emptyYearSummaries();
 
       for (const event of yearEvents || []) {
         const mi = calendarMonthIndexFromDbDate(event.event_date);
         if (mi === null) continue;
+        const value = Number(event.value);
         buckets[mi].eventCount += 1;
-        buckets[mi].revenueFromEvents += event.value || 0;
+        buckets[mi].revenueFromEvents += Number.isFinite(value) ? value : 0;
         buckets[mi].eventLinkedExpenses += totalsByEventId[event.id] || 0;
       }
 
@@ -375,6 +422,7 @@ export default function FinanceiroScreen() {
 
       setYearMonthSummaries(buckets);
     } catch (error: unknown) {
+      if (seq !== financeLoadSeqRef.current) return;
       if (!maybeShowConnectionError(error)) {
         const msg =
           error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string'
@@ -386,50 +434,38 @@ export default function FinanceiroScreen() {
         );
       }
     } finally {
-      if (!abort.signal.aborted) setIsLoading(false);
+      if (seq === financeLoadSeqRef.current) setIsLoading(false);
     }
   }, [activeArtist?.id, annualSummaryYear]);
 
-  // Só carrega com a aba aberta. No mount das tabs isso competia com o Feed
-  // (dezenas de requests de despesa por evento e a busca de artistas ficava na fila).
+  loadFinancialDataRef.current = loadFinancialData;
+  loadAnnualFinancialDataRef.current = loadAnnualFinancialData;
+  loadMonthRevenueGoalRef.current = loadMonthRevenueGoal;
+
   useFocusEffect(
     React.useCallback(() => {
-      financeFocusedRef.current = true;
-      void loadUnreadCount();
-      if (!activeArtist || !permissionsLoaded || !(isAdmin || canViewFinancials)) {
-        return () => {
-          financeFocusedRef.current = false;
-          financeAbortRef.current?.abort();
-        };
+      const artistId = activeArtist?.id;
+      if (!artistId) {
+        return undefined;
       }
-      if (financeViewMode === 'month') {
-        void loadFinancialData();
-        if (activeArtist.id && currentUserId) {
-          void loadMonthRevenueGoal();
-        }
+      if (financeViewMode === 'year') {
+        void loadAnnualFinancialDataRef.current();
       } else {
-        void loadAnnualFinancialData();
+        void loadFinancialDataRef.current();
+        void loadMonthRevenueGoalRef.current();
       }
-      return () => {
-        financeFocusedRef.current = false;
-        financeAbortRef.current?.abort();
-      };
-    }, [
-      activeArtist?.id,
-      permissionsLoaded,
-      isAdmin,
-      canViewFinancials,
-      financeViewMode,
-      currentMonth,
-      currentYear,
-      annualSummaryYear,
-      currentUserId,
-      loadMonthRevenueGoal,
-      loadFinancialData,
-      loadAnnualFinancialData,
-      loadUnreadCount,
-    ])
+      return undefined;
+    }, [activeArtist?.id, financeViewMode, currentMonth, currentYear, annualSummaryYear])
   );
+
+  useEffect(() => {
+    if (!activeArtist?.id) return;
+    if (financeViewMode === 'year') {
+      void loadAnnualFinancialDataRef.current();
+    } else {
+      void loadFinancialDataRef.current();
+    }
+  }, [activeArtist?.id, currentMonth, currentYear, financeViewMode, annualSummaryYear]);
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
@@ -782,25 +818,24 @@ export default function FinanceiroScreen() {
     Alert.alert('✅ Copiado!', 'Relatório copiado para a área de transferência. Cole em qualquer aplicativo de mensagem.');
   };
 
-  // ✅ VERIFICAÇÃO DE SEGURANÇA: Cálculos financeiros só se tiver acesso
-  const totalRevenue = hasAccess 
-    ? events.reduce((sum, event) => sum + (event.value || 0), 0) 
+  const totalRevenue = showFinancials
+    ? events.reduce((sum, event) => sum + (Number(event.value) || 0), 0)
     : 0;
   
-  const eventsExpenses = hasAccess 
-    ? events.reduce((sum, event) => sum + event.totalExpenses, 0) 
+  const eventsExpenses = showFinancials
+    ? events.reduce((sum, event) => sum + (Number(event.totalExpenses) || 0), 0)
     : 0;
   
   // Separar despesas (valor > 0) e receitas (valor < 0)
   const standaloneExpensesOnly = standaloneExpenses.filter(item => item.value > 0);
   const standaloneIncome = standaloneExpenses.filter(item => item.value < 0);
   
-  const standaloneExpensesTotal = hasAccess
-    ? standaloneExpensesOnly.reduce((sum, expense) => sum + (expense.value || 0), 0)
+  const standaloneExpensesTotal = showFinancials
+    ? standaloneExpensesOnly.reduce((sum, expense) => sum + (Number(expense.value) || 0), 0)
     : 0;
   
-  const standaloneIncomeTotal = hasAccess
-    ? Math.abs(standaloneIncome.reduce((sum, income) => sum + (income.value || 0), 0))
+  const standaloneIncomeTotal = showFinancials
+    ? Math.abs(standaloneIncome.reduce((sum, income) => sum + (Number(income.value) || 0), 0))
     : 0;
   
   const totalExpenses = eventsExpenses + standaloneExpensesTotal;
@@ -1017,13 +1052,13 @@ export default function FinanceiroScreen() {
         <View style={styles.eventInfo}>
           <View style={styles.eventNameContainer}>
             <Text style={[styles.eventName, { color: colors.text }]}>{item.name}</Text>
-            {!hasAccess && (
+            {!showFinancials && (
               <Ionicons name="lock-closed" size={16} color={colors.textSecondary} style={{ marginLeft: 8 }} />
             )}
           </View>
           <Text style={[styles.eventDate, { color: colors.textSecondary }]}>{formatDate(item.event_date)}</Text>
         </View>
-        {hasAccess ? (
+        {showFinancials ? (
           <View style={styles.eventValues}>
             <View style={styles.eventValueRow}>
               <Text style={[styles.eventValueLabel, { color: colors.textSecondary }]}>Receita:</Text>
@@ -1056,7 +1091,7 @@ export default function FinanceiroScreen() {
         )}
       </View>
       
-      {hasAccess && item.expenses.length > 0 && (
+      {showFinancials && item.expenses.length > 0 && (
         <View style={[styles.expensesSection, { borderTopColor: colors.border }]}>
           <Text style={[styles.expensesTitle, { color: colors.text }]}>Despesas:</Text>
           <FlatList
@@ -1339,7 +1374,7 @@ export default function FinanceiroScreen() {
               Toque em um mês para ver o financeiro daquele mês
             </Text>
 
-            {hasAccess ? (
+            {showFinancials ? (
               <View style={styles.summaryContainer}>
                 <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
                   <Text style={[styles.summaryLabel, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -1531,7 +1566,7 @@ export default function FinanceiroScreen() {
         ) : (
           <>
         {/* Resumo financeiro */}
-        {hasAccess ? (
+        {showFinancials ? (
           <View style={styles.summaryContainer}>
             <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
               <Text style={[styles.summaryLabel, { color: colors.textSecondary }]} numberOfLines={1}>
