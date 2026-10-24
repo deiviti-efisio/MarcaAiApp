@@ -77,7 +77,11 @@ function isParticipationCanceledByGuestNotification(n: Notification): boolean {
   return (
     title.includes("participação cancelada") ||
     title.includes("cancelada pelo convidado") ||
-    msg.includes("cancelou a participação")
+    title.includes("interessado cancelou") ||
+    title.includes("parceiro cancelou") ||
+    title.includes("parceria cancelada") ||
+    msg.includes("cancelou a participação") ||
+    msg.includes("cancelou a parceria")
   );
 }
 

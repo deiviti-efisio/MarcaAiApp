@@ -704,6 +704,19 @@ export default function AgendaScreen() {
           map[row.id] = row.convite_participacao_id;
         }
       });
+      const missingIds = eventIds.filter((id) => !map[id]);
+      if (missingIds.length > 0) {
+        const { data: origemConvites } = await supabase
+          .from("convite_participacao_evento")
+          .select("id, evento_origem_id")
+          .eq("status", "aceito")
+          .in("evento_origem_id", missingIds);
+        (origemConvites || []).forEach((row: { id?: string; evento_origem_id?: string }) => {
+          if (row?.id && row?.evento_origem_id && !map[row.evento_origem_id]) {
+            map[row.evento_origem_id] = row.id;
+          }
+        });
+      }
       if (!cancelled) setConviteIdByEventId(map);
     };
     void loadConviteIdsByEvent();
@@ -1179,7 +1192,7 @@ export default function AgendaScreen() {
     if (event.convite_participacao_id) {
       Alert.alert(
         "Edição bloqueada",
-        "Este evento veio de um convite de participação e não pode ser alterado após o aceite.",
+        "Esta data é uma parceria. Não dá para editar. Só cancelar a participação.",
       );
       return;
     }
@@ -1582,8 +1595,8 @@ export default function AgendaScreen() {
         loadEvents(true);
       }
       Alert.alert(
-        "Participação cancelada",
-        "Seu cancelamento foi enviado para quem convidou.",
+        "Parceria cancelada",
+        "O outro artista foi avisado. A data sai da agenda dos dois.",
       );
     } finally {
       setIsCancellingInviteParticipation(false);
@@ -2731,7 +2744,17 @@ export default function AgendaScreen() {
                     { color: colors.text },
                   ]}
                 >
-                  Evento de participação
+                  Parceria na agenda
+                </Text>
+                <Text
+                  style={[
+                    styles.inviteInfoLine,
+                    { color: colors.textSecondary, marginBottom: 8 },
+                  ]}
+                >
+                  Você não edita data, horário nem cachê. Só cancela a
+                  participação — o outro artista é avisado e a data some nos
+                  dois.
                 </Text>
                 {selectedInviteEventInfo ? (
                   <ScrollView
@@ -2892,7 +2915,7 @@ export default function AgendaScreen() {
                     >
                       {isCancellingInviteParticipation
                         ? "Cancelando..."
-                        : "Cancelar o evento"}
+                        : "Cancelar participação"}
                     </Text>
                   </TouchableOpacity>
                 </View>

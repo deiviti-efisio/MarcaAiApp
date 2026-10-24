@@ -466,9 +466,8 @@ WHERE COALESCE(e.ativo, true) = true
     ) k
   );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_events_um_ativo_por_convite
+CREATE INDEX IF NOT EXISTS idx_events_convite_participacao
   ON public.events (convite_participacao_id)
-  WHERE convite_participacao_id IS NOT NULL
-    AND COALESCE(ativo, true) = true;
+  WHERE convite_participacao_id IS NOT NULL;
 
 NOTIFY pgrst, 'reload schema';

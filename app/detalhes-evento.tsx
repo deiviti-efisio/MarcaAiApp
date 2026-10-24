@@ -1173,12 +1173,12 @@ export default function DetalhesEventoScreen() {
 
     if (isInviteEvent) {
       Alert.alert(
-        "Cancelar o evento",
-        `Cancelar a participação em "${event?.name}"? Quem te convidou será avisado.`,
+        "Cancelar participação",
+        `Cancelar a parceria em "${event?.name}"? O outro artista recebe um aviso claro e a data some da agenda dos dois.`,
         [
           { text: "Voltar", style: "cancel" },
           {
-            text: "Cancelar o evento",
+            text: "Cancelar participação",
             style: "destructive",
             onPress: () => void confirmCancelInviteEvent(),
           },
@@ -1248,7 +1248,7 @@ export default function DetalhesEventoScreen() {
         Alert.alert("Erro", error || "Não foi possível cancelar o evento.");
         return;
       }
-      Alert.alert("Evento cancelado", "Seu cancelamento foi enviado para quem convidou.", [
+      Alert.alert("Parceria cancelada", "O outro artista foi avisado. A data sai da agenda dos dois.", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } finally {
@@ -1985,8 +1985,8 @@ export default function DetalhesEventoScreen() {
                     { color: colors.textSecondary, marginLeft: 0 },
                   ]}
                 >
-                  Este evento foi criado ao aceitar um convite de participação
-                  do artista{" "}
+                  Parceria: você não edita data, horário nem cachê. Só cancela a
+                  participação. Artista:{" "}
                   <Text style={{ fontWeight: "700", color: colors.text }}>
                     {participationFromInviteBanner}
                   </Text>
@@ -2830,7 +2830,7 @@ export default function DetalhesEventoScreen() {
                   ? "Cancelando..."
                   : "Deletando..."
                 : isInviteEvent
-                  ? "Cancelar o evento"
+                  ? "Cancelar participação"
                   : "Deletar Evento"}
             </Text>
             {!canManageOwnEvent && (

@@ -33,6 +33,7 @@ import {
 } from '../services/supabase/conviteParticipacaoEventoService';
 import { supabase } from '../lib/supabase';
 import { useActiveArtist } from '../services/useActiveArtist';
+import ParceriaFeitaModal from '../components/ParceriaFeitaModal';
 import { buildWhatsAppUrl } from '../utils/brazilPhone';
 
 function formatTime(t: string) {
@@ -75,6 +76,10 @@ export default function ConvitesParticipacaoEventoScreen() {
   const [selectedRejectInvite, setSelectedRejectInvite] = useState<ConviteParticipacaoEventoRow | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [selectedAcceptInvite, setSelectedAcceptInvite] = useState<ConviteParticipacaoEventoRow | null>(null);
+  const [parceriaFeita, setParceriaFeita] = useState<{
+    partnerName: string;
+    eventName: string | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     if (!activeArtist?.id) {
@@ -155,13 +160,14 @@ export default function ConvitesParticipacaoEventoScreen() {
       { funcaoParticipacao: selectedAcceptInvite.funcao_participacao ?? null }
     );
     if (success) {
+      const convite = selectedAcceptInvite;
       setShowAcceptModal(false);
       setSelectedAcceptInvite(null);
       void load();
-      Alert.alert('Sucesso', 'Evento adicionado à sua agenda.', [
-        { text: 'OK', style: 'default' },
-        { text: 'Ver agenda', onPress: () => router.push('/(tabs)/agenda') },
-      ]);
+      setParceriaFeita({
+        partnerName: names[convite.artista_que_convidou_id] || 'o anunciante',
+        eventName: convite.nome_evento?.trim() || null,
+      });
     } else {
       const msg = (error || '').trim();
       const msgLower = msg.toLowerCase();
@@ -530,6 +536,17 @@ export default function ConvitesParticipacaoEventoScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+      <ParceriaFeitaModal
+        visible={!!parceriaFeita}
+        partnerName={parceriaFeita?.partnerName}
+        eventName={parceriaFeita?.eventName}
+        continueLabel="Fechar"
+        onClose={() => setParceriaFeita(null)}
+        onVerAgenda={() => {
+          setParceriaFeita(null);
+          router.push('/(tabs)/agenda');
+        }}
+      />
     </SafeAreaView>
   );
 }

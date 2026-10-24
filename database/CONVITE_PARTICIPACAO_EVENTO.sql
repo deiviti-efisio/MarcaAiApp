@@ -93,7 +93,8 @@ BEGIN
   END IF;
 END $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_events_convite_participacao_unico
+-- Parceria: o mesmo convite pode estar na agenda dos dois artistas.
+CREATE INDEX IF NOT EXISTS idx_events_convite_participacao
   ON events (convite_participacao_id)
   WHERE convite_participacao_id IS NOT NULL;
 

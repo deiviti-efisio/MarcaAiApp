@@ -24,6 +24,7 @@ import ArtistReviewsModal from '../../components/ArtistReviewsModal';
 import PermissionModal from '../../components/PermissionModal';
 import FeedComoFuncionaModal from '../../components/FeedComoFuncionaModal';
 import PropostaEnviadaModal from '../../components/PropostaEnviadaModal';
+import ParceriaFeitaModal from '../../components/ParceriaFeitaModal';
 import BrazilStatePickerModal from '../../components/BrazilStatePickerModal';
 import BrazilPlaceSearchField from '../../components/BrazilPlaceSearchField';
 import FeedFuncaoPickerModal, { FeedFuncaoFieldButton } from '../../components/FeedFuncaoPickerModal';
@@ -129,6 +130,14 @@ export default function FeedScreen() {
   } | null>(null);
   const [anuncioMenu, setAnuncioMenu] = useState<FeedAnuncio | null>(null);
   const [aceitandoConviteId, setAceitandoConviteId] = useState<string | null>(null);
+  const [aceiteInteresse, setAceiteInteresse] = useState<{
+    item: FeedAnuncio;
+    proposta: FeedProposta;
+  } | null>(null);
+  const [parceriaFeita, setParceriaFeita] = useState<{
+    partnerName: string;
+    eventName: string | null;
+  } | null>(null);
   const [showComoFunciona, setShowComoFunciona] = useState(false);
   const [showFiltros, setShowFiltros] = useState(false);
 
@@ -605,7 +614,7 @@ export default function FeedScreen() {
     return funcao ? `${proposta.artista_nome} - ${funcao}` : proposta.artista_nome;
   };
 
-  const aceitarPropostaFeed = async (_item: FeedAnuncio, proposta: FeedProposta) => {
+  const aceitarPropostaFeed = async (item: FeedAnuncio, proposta: FeedProposta) => {
     if (!activeArtist?.id || aceitandoConviteId) return;
     setAceitandoConviteId(proposta.convite_id);
     const {
@@ -621,29 +630,16 @@ export default function FeedScreen() {
       Alert.alert('Não foi possível aceitar', err || 'Tente novamente.');
       return;
     }
+    setAceiteInteresse(null);
     void load();
-    Alert.alert(
-      'Aceito',
-      `Despesa lançada: ${nomeDespesaProposta(proposta)}. O evento entrou na agenda dos dois artistas.`
-    );
+    setParceriaFeita({
+      partnerName: proposta.artista_nome,
+      eventName: item.evento_nome?.trim() || null,
+    });
   };
 
   const handlePropostaPress = (item: FeedAnuncio, proposta: FeedProposta) => {
-    if (proposta.status === 'aceito') {
-      Alert.alert('Proposta aceita', 'Este artista já está na agenda deste evento.');
-      return;
-    }
-    Alert.alert(
-      'Aceitar interesse',
-      `Confirmar ${proposta.artista_nome} nesta oportunidade?\n\nO cachê entra como despesa: ${nomeDespesaProposta(proposta)}.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Aceitar',
-          onPress: () => void aceitarPropostaFeed(item, proposta),
-        },
-      ]
-    );
+    setAceiteInteresse({ item, proposta });
   };
 
   const handleEditar = (item: FeedAnuncio) => {
@@ -976,8 +972,8 @@ export default function FeedScreen() {
                     </Text>
                     <Text style={[styles.propostaMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                       {proposta.status === 'aceito'
-                        ? 'Aceita · toque para ver'
-                        : 'Candidato · toque para aceitar'}
+                        ? 'Já aceito nesta oportunidade'
+                        : 'Quer participar · toque para ver'}
                     </Text>
                   </View>
                   {aceitandoConviteId === proposta.convite_id ? (
@@ -1718,6 +1714,16 @@ export default function FeedScreen() {
         onClose={() => setReviewsArtist(null)}
       />
       <FeedComoFuncionaModal visible={showComoFunciona} onClose={fecharComoFunciona} />
+      <ParceriaFeitaModal
+        visible={!!parceriaFeita}
+        partnerName={parceriaFeita?.partnerName}
+        eventName={parceriaFeita?.eventName}
+        onClose={() => setParceriaFeita(null)}
+        onVerAgenda={() => {
+          setParceriaFeita(null);
+          router.push('/(tabs)/agenda');
+        }}
+      />
       <PermissionModal
         visible={showPermissionModal}
         onClose={() => setShowPermissionModal(false)}
@@ -1757,6 +1763,187 @@ export default function FeedScreen() {
           })();
         }}
       />
+      <Modal
+        visible={!!aceiteInteresse}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!aceitandoConviteId) setAceiteInteresse(null);
+        }}
+      >
+        <Pressable
+          style={styles.acceptOverlay}
+          onPress={() => {
+            if (!aceitandoConviteId) setAceiteInteresse(null);
+          }}
+        >
+          <Pressable
+            style={[styles.acceptCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {aceiteInteresse ? (
+              <>
+                {(() => {
+                  const { item, proposta } = aceiteInteresse;
+                  const jaAceito = proposta.status === 'aceito';
+                  const funcao =
+                    proposta.funcao && proposta.funcao.trim().toLowerCase() !== 'interesse'
+                      ? proposta.funcao.trim()
+                      : null;
+                  const nomeOportunidade = item.evento_nome?.trim() || 'esta oportunidade';
+                  const quando = [
+                    weekdayFromCalendarDate(item.event_date),
+                    formatCalendarDate(item.event_date),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  const horario = [formatTime(item.start_time), formatTime(item.end_time)]
+                    .filter(Boolean)
+                    .join(' – ');
+                  const local = formatCityAndRegion({ city: item.city, state_uf: item.state_uf });
+                  const cacheTxt =
+                    item.cache_valor != null
+                      ? Number(item.cache_valor).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })
+                      : null;
+                  const initial = proposta.artista_nome.trim().charAt(0).toUpperCase() || '?';
+                  return (
+                    <>
+                      <Text style={[styles.acceptKicker, { color: colors.primary }]}>
+                        {jaAceito ? 'Interesse aceito' : 'Quem demonstrou interesse'}
+                      </Text>
+                      <View style={styles.acceptWhoRow}>
+                        <View
+                          style={[
+                            styles.acceptAvatar,
+                            { backgroundColor: colors.background, borderColor: colors.border },
+                          ]}
+                        >
+                          {proposta.artista_image ? (
+                            <OptimizedImage
+                              imageUrl={proposta.artista_image}
+                              style={styles.acceptAvatarImg}
+                              fallbackIcon="person"
+                              fallbackIconSize={18}
+                            />
+                          ) : (
+                            <Text style={[styles.acceptAvatarInitial, { color: colors.primary }]}>
+                              {initial}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={[styles.acceptWhoName, { color: colors.text }]} numberOfLines={2}>
+                            {proposta.artista_nome}
+                          </Text>
+                          <Text style={[styles.acceptWhoRole, { color: colors.textSecondary }]}>
+                            {funcao
+                              ? `Interessado como ${funcao}`
+                              : 'Artista interessado na sua oportunidade'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.acceptBox,
+                          { backgroundColor: colors.background, borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.acceptBoxLabel, { color: colors.textSecondary }]}>
+                          Oportunidade
+                        </Text>
+                        <Text style={[styles.acceptBoxValue, { color: colors.text }]}>
+                          {nomeOportunidade}
+                        </Text>
+                        {quando ? (
+                          <Text style={[styles.acceptBoxMeta, { color: colors.text }]}>{quando}</Text>
+                        ) : null}
+                        {horario ? (
+                          <Text style={[styles.acceptBoxMeta, { color: colors.textSecondary }]}>
+                            Horário {horario}
+                          </Text>
+                        ) : null}
+                        {local ? (
+                          <Text style={[styles.acceptBoxMeta, { color: colors.textSecondary }]}>
+                            {local}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {cacheTxt ? (
+                        <View
+                          style={[
+                            styles.acceptBox,
+                            { backgroundColor: colors.background, borderColor: colors.border },
+                          ]}
+                        >
+                          <Text style={[styles.acceptBoxLabel, { color: colors.textSecondary }]}>
+                            Cachê (vira despesa)
+                          </Text>
+                          <Text style={[styles.acceptBoxValue, { color: colors.text }]}>{cacheTxt}</Text>
+                          <Text style={[styles.acceptBoxMeta, { color: colors.textSecondary }]}>
+                            Lançada no financeiro como {nomeDespesaProposta(proposta)}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {proposta.mensagem?.trim() ? (
+                        <View
+                          style={[
+                            styles.acceptBox,
+                            { backgroundColor: colors.background, borderColor: colors.border },
+                          ]}
+                        >
+                          <Text style={[styles.acceptBoxLabel, { color: colors.textSecondary }]}>
+                            Recado de {proposta.artista_nome.split(' ')[0]}
+                          </Text>
+                          <Text style={[styles.acceptBoxMeta, { color: colors.text }]}>
+                            {proposta.mensagem.trim()}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      <Text style={[styles.acceptHint, { color: colors.textSecondary }]}>
+                        {jaAceito
+                          ? 'Este artista já está na agenda desta oportunidade.'
+                          : 'Ao aceitar, o show entra na agenda dos dois artistas, o cachê vira despesa e o anúncio sai do mural.'}
+                      </Text>
+
+                      <View style={styles.acceptActions}>
+                        <TouchableOpacity
+                          style={[styles.btnOutline, { borderColor: colors.border, flex: 1 }]}
+                          onPress={() => setAceiteInteresse(null)}
+                          disabled={!!aceitandoConviteId}
+                        >
+                          <Text style={[styles.btnOutlineText, { color: colors.textSecondary }]}>
+                            {jaAceito ? 'Fechar' : 'Agora não'}
+                          </Text>
+                        </TouchableOpacity>
+                        {!jaAceito ? (
+                          <TouchableOpacity
+                            style={[styles.btnPrimary, { backgroundColor: colors.primary, flex: 1 }]}
+                            onPress={() => void aceitarPropostaFeed(item, proposta)}
+                            disabled={!!aceitandoConviteId}
+                          >
+                            {aceitandoConviteId === proposta.convite_id ? (
+                              <ActivityIndicator color="#fff" />
+                            ) : (
+                              <Text style={styles.btnPrimaryText}>Aceitar interesse</Text>
+                            )}
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    </>
+                  );
+                })()}
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal
         visible={!!anuncioMenu}
         transparent
@@ -2299,6 +2486,62 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
+  acceptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  acceptCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  acceptKicker: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  acceptWhoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  acceptAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptAvatarImg: { width: 52, height: 52 },
+  acceptAvatarInitial: { fontSize: 20, fontWeight: '800' },
+  acceptWhoName: { fontSize: 18, fontWeight: '800' },
+  acceptWhoRole: { fontSize: 13, marginTop: 2, lineHeight: 18 },
+  acceptBox: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  acceptBoxLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  acceptBoxValue: { fontSize: 16, fontWeight: '800' },
+  acceptBoxMeta: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  acceptHint: { fontSize: 13, lineHeight: 18 },
+  acceptActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
   sheetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
