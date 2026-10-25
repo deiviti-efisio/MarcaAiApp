@@ -755,13 +755,6 @@ export default function ConfiguracoesScreen() {
                 () => router.push('/convites-enviados')
               )}
 
-              {renderSettingItem(
-                'trophy',
-                'Parceiros frequentes',
-                'Quem mais aceitou participar nos seus eventos',
-                () => router.push('/parceiros-frequentes')
-              )}
-
               {isArtistAdminRole(currentArtist.role) &&
                 renderSettingItem(
                   'document-text-outline',
@@ -772,6 +765,24 @@ export default function ConfiguracoesScreen() {
             </View>
           </View>
         )}
+
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Eventos</Text>
+          <View style={dynamicStyles.settingsCard}>
+            {renderSettingItem(
+              'calendar-outline',
+              'Collabs e parcerias',
+              'Oportunidades do feed e convites em eventos já criados',
+              () => router.push('/cancelamentos')
+            )}
+            {renderSettingItem(
+              'trophy',
+              'Parcerias frequentes',
+              'Quem mais aceitou participar nos seus eventos',
+              () => router.push('/parceiros-frequentes')
+            )}
+          </View>
+        </View>
 
         {/* Seção: Preferências do App */}
         <View style={dynamicStyles.section}>

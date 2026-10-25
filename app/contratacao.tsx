@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AcaoConcluidaModal from '../components/AcaoConcluidaModal';
 import CancelamentoPedidoModal from '../components/CancelamentoPedidoModal';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -54,8 +57,10 @@ function StarRow({
 export default function ContratacaoScreen() {
   const { colors } = useTheme();
   const { activeArtist } = useActiveArtistContext();
-  const params = useLocalSearchParams<{ conviteId?: string }>();
+  const params = useLocalSearchParams<{ conviteId?: string; somenteLeitura?: string }>();
   const conviteId = typeof params.conviteId === 'string' ? params.conviteId : '';
+  const somenteLeitura =
+    params.somenteLeitura === '1' || params.somenteLeitura === 'true';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +77,15 @@ export default function ContratacaoScreen() {
   const [notaD, setNotaD] = useState(0);
   const [comentario, setComentario] = useState('');
   const [showCancelOk, setShowCancelOk] = useState(false);
+  const [pronto, setPronto] = useState<{
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    title: string;
+    subtitle: string;
+    message: string;
+    primaryLabel?: string;
+    primaryToAgenda?: boolean;
+    primaryChat?: boolean;
+  } | null>(null);
 
   const load = useCallback(async () => {
     if (!conviteId) {
@@ -151,7 +165,10 @@ export default function ContratacaoScreen() {
     });
   };
 
-  const run = async (fn: () => Promise<{ success: boolean; error: string | null }>, ok: string) => {
+  const run = async (
+    fn: () => Promise<{ success: boolean; error: string | null }>,
+    feedback: NonNullable<typeof pronto>
+  ) => {
     setSaving(true);
     const res = await fn();
     setSaving(false);
@@ -159,7 +176,7 @@ export default function ContratacaoScreen() {
       Alert.alert('Não foi possível', res.error || 'Tente de novo.');
       return;
     }
-    Alert.alert('Pronto', ok);
+    setPronto(feedback);
     await load();
   };
 
@@ -189,7 +206,9 @@ export default function ContratacaoScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Contratação</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {somenteLeitura ? 'Detalhes' : 'Contratação'}
+        </Text>
         <View style={styles.backBtn} />
       </View>
 
@@ -204,7 +223,16 @@ export default function ContratacaoScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
+        >
           <View style={[styles.badge, { backgroundColor: `${colors.primary}18` }]}>
             <Text style={[styles.badgeText, { color: colors.primary }]}>
               {rotuloCicloStatus(item.ciclo_status)}
@@ -268,6 +296,8 @@ export default function ContratacaoScreen() {
               </Text>
               {jaConfirmeiShow ? (
                 <Text style={[styles.meta, { color: colors.primary }]}>Você já confirmou a realização.</Text>
+              ) : somenteLeitura ? (
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>Confirmação pendente da sua parte.</Text>
               ) : (
                 <TouchableOpacity
                   style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
@@ -275,7 +305,13 @@ export default function ContratacaoScreen() {
                   onPress={() =>
                     void run(
                       () => confirmarRealizacaoContratacao(item.id),
-                      'Confirmação registrada. A avaliação libera quando as duas partes confirmarem.'
+                      {
+                        icon: 'checkmark-circle',
+                        title: 'Show confirmado',
+                        subtitle: 'Sua parte está registrada',
+                        message:
+                          'Quando as duas partes confirmarem, a avaliação libera e entra no perfil.',
+                      }
                     )
                   }
                 >
@@ -285,7 +321,7 @@ export default function ContratacaoScreen() {
             </View>
           ) : null}
 
-          {podeAvaliar && !cancelado && souParte ? (
+          {podeAvaliar && !cancelado && souParte && !somenteLeitura ? (
             <View style={[styles.box, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>
                 Avaliar {nomes[outroId] || 'parceiro'}
@@ -314,7 +350,16 @@ export default function ContratacaoScreen() {
                 placeholder="Comentário público (opcional)"
                 placeholderTextColor={colors.textSecondary}
                 multiline
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                textAlignVertical="top"
+                style={[
+                  styles.input,
+                  styles.inputMultiline,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
               />
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
@@ -331,7 +376,13 @@ export default function ContratacaoScreen() {
                         notaD: notaD || null,
                         comentario,
                       }),
-                    'Avaliação salva. Ela entra na média do perfil.'
+                    {
+                      icon: 'star',
+                      title: 'Avaliação enviada',
+                      subtitle: 'Obrigado pelo feedback',
+                      message:
+                        'Sua nota entra na média do perfil do parceiro e ajuda outros artistas na hora de fechar show.',
+                    }
                   )
                 }
               >
@@ -371,16 +422,26 @@ export default function ContratacaoScreen() {
             </View>
           ) : null}
 
-          {euRespondo && pendente ? (
+          {euRespondo && pendente && !somenteLeitura ? (
             <View style={[styles.box, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>Responder cancelamento</Text>
               <Text style={[styles.value, { color: colors.text }]}>{pendente.motivo}</Text>
               <TextInput
                 value={respostaNota}
                 onChangeText={setRespostaNota}
-                placeholder="Nota (opcional)"
+                placeholder="Escreva uma nota (opcional)"
                 placeholderTextColor={colors.textSecondary}
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                multiline
+                textAlignVertical="top"
+                style={[
+                  styles.input,
+                  styles.inputMultiline,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
               />
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: saving ? 0.7 : 1 }]}
@@ -393,7 +454,15 @@ export default function ContratacaoScreen() {
                         aceitar: true,
                         nota: respostaNota,
                       }),
-                    'Cancelamento aceito. A data sai da agenda dos dois. O histórico permanece.'
+                    {
+                      icon: 'calendar-outline',
+                      title: 'Cancelamento aceito',
+                      subtitle: 'A parceria foi encerrada',
+                      message:
+                        'A data sai da agenda dos dois. O histórico da contratação permanece no perfil.',
+                      primaryLabel: 'Ver na agenda',
+                      primaryToAgenda: true,
+                    }
                   )
                 }
               >
@@ -410,7 +479,15 @@ export default function ContratacaoScreen() {
                         aceitar: false,
                         nota: respostaNota,
                       }),
-                    'Você contestou. A contratação fica em análise e a data permanece na agenda.'
+                    {
+                      icon: 'shield-checkmark',
+                      title: 'Cancelamento contestado',
+                      subtitle: 'A data permanece na agenda',
+                      message:
+                        'A contratação fica em análise. Vocês podem conversar e resolver o combinado sem multa automática no app.',
+                      primaryLabel: 'Conversar agora',
+                      primaryChat: true,
+                    }
                   )
                 }
               >
@@ -419,7 +496,7 @@ export default function ContratacaoScreen() {
             </View>
           ) : null}
 
-          {podePedirCancel ? (
+          {podePedirCancel && !somenteLeitura ? (
             <View style={[styles.box, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>Solicitar cancelamento</Text>
               <Text style={[styles.meta, { color: colors.textSecondary }]}>
@@ -448,14 +525,30 @@ export default function ContratacaoScreen() {
                 placeholder="Descrição opcional"
                 placeholderTextColor={colors.textSecondary}
                 multiline
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                textAlignVertical="top"
+                style={[
+                  styles.input,
+                  styles.inputMultiline,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
               />
               <TextInput
                 value={pagamento}
                 onChangeText={setPagamento}
                 placeholder="Adiantamento / pagamento (opcional)"
                 placeholderTextColor={colors.textSecondary}
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
               />
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: colors.error, opacity: saving ? 0.7 : 1 }]}
@@ -467,8 +560,31 @@ export default function ContratacaoScreen() {
             </View>
           ) : null}
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
+      <AcaoConcluidaModal
+        visible={!!pronto}
+        icon={pronto?.icon}
+        title={pronto?.title || 'Pronto'}
+        subtitle={pronto?.subtitle}
+        message={pronto?.message || ''}
+        primaryLabel={pronto?.primaryLabel}
+        onPrimary={
+          pronto?.primaryToAgenda
+            ? () => {
+                setPronto(null);
+                router.push('/(tabs)/agenda');
+              }
+            : pronto?.primaryChat
+              ? () => {
+                  setPronto(null);
+                  abrirChat();
+                }
+              : undefined
+        }
+        onClose={() => setPronto(null)}
+      />
       <CancelamentoPedidoModal
         visible={showCancelOk}
         partnerName={outroId ? nomes[outroId] : null}
@@ -500,7 +616,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, padding: 8 },
   headerTitle: { fontSize: 17, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  content: { padding: 16, paddingBottom: 40, gap: 12 },
+  content: { padding: 16, paddingBottom: 120, gap: 12 },
   badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   badgeText: { fontSize: 12, fontWeight: '800' },
   title: { fontSize: 22, fontWeight: '800' },
@@ -512,9 +628,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginTop: 8,
-    minHeight: 44,
+    minHeight: 48,
+    fontSize: 16,
+    lineHeight: 22,
+    width: '100%',
+  },
+  inputMultiline: {
+    minHeight: 96,
+    paddingTop: 12,
   },
   primaryBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 12 },
   primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },

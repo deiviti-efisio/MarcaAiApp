@@ -609,4 +609,212 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.rpc_app_avaliacoes_pendentes_artista(UUID) TO authenticated;
 
+DROP FUNCTION IF EXISTS public.rpc_app_listar_cancelamentos_artista(UUID, INT);
+
+CREATE OR REPLACE FUNCTION public.rpc_app_listar_cancelamentos_artista(
+  p_artista_id UUID,
+  p_limite INT DEFAULT 80
+)
+RETURNS TABLE (
+  convite_id UUID,
+  nome_evento TEXT,
+  data_evento DATE,
+  hora_inicio TEXT,
+  hora_fim TEXT,
+  cidade TEXT,
+  estado_uf TEXT,
+  status_convite TEXT,
+  ciclo_status TEXT,
+  motivo_cancelamento TEXT,
+  anfitriao_id UUID,
+  anfitriao_nome TEXT,
+  convidado_id UUID,
+  convidado_nome TEXT,
+  solicitado_por_artista_id UUID,
+  solicitado_por_nome TEXT,
+  motivo TEXT,
+  descricao TEXT,
+  pagamento_info TEXT,
+  solicitacao_status TEXT,
+  respondido_por_artista_id UUID,
+  respondido_por_nome TEXT,
+  resposta_nota TEXT,
+  solicitado_em TIMESTAMPTZ,
+  respondido_em TIMESTAMPTZ
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT
+    c.id,
+    c.nome_evento,
+    c.data_evento,
+    c.hora_inicio::text,
+    c.hora_fim::text,
+    c.cidade,
+    c.estado_uf,
+    c.status,
+    COALESCE(c.ciclo_status, CASE WHEN c.status = 'cancelado' THEN 'cancelled' ELSE NULL END),
+    c.motivo_cancelamento,
+    c.artista_que_convidou_id,
+    COALESCE(ah.name, 'Artista'),
+    c.artista_convidado_id,
+    COALESCE(ac.name, 'Artista'),
+    s.solicitado_por_artista_id,
+    asolic.name,
+    COALESCE(NULLIF(trim(s.motivo), ''), NULLIF(trim(c.motivo_cancelamento), '')),
+    s.descricao,
+    s.pagamento_info,
+    s.status,
+    s.respondido_por_artista_id,
+    aresp.name,
+    s.resposta_nota,
+    s.criado_em,
+    COALESCE(s.respondido_em, c.respondido_em)
+  FROM public.convite_participacao_evento c
+  LEFT JOIN LATERAL (
+    SELECT *
+    FROM public.contratacao_cancelamento_solicitacoes x
+    WHERE x.convite_id = c.id
+    ORDER BY x.criado_em DESC
+    LIMIT 1
+  ) s ON true
+  LEFT JOIN public.artists ah ON ah.id = c.artista_que_convidou_id
+  LEFT JOIN public.artists ac ON ac.id = c.artista_convidado_id
+  LEFT JOIN public.artists asolic ON asolic.id = s.solicitado_por_artista_id
+  LEFT JOIN public.artists aresp ON aresp.id = s.respondido_por_artista_id
+  WHERE public._is_member_of_artist(auth.uid(), p_artista_id, NULL)
+    AND (c.artista_que_convidou_id = p_artista_id OR c.artista_convidado_id = p_artista_id)
+    AND (
+      c.status = 'cancelado'
+      OR COALESCE(c.ciclo_status, '') IN (
+        'cancelled',
+        'cancelled_by_mutual_agreement',
+        'cancellation_requested',
+        'under_review'
+      )
+      OR s.id IS NOT NULL
+    )
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%leilão%'
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%Anúncio encerrado%'
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%Proposta desfeita%'
+  ORDER BY COALESCE(s.criado_em, c.atualizado_em, c.respondido_em, c.criado_em) DESC
+  LIMIT GREATEST(1, LEAST(COALESCE(p_limite, 80), 200));
+$$;
+
+GRANT EXECUTE ON FUNCTION public.rpc_app_listar_cancelamentos_artista(UUID, INT) TO authenticated;
+
+DROP FUNCTION IF EXISTS public.rpc_app_listar_eventos_parceria_artista(UUID, INT);
+DROP FUNCTION IF EXISTS public.rpc_app_listar_eventos_parceria_artista(UUID, INT, TEXT);
+
+CREATE OR REPLACE FUNCTION public.rpc_app_listar_eventos_parceria_artista(
+  p_artista_id UUID,
+  p_dias INT DEFAULT 0,
+  p_origem TEXT DEFAULT 'collab'
+)
+RETURNS TABLE (
+  convite_id UUID,
+  nome_evento TEXT,
+  data_evento DATE,
+  hora_inicio TEXT,
+  hora_fim TEXT,
+  cidade TEXT,
+  estado_uf TEXT,
+  status_convite TEXT,
+  ciclo_status TEXT,
+  motivo_cancelamento TEXT,
+  anfitriao_id UUID,
+  anfitriao_nome TEXT,
+  convidado_id UUID,
+  convidado_nome TEXT,
+  solicitado_por_artista_id UUID,
+  solicitado_por_nome TEXT,
+  motivo TEXT,
+  descricao TEXT,
+  pagamento_info TEXT,
+  solicitacao_status TEXT,
+  respondido_por_artista_id UUID,
+  respondido_por_nome TEXT,
+  resposta_nota TEXT,
+  solicitado_em TIMESTAMPTZ,
+  respondido_em TIMESTAMPTZ
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT
+    c.id,
+    c.nome_evento,
+    c.data_evento,
+    c.hora_inicio::text,
+    c.hora_fim::text,
+    c.cidade,
+    c.estado_uf,
+    c.status,
+    COALESCE(c.ciclo_status, CASE
+      WHEN c.status = 'cancelado' THEN 'cancelled'
+      WHEN c.status = 'aceito' AND COALESCE(c.show_confirmado, false) THEN 'completed'
+      WHEN c.status = 'aceito' THEN 'confirmed'
+      ELSE c.ciclo_status
+    END),
+    c.motivo_cancelamento,
+    c.artista_que_convidou_id,
+    COALESCE(ah.name, 'Artista'),
+    c.artista_convidado_id,
+    COALESCE(ac.name, 'Artista'),
+    s.solicitado_por_artista_id,
+    asolic.name,
+    COALESCE(NULLIF(trim(s.motivo), ''), NULLIF(trim(c.motivo_cancelamento), '')),
+    s.descricao,
+    s.pagamento_info,
+    s.status,
+    s.respondido_por_artista_id,
+    aresp.name,
+    s.resposta_nota,
+    s.criado_em,
+    COALESCE(s.respondido_em, c.respondido_em)
+  FROM public.convite_participacao_evento c
+  LEFT JOIN LATERAL (
+    SELECT *
+    FROM public.contratacao_cancelamento_solicitacoes x
+    WHERE x.convite_id = c.id
+    ORDER BY x.criado_em DESC
+    LIMIT 1
+  ) s ON true
+  LEFT JOIN public.artists ah ON ah.id = c.artista_que_convidou_id
+  LEFT JOIN public.artists ac ON ac.id = c.artista_convidado_id
+  LEFT JOIN public.artists asolic ON asolic.id = s.solicitado_por_artista_id
+  LEFT JOIN public.artists aresp ON aresp.id = s.respondido_por_artista_id
+  WHERE public._is_member_of_artist(auth.uid(), p_artista_id, NULL)
+    AND (c.artista_que_convidou_id = p_artista_id OR c.artista_convidado_id = p_artista_id)
+    AND (
+      CASE
+        WHEN lower(COALESCE(p_origem, 'collab')) = 'parceria' THEN
+          c.status IN ('aceito', 'cancelado', 'pendente')
+          AND COALESCE(c.parceria_feed, false) = false
+        ELSE
+          c.status IN ('aceito', 'cancelado')
+          AND (
+            COALESCE(c.parceria_feed, false) = true
+            OR c.evento_origem_id IS DISTINCT FROM c.grupo_disputa_id
+          )
+      END
+    )
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%leilão%'
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%Anúncio encerrado%'
+    AND COALESCE(c.motivo_cancelamento, '') NOT ILIKE '%Proposta desfeita%'
+    AND (
+      COALESCE(p_dias, 0) <= 0
+      OR c.data_evento >= ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - GREATEST(p_dias, 0))
+    )
+  ORDER BY c.data_evento DESC, COALESCE(c.hora_inicio::text, '00:00') DESC
+  LIMIT 200;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.rpc_app_listar_eventos_parceria_artista(UUID, INT, TEXT) TO authenticated;
+
 NOTIFY pgrst, 'reload schema';

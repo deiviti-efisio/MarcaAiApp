@@ -156,6 +156,7 @@ function RootLayoutContent() {
         <Stack.Screen name="convites-recebidos" options={{ headerShown: false }} />
         <Stack.Screen name="convites-participacao-evento" options={{ headerShown: false }} />
         <Stack.Screen name="parceiros-frequentes" options={{ headerShown: false }} />
+        <Stack.Screen name="cancelamentos" options={{ headerShown: false }} />
         <Stack.Screen name="minhas-observacoes-privadas" options={{ headerShown: false }} />
         <Stack.Screen name="selecionar-artista" options={{ headerShown: false }} />
         <Stack.Screen name="sair-artista" options={{ headerShown: false }} />

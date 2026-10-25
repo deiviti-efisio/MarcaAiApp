@@ -1,3 +1,4 @@
+import { todayCalendarYmd, toCalendarYmd } from '../../lib/dateUtils';
 import { supabase } from '../../lib/supabase';
 
 export type CicloStatus =
@@ -61,6 +62,16 @@ export type AvaliacaoPendente = {
   outro_artista_id: string;
   outro_artista_nome: string;
 };
+
+function ymdMinusDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map((n) => parseInt(n, 10));
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() - days);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
 
 function asCiclo(value: unknown): CicloStatus {
   const v = String(value || '');
@@ -283,6 +294,249 @@ export async function avaliarParceiroContratacao(input: {
     return { success: r.success === true, error: r.error || null };
   } catch {
     return { success: false, error: 'Erro de conexão' };
+  }
+}
+
+export type RegistroCancelamento = {
+  convite_id: string;
+  nome_evento: string;
+  data_evento: string;
+  hora_inicio: string | null;
+  hora_fim: string | null;
+  cidade: string | null;
+  estado_uf: string | null;
+  status_convite: string;
+  ciclo_status: CicloStatus | string;
+  motivo_cancelamento: string | null;
+  anfitriao_id: string;
+  anfitriao_nome: string;
+  convidado_id: string;
+  convidado_nome: string;
+  solicitado_por_artista_id: string | null;
+  solicitado_por_nome: string | null;
+  motivo: string | null;
+  descricao: string | null;
+  pagamento_info: string | null;
+  solicitacao_status: 'pending' | 'accepted' | 'contested' | null;
+  respondido_por_artista_id: string | null;
+  respondido_por_nome: string | null;
+  resposta_nota: string | null;
+  solicitado_em: string | null;
+  respondido_em: string | null;
+};
+
+function mapRegistroCancelamento(row: Record<string, unknown>): RegistroCancelamento {
+  const solStatus = row.solicitacao_status;
+  return {
+    convite_id: String(row.convite_id),
+    nome_evento: String(row.nome_evento || 'Show'),
+    data_evento: String(row.data_evento || ''),
+    hora_inicio: row.hora_inicio != null ? String(row.hora_inicio) : null,
+    hora_fim: row.hora_fim != null ? String(row.hora_fim) : null,
+    cidade: row.cidade != null ? String(row.cidade) : null,
+    estado_uf: row.estado_uf != null ? String(row.estado_uf) : null,
+    status_convite: String(row.status_convite || ''),
+    ciclo_status: String(row.ciclo_status || ''),
+    motivo_cancelamento: row.motivo_cancelamento != null ? String(row.motivo_cancelamento) : null,
+    anfitriao_id: String(row.anfitriao_id || ''),
+    anfitriao_nome: String(row.anfitriao_nome || 'Artista'),
+    convidado_id: String(row.convidado_id || ''),
+    convidado_nome: String(row.convidado_nome || 'Artista'),
+    solicitado_por_artista_id:
+      row.solicitado_por_artista_id != null ? String(row.solicitado_por_artista_id) : null,
+    solicitado_por_nome: row.solicitado_por_nome != null ? String(row.solicitado_por_nome) : null,
+    motivo: row.motivo != null ? String(row.motivo) : null,
+    descricao: row.descricao != null ? String(row.descricao) : null,
+    pagamento_info: row.pagamento_info != null ? String(row.pagamento_info) : null,
+    solicitacao_status:
+      solStatus === 'accepted' || solStatus === 'contested' || solStatus === 'pending'
+        ? solStatus
+        : null,
+    respondido_por_artista_id:
+      row.respondido_por_artista_id != null ? String(row.respondido_por_artista_id) : null,
+    respondido_por_nome: row.respondido_por_nome != null ? String(row.respondido_por_nome) : null,
+    resposta_nota: row.resposta_nota != null ? String(row.resposta_nota) : null,
+    solicitado_em: row.solicitado_em != null ? String(row.solicitado_em) : null,
+    respondido_em: row.respondido_em != null ? String(row.respondido_em) : null,
+  };
+}
+
+export async function listarEventosParceriaArtista(
+  artistId: string,
+  dias: number | null = null,
+  origem: 'collab' | 'parceria' = 'collab'
+): Promise<{ itens: RegistroCancelamento[]; error: string | null }> {
+  try {
+    const pDias = dias && dias > 0 ? dias : 0;
+    const { data, error } = await supabase.rpc('rpc_app_listar_eventos_parceria_artista', {
+      p_artista_id: artistId,
+      p_dias: pDias,
+      p_origem: origem,
+    });
+    if (!error) {
+      const rows = (data || []) as Record<string, unknown>[];
+      return { itens: rows.map(mapRegistroCancelamento), error: null };
+    }
+
+    return listarEventosParceriaFallback(artistId, pDias || null, origem);
+  } catch {
+    return { itens: [], error: 'Erro de conexão' };
+  }
+}
+
+export async function listarCancelamentosArtista(
+  artistId: string
+): Promise<{ itens: RegistroCancelamento[]; error: string | null }> {
+  const { itens, error } = await listarEventosParceriaArtista(artistId, null);
+  if (error) return { itens: [], error };
+  return {
+    itens: itens.filter((item) => isEventoParceriaCancelado(item)),
+    error: null,
+  };
+}
+
+export function isEventoParceriaCancelado(item: RegistroCancelamento): boolean {
+  const ciclo = String(item.ciclo_status || '');
+  return (
+    item.status_convite === 'cancelado' ||
+    ciclo === 'cancelled' ||
+    ciclo === 'cancelled_by_mutual_agreement' ||
+    ciclo === 'cancellation_requested' ||
+    ciclo === 'under_review' ||
+    item.solicitacao_status === 'pending' ||
+    item.solicitacao_status === 'accepted' ||
+    item.solicitacao_status === 'contested'
+  );
+}
+
+async function listarEventosParceriaFallback(
+  artistId: string,
+  dias: number | null,
+  origem: 'collab' | 'parceria' = 'collab'
+): Promise<{ itens: RegistroCancelamento[]; error: string | null }> {
+  try {
+
+    let { data: convites, error: convErr } = await supabase
+      .from('convite_participacao_evento')
+      .select(
+        'id, nome_evento, data_evento, hora_inicio, hora_fim, cidade, estado_uf, status, ciclo_status, motivo_cancelamento, artista_que_convidou_id, artista_convidado_id, respondido_em, atualizado_em, criado_em, parceria_feed, evento_origem_id, grupo_disputa_id'
+      )
+      .or(`artista_que_convidou_id.eq.${artistId},artista_convidado_id.eq.${artistId}`)
+      .order('atualizado_em', { ascending: false })
+      .limit(120);
+    if (convErr) {
+      const retry = await supabase
+        .from('convite_participacao_evento')
+        .select(
+          'id, nome_evento, data_evento, hora_inicio, hora_fim, cidade, estado_uf, status, ciclo_status, motivo_cancelamento, artista_que_convidou_id, artista_convidado_id, respondido_em, atualizado_em, criado_em, evento_origem_id, grupo_disputa_id'
+        )
+        .or(`artista_que_convidou_id.eq.${artistId},artista_convidado_id.eq.${artistId}`)
+        .order('atualizado_em', { ascending: false })
+        .limit(120);
+      convites = retry.data;
+      convErr = retry.error;
+    }
+    if (convErr) return { itens: [], error: convErr.message };
+
+    const minYmd = dias && dias > 0 ? ymdMinusDays(todayCalendarYmd(), dias) : null;
+    const filtered = (convites || []).filter((c: Record<string, unknown>) => {
+      const status = String(c.status || '');
+      const motivo = String(c.motivo_cancelamento || '');
+      const isFeedCollab =
+        c.parceria_feed === true ||
+        (c.evento_origem_id != null &&
+          c.grupo_disputa_id != null &&
+          String(c.evento_origem_id) !== String(c.grupo_disputa_id));
+      if (origem === 'parceria') {
+        if (status !== 'aceito' && status !== 'cancelado' && status !== 'pendente') return false;
+        if (isFeedCollab) return false;
+      } else {
+        if (status !== 'aceito' && status !== 'cancelado') return false;
+        if (!isFeedCollab) return false;
+      }
+      if (/leilão|Anúncio encerrado|Proposta desfeita/i.test(motivo)) return false;
+      if (minYmd) {
+        const ymd = toCalendarYmd(c.data_evento);
+        if (ymd && ymd < minYmd) return false;
+      }
+      return true;
+    });
+    const ids = filtered.map((c: { id: string }) => c.id);
+    const { data: sols } = ids.length
+      ? await supabase
+          .from('contratacao_cancelamento_solicitacoes')
+          .select(
+            'convite_id, solicitado_por_artista_id, motivo, descricao, pagamento_info, status, respondido_por_artista_id, resposta_nota, criado_em, respondido_em'
+          )
+          .in('convite_id', ids)
+          .order('criado_em', { ascending: false })
+      : { data: [] as Record<string, unknown>[] };
+    const solByConvite: Record<string, Record<string, unknown>> = {};
+    (sols || []).forEach((s: Record<string, unknown>) => {
+      const cid = String(s.convite_id || '');
+      if (cid && !solByConvite[cid]) solByConvite[cid] = s;
+    });
+    const artistIds = Array.from(
+      new Set(
+        [
+          ...filtered.flatMap((c: Record<string, unknown>) => [
+            String(c.artista_que_convidou_id || ''),
+            String(c.artista_convidado_id || ''),
+          ]),
+          ...(sols || []).flatMap((s: Record<string, unknown>) => [
+            String(s.solicitado_por_artista_id || ''),
+            String(s.respondido_por_artista_id || ''),
+          ]),
+        ].filter(Boolean)
+      )
+    );
+    const { data: artists } = artistIds.length
+      ? await supabase.from('artists').select('id, name').in('id', artistIds)
+      : { data: [] as { id: string; name: string }[] };
+    const nameById: Record<string, string> = {};
+    (artists || []).forEach((a: { id: string; name?: string }) => {
+      nameById[a.id] = a.name || 'Artista';
+    });
+
+    const itens = filtered.map((c: Record<string, unknown>) => {
+      const s = solByConvite[String(c.id)] || {};
+      const hostId = String(c.artista_que_convidou_id || '');
+      const guestId = String(c.artista_convidado_id || '');
+      return mapRegistroCancelamento({
+        convite_id: c.id,
+        nome_evento: c.nome_evento,
+        data_evento: c.data_evento,
+        hora_inicio: c.hora_inicio,
+        hora_fim: c.hora_fim,
+        cidade: c.cidade,
+        estado_uf: c.estado_uf,
+        status_convite: c.status,
+        ciclo_status: c.ciclo_status,
+        motivo_cancelamento: c.motivo_cancelamento,
+        anfitriao_id: hostId,
+        anfitriao_nome: nameById[hostId] || 'Artista',
+        convidado_id: guestId,
+        convidado_nome: nameById[guestId] || 'Artista',
+        solicitado_por_artista_id: s.solicitado_por_artista_id,
+        solicitado_por_nome: s.solicitado_por_artista_id
+          ? nameById[String(s.solicitado_por_artista_id)]
+          : null,
+        motivo: s.motivo || c.motivo_cancelamento,
+        descricao: s.descricao,
+        pagamento_info: s.pagamento_info,
+        solicitacao_status: s.status,
+        respondido_por_artista_id: s.respondido_por_artista_id,
+        respondido_por_nome: s.respondido_por_artista_id
+          ? nameById[String(s.respondido_por_artista_id)]
+          : null,
+        resposta_nota: s.resposta_nota,
+        solicitado_em: s.criado_em,
+        respondido_em: s.respondido_em || c.respondido_em,
+      });
+    });
+    return { itens, error: null };
+  } catch {
+    return { itens: [], error: 'Erro de conexão' };
   }
 }
 

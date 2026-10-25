@@ -165,6 +165,9 @@ export default function AgendaScreen() {
   const [conviteIdByEventId, setConviteIdByEventId] = useState<
     Record<string, string>
   >({});
+  const [cicloStatusByConviteId, setCicloStatusByConviteId] = useState<
+    Record<string, string>
+  >({});
   /** Organizador + convidados por evento (lista completa; o card só mostra os primeiros). */
   const [participantAvatarsByEventId, setParticipantAvatarsByEventId] =
     useState<Record<string, AgendaParticipantRow[]>>({});
@@ -793,6 +796,41 @@ export default function AgendaScreen() {
     };
 
     void loadInvitePartners();
+    return () => {
+      cancelled = true;
+    };
+  }, [events, conviteIdByEventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCicloStatus = async () => {
+      const conviteIds = Array.from(
+        new Set(
+          events
+            .map((e) => e?.convite_participacao_id || conviteIdByEventId[e?.id])
+            .filter((v): v is string => typeof v === "string" && v.length > 0),
+        ),
+      );
+      if (conviteIds.length === 0) {
+        if (!cancelled) setCicloStatusByConviteId({});
+        return;
+      }
+      const { data, error } = await supabase
+        .from("convite_participacao_evento")
+        .select("id, ciclo_status")
+        .in("id", conviteIds);
+      if (cancelled) return;
+      if (error) {
+        setCicloStatusByConviteId({});
+        return;
+      }
+      const next: Record<string, string> = {};
+      (data || []).forEach((row: { id?: string; ciclo_status?: string | null }) => {
+        if (row?.id && row.ciclo_status) next[row.id] = row.ciclo_status;
+      });
+      setCicloStatusByConviteId(next);
+    };
+    void loadCicloStatus();
     return () => {
       cancelled = true;
     };
@@ -1688,6 +1726,27 @@ export default function AgendaScreen() {
     return n > 0;
   };
 
+  const conviteIdOfEvent = (item: {
+    id?: string;
+    convite_participacao_id?: string | null;
+  }) => item.convite_participacao_id || (item.id ? conviteIdByEventId[item.id] : undefined);
+
+  const cicloStatusOfEvent = (item: {
+    id?: string;
+    convite_participacao_id?: string | null;
+  }) => {
+    const cid = conviteIdOfEvent(item);
+    return cid ? cicloStatusByConviteId[cid] || "" : "";
+  };
+
+  const hasCancelRequest = (item: {
+    id?: string;
+    convite_participacao_id?: string | null;
+  }) => {
+    const s = cicloStatusOfEvent(item);
+    return s === "cancellation_requested" || s === "under_review";
+  };
+
   const handleOpenParticipantsModal = (item: any) => {
     const full = participantAvatarsByEventId[item.id];
     if (full && full.length > 0) {
@@ -1730,6 +1789,7 @@ export default function AgendaScreen() {
     const conviteIdForCard =
       item.convite_participacao_id || conviteIdByEventId[item.id];
     const isInvitedEvent = !!conviteIdForCard;
+    const cancelPedido = hasCancelRequest(item);
     const unpaidRemainder = getUnpaidRemainder(item.value, item.paid_amount);
     const fromParticipantMap = participantAvatarsByEventId[item.id] || [];
     const collabAvatars: {
@@ -1797,6 +1857,14 @@ export default function AgendaScreen() {
               >
                 {item.name}
               </Text>
+              {cancelPedido ? (
+                <Ionicons
+                  name="close-circle"
+                  size={16}
+                  color={colors.error}
+                  style={{ marginLeft: 6 }}
+                />
+              ) : null}
               {!canSeeEventValue(item) && (
                 <Ionicons
                   name="lock-closed"
@@ -1808,6 +1876,27 @@ export default function AgendaScreen() {
             </View>
 
             <View style={styles.glLabelsRow}>
+              {cancelPedido ? (
+                <View
+                  style={[
+                    styles.glLabelPill,
+                    {
+                      borderColor: `${colors.error}55`,
+                      backgroundColor: `${colors.error}18`,
+                    },
+                  ]}
+                >
+                  <Ionicons name="close-circle" size={11} color={colors.error} />
+                  <Text
+                    style={[styles.glLabelText, { color: colors.error }]}
+                    numberOfLines={1}
+                  >
+                    {cicloStatusOfEvent(item) === "under_review"
+                      ? "Em análise"
+                      : "Pedido de cancelamento"}
+                  </Text>
+                </View>
+              ) : null}
               {item.tag ? (
                 <View
                   style={[
@@ -2568,9 +2657,15 @@ export default function AgendaScreen() {
                       }}
                     >
                       <Ionicons
-                        name="musical-notes"
+                        name={
+                          hasCancelRequest(event)
+                            ? "close-circle"
+                            : "musical-notes"
+                        }
                         size={18}
-                        color={colors.primary}
+                        color={
+                          hasCancelRequest(event) ? colors.error : colors.primary
+                        }
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text
@@ -2579,6 +2674,17 @@ export default function AgendaScreen() {
                         >
                           {event.name}
                         </Text>
+                        {hasCancelRequest(event) ? (
+                          <Text
+                            style={[
+                              styles.dayEventValue,
+                              { color: colors.error },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            Pedido de cancelamento
+                          </Text>
+                        ) : null}
                         {canSeeEventValue(event) &&
                         hasDisplayableEventValue(event.value) ? (
                           <Text
@@ -2764,6 +2870,38 @@ export default function AgendaScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
+                    {hasCancelRequest(selectedInviteEventInfo) ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 12,
+                          padding: 10,
+                          borderRadius: 10,
+                          backgroundColor: `${colors.error}14`,
+                        }}
+                      >
+                        <Ionicons
+                          name="close-circle"
+                          size={20}
+                          color={colors.error}
+                        />
+                        <Text
+                          style={{
+                            flex: 1,
+                            color: colors.error,
+                            fontWeight: "700",
+                            fontSize: 13,
+                          }}
+                        >
+                          {cicloStatusOfEvent(selectedInviteEventInfo) ===
+                          "under_review"
+                            ? "Cancelamento em análise. A data permanece na agenda."
+                            : "Há um pedido de cancelamento nesta data."}
+                        </Text>
+                      </View>
+                    ) : null}
                     <Text
                       style={[styles.inviteInfoLine, { color: colors.text }]}
                     >
