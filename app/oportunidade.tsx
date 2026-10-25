@@ -19,6 +19,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { formatCityAndRegion } from '../lib/brazilGeo';
 import { formatCalendarDate, formatCalendarDateLongParts } from '../lib/dateUtils';
 import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../lib/openArtistChat';
+import {
+  oportunidadeCompativelComPerfil,
+  perfilCompatFromArtist,
+} from '../lib/feedCompatibility';
+import { getArtistById } from '../services/supabase/artistService';
 import { alternarEventoFavorito, listarIdsEventosFavoritos } from '../services/supabase/eventFavoritesService';
 import {
   desfazerPropostaFeed,
@@ -76,6 +81,7 @@ export default function OportunidadeScreen() {
   const [showPropostaEnviada, setShowPropostaEnviada] = useState(false);
   const [desfazendoProposta, setDesfazendoProposta] = useState(false);
   const [podeDesfazer, setPodeDesfazer] = useState(false);
+  const [compativel, setCompativel] = useState(false);
   const canFavorite = isAdmin || isVendedor;
 
   useEffect(() => {
@@ -109,6 +115,17 @@ export default function OportunidadeScreen() {
         Alert.alert('Anúncio encerrado', 'Esta oportunidade não está mais disponível.', [
           { text: 'OK', onPress: () => router.back() },
         ]);
+        return;
+      }
+      if (activeArtist?.id && found.artist_id !== activeArtist.id) {
+        const { artist } = await getArtistById(activeArtist.id);
+        if (!cancelled) {
+          setCompativel(
+            oportunidadeCompativelComPerfil(found, perfilCompatFromArtist(artist), activeArtist.id)
+          );
+        }
+      } else if (!cancelled) {
+        setCompativel(false);
       }
     })();
     return () => {
@@ -258,6 +275,12 @@ export default function OportunidadeScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+            {compativel ? (
+              <View style={styles.compatBadge}>
+                <Ionicons name="checkmark-circle" size={15} color="#16A34A" />
+                <Text style={styles.compatBadgeText}>Compatível com você</Text>
+              </View>
+            ) : null}
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={15} color={colors.textSecondary} />
               <Text style={[styles.location, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -402,6 +425,22 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 32,
     letterSpacing: -0.5,
+  },
+  compatBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 10,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  compatBadgeText: {
+    color: '#16A34A',
+    fontSize: 13,
+    fontWeight: '800',
   },
   locationRow: {
     flexDirection: 'row',

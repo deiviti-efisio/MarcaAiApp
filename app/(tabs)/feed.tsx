@@ -68,6 +68,11 @@ import {
 } from '../../services/supabase/eventFavoritesService';
 import { useUnreadConversas } from '../../services/useUnreadConversas';
 import { formatChatCache, openArtistChatInApp, type ShowChatContext } from '../../lib/openArtistChat';
+import {
+  oportunidadeCompativelComPerfil,
+  perfilCompatFromArtist,
+  type PerfilCompat,
+} from '../../lib/feedCompatibility';
 import { getArtistById } from '../../services/supabase/artistService';
 import { openWhatsAppConversation } from '../../utils/brazilPhone';
 
@@ -78,6 +83,7 @@ function formatTime(t: string) {
 
 const FEED_COMO_FUNCIONA_SEEN_KEY = 'feed_marketplace_como_funciona_visto';
 const FEED_ARTISTAS_UF_KEY = 'feed_artistas_ultimo_uf';
+const COMPAT_GREEN = '#16A34A';
 
 export default function FeedScreen() {
   const { colors } = useTheme();
@@ -106,6 +112,8 @@ export default function FeedScreen() {
   const [filtroFormatoArtista, setFiltroFormatoArtista] = useState('');
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
   const [filtroFavoritosFeed, setFiltroFavoritosFeed] = useState(false);
+  const [filtroCompativel, setFiltroCompativel] = useState(false);
+  const [meuPerfilCompat, setMeuPerfilCompat] = useState<PerfilCompat | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteEventIds, setFavoriteEventIds] = useState<Set<string>>(new Set());
   const canFavoriteOportunidade = isAdmin || isVendedor;
@@ -269,6 +277,21 @@ export default function FeedScreen() {
     const t = setTimeout(() => setCidadeArtistasDebounced(cidadeArtistas.trim()), 450);
     return () => clearTimeout(t);
   }, [cidadeArtistas]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeArtist?.id) {
+      setMeuPerfilCompat(null);
+      return;
+    }
+    void getArtistById(activeArtist.id).then(({ artist }) => {
+      if (cancelled) return;
+      setMeuPerfilCompat(perfilCompatFromArtist(artist));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArtist?.id]);
 
   useEffect(() => {
     if (artistasProntoGeo) return;
@@ -534,11 +557,14 @@ export default function FeedScreen() {
     if (filtroFavoritosFeed) {
       return 'Nenhuma oportunidade favorita neste filtro. Toque no coração para salvar.';
     }
+    if (filtroCompativel) {
+      return 'Nenhuma oportunidade combina com seu estilo, função ou formato. Atualize o perfil para aparecer mais.';
+    }
     if (verMinhas) {
       return 'Você ainda não publicou no feed.';
     }
     return 'Ainda não há oportunidades no feed.';
-  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, filtroFavoritos, filtroFavoritosFeed, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
+  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, filtroFavoritos, filtroFavoritosFeed, filtroCompativel, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
 
   const handlePublicar = () => {
     if (!activeArtist) {
@@ -561,6 +587,17 @@ export default function FeedScreen() {
 
   const isMeuAnuncio = (item: FeedAnuncio) =>
     !!activeArtist?.id && item.artist_id === activeArtist.id;
+
+  const anuncioCompativel = useCallback(
+    (item: FeedAnuncio) =>
+      oportunidadeCompativelComPerfil(item, meuPerfilCompat, activeArtist?.id),
+    [meuPerfilCompat, activeArtist?.id]
+  );
+
+  const anunciosExibidos = useMemo(() => {
+    if (!filtroCompativel) return anuncios;
+    return anuncios.filter(anuncioCompativel);
+  }, [anuncios, filtroCompativel, anuncioCompativel]);
 
   const openOportunidade = (item: FeedAnuncio) => {
     router.push({ pathname: '/oportunidade', params: { eventId: item.id } });
@@ -736,7 +773,15 @@ export default function FeedScreen() {
       >
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
-            <Text style={[styles.cardKind, { color: colors.primary }]}>Oportunidade</Text>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={[styles.cardKind, { color: colors.primary }]}>Oportunidade</Text>
+              {!meuAnuncio && anuncioCompativel(item) ? (
+                <View style={styles.compatBadge}>
+                  <Ionicons name="checkmark-circle" size={13} color={COMPAT_GREEN} />
+                  <Text style={styles.compatBadgeText}>Compatível com você</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {canFavoriteOportunidade && !meuAnuncio ? (
                 <TouchableOpacity
@@ -1338,7 +1383,9 @@ export default function FeedScreen() {
               <Text style={[styles.nearHint, { color: colors.textSecondary }]} numberOfLines={1}>
                 {verArtistas
                   ? [filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, cidadeArtistas.trim(), estadoUfArtistas].filter(Boolean).join(' · ')
-                  : `${anuncios.length} ${anuncios.length === 1 ? 'oportunidade' : 'oportunidades'}${
+                  : `${anunciosExibidos.length} ${anunciosExibidos.length === 1 ? 'oportunidade' : 'oportunidades'}${
+                      filtroCompativel ? ' · compatíveis' : ''
+                    }${
                       cidadeFeed.trim() || estadoUfFeed
                         ? ` · ${[cidadeFeed.trim(), estadoUfFeed].filter(Boolean).join(' - ')}`
                         : ''
@@ -1357,6 +1404,20 @@ export default function FeedScreen() {
                     name={filtroFavoritos ? 'heart' : 'heart-outline'}
                     size={18}
                     color={filtroFavoritos ? '#EF4444' : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
+              {!verArtistas ? (
+                <TouchableOpacity
+                  style={styles.filterToggle}
+                  onPress={() => setFiltroCompativel((v) => !v)}
+                  hitSlop={8}
+                  accessibilityLabel="Filtrar oportunidades compatíveis com você"
+                >
+                  <Ionicons
+                    name={filtroCompativel ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                    size={18}
+                    color={filtroCompativel ? COMPAT_GREEN : colors.textSecondary}
                   />
                 </TouchableOpacity>
               ) : null}
@@ -1387,7 +1448,7 @@ export default function FeedScreen() {
                       ? estadoUfArtistas || cidadeArtistas.trim() || filtroGenero || filtroFuncaoArtista || filtroFormatoArtista || filtroFavoritos
                         ? colors.primary
                         : colors.textSecondary
-                      : cidadeFeed || estadoUfFeed || filtroFuncao || filtroFavoritosFeed
+                      : cidadeFeed || estadoUfFeed || filtroFuncao || filtroFavoritosFeed || filtroCompativel
                         ? colors.primary
                         : colors.textSecondary
                   }
@@ -1557,6 +1618,31 @@ export default function FeedScreen() {
                         colors={colors}
                       />
                     </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.compatFilterBtn,
+                        {
+                          borderColor: filtroCompativel ? COMPAT_GREEN : colors.border,
+                          backgroundColor: filtroCompativel ? '#DCFCE7' : colors.surface,
+                        },
+                      ]}
+                      onPress={() => setFiltroCompativel((v) => !v)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={filtroCompativel ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                        size={18}
+                        color={filtroCompativel ? COMPAT_GREEN : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.compatFilterText,
+                          { color: filtroCompativel ? COMPAT_GREEN : colors.text },
+                        ]}
+                      >
+                        Compatível com você
+                      </Text>
+                    </TouchableOpacity>
                   </>
                 )}
               </View>
@@ -1593,7 +1679,7 @@ export default function FeedScreen() {
             <Text style={styles.emptyCtaText}>Criar perfil</Text>
           </TouchableOpacity>
         </View>
-      ) : (verArtistas ? loadingArtistas && artistasProximos.length === 0 : loading && anuncios.length === 0) ? (
+      ) : (verArtistas ? loadingArtistas && artistasProximos.length === 0 : loading && anunciosExibidos.length === 0) ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -1644,14 +1730,14 @@ export default function FeedScreen() {
       ) : (
         <FlatList
           key={activeArtist?.id ?? 'sem-artista'}
-          data={anuncios}
+          data={anunciosExibidos}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           initialNumToRender={5}
           maxToRenderPerBatch={4}
           windowSize={7}
           removeClippedSubviews
-          contentContainerStyle={anuncios.length === 0 ? styles.emptyList : styles.list}
+          contentContainerStyle={anunciosExibidos.length === 0 ? styles.emptyList : styles.list}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -2215,6 +2301,16 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 8,
   },
+  compatFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  compatFilterText: { flex: 1, fontSize: 14, fontWeight: '700' },
   errorBanner: {
     marginHorizontal: 16,
     marginBottom: 8,
@@ -2312,11 +2408,26 @@ const styles = StyleSheet.create({
   },
   cardTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
   cardKind: { fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  compatBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  compatBadgeText: {
+    color: COMPAT_GREEN,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   typeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
