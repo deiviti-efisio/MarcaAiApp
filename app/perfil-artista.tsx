@@ -45,7 +45,7 @@ import {
   listarPressKitPublicoArtista,
   type ArtistPressKitItem,
 } from '../services/supabase/artistPressKitService';
-import { maskBrazilMobile, openWhatsAppConversation } from '../utils/brazilPhone';
+import { openWhatsAppConversation } from '../utils/brazilPhone';
 import {
   listarAvaliacoesPendentes,
   obterEstatisticasPerfilArtista,
@@ -311,28 +311,6 @@ export default function PerfilArtistaScreen() {
                 <Text style={[styles.locText, { color: colors.textSecondary }]}>{locationLine}</Text>
               </View>
             ) : null}
-            {publicWhatsapp ? (
-              <TouchableOpacity
-                style={styles.locRow}
-                onPress={() => void openWhatsAppConversation(publicWhatsapp)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="logo-whatsapp" size={16} color="#16A34A" />
-                <Text style={[styles.locText, { color: '#16A34A' }]}>
-                  {maskBrazilMobile(publicWhatsapp)}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            {publicEmail ? (
-              <TouchableOpacity
-                style={styles.locRow}
-                onPress={() => void Linking.openURL(`mailto:${publicEmail}`)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="mail-outline" size={16} color={colors.primary} />
-                <Text style={[styles.locText, { color: colors.primary }]}>{publicEmail}</Text>
-              </TouchableOpacity>
-            ) : null}
             {chips.length ? (
               <ScrollView
                 horizontal
@@ -362,7 +340,7 @@ export default function PerfilArtistaScreen() {
               <View style={styles.statsGrid}>
                 <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                   <Text style={[styles.statNum, { color: colors.text }]}>{stats.shows_realizados}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Shows no MeuShow</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Shows no App</Text>
                 </View>
                 <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                   <Text style={[styles.statNum, { color: colors.text }]}>{stats.contratantes_atendidos}</Text>
@@ -422,8 +400,59 @@ export default function PerfilArtistaScreen() {
               </TouchableOpacity>
             ) : null}
 
-            <View style={styles.actions}>
-              {canSocialWithArtists ? (
+            {publicWhatsapp || publicEmail || pressKitItems.length || previews.length ? (
+              <View style={styles.socialRow}>
+                {publicWhatsapp ? (
+                  <TouchableOpacity
+                    style={[styles.socialBtn, { borderColor: '#16A34A', backgroundColor: '#16A34A12' }]}
+                    onPress={() => void openWhatsAppConversation(publicWhatsapp)}
+                    accessibilityLabel="Abrir WhatsApp"
+                  >
+                    <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
+                  </TouchableOpacity>
+                ) : null}
+                {publicEmail ? (
+                  <TouchableOpacity
+                    style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={() => void Linking.openURL(`mailto:${publicEmail}`)}
+                    accessibilityLabel="Enviar e-mail"
+                  >
+                    <Ionicons name="mail-outline" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                ) : null}
+                {pressKitItems.length ? (
+                  <TouchableOpacity
+                    style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={handleOpenPressKit}
+                    accessibilityLabel="Abrir press kit"
+                  >
+                    <Ionicons name="folder-open" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                ) : null}
+                {previews.map((item) => (
+                  <TouchableOpacity
+                    key={item.kind + item.url}
+                    style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    onPress={() => void Linking.openURL(item.url)}
+                  >
+                    <Ionicons
+                      name={
+                        item.kind === 'youtube'
+                          ? 'logo-youtube'
+                          : item.kind === 'spotify'
+                            ? 'musical-notes'
+                            : 'logo-instagram'
+                      }
+                      size={18}
+                      color={colors.primary}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
+            {canSocialWithArtists ? (
+              <View style={styles.actions}>
                 <TouchableOpacity
                   style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
                   onPress={handleConversar}
@@ -431,63 +460,8 @@ export default function PerfilArtistaScreen() {
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
                   <Text style={styles.primaryBtnText}>Conversar</Text>
                 </TouchableOpacity>
-              ) : null}
-              {canSocialWithArtists && isAdmin ? (
-                <TouchableOpacity
-                  style={[styles.primaryBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary }]}
-                  onPress={() => router.push('/(tabs)/feed')}
-                >
-                  <Ionicons name="newspaper-outline" size={16} color={colors.primary} />
-                  <Text style={[styles.primaryBtnText, { color: colors.primary }]}>Oportunidade</Text>
-                </TouchableOpacity>
-              ) : null}
-              {publicWhatsapp ? (
-                <TouchableOpacity
-                  style={[styles.socialBtn, { borderColor: '#16A34A', backgroundColor: '#16A34A12' }]}
-                  onPress={() => void openWhatsAppConversation(publicWhatsapp)}
-                  accessibilityLabel="Abrir WhatsApp"
-                >
-                  <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
-                </TouchableOpacity>
-              ) : null}
-              {publicEmail ? (
-                <TouchableOpacity
-                  style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                  onPress={() => void Linking.openURL(`mailto:${publicEmail}`)}
-                  accessibilityLabel="Enviar e-mail"
-                >
-                  <Ionicons name="mail-outline" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              ) : null}
-              {pressKitItems.length ? (
-                <TouchableOpacity
-                  style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                  onPress={handleOpenPressKit}
-                  accessibilityLabel="Abrir press kit"
-                >
-                  <Ionicons name="folder-open" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              ) : null}
-              {previews.map((item) => (
-                <TouchableOpacity
-                  key={item.kind + item.url}
-                  style={[styles.socialBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                  onPress={() => void Linking.openURL(item.url)}
-                >
-                  <Ionicons
-                    name={
-                      item.kind === 'youtube'
-                        ? 'logo-youtube'
-                        : item.kind === 'spotify'
-                          ? 'musical-notes'
-                          : 'logo-instagram'
-                    }
-                    size={18}
-                    color={colors.primary}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+            ) : null}
           </View>
 
           {featuredHero ? (
@@ -497,7 +471,7 @@ export default function PerfilArtistaScreen() {
                   <Ionicons name="star" size={18} color={colors.primary} />
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Shows em destaque</Text>
                 </View>
-                {featuredShows.length > 1 ? (
+                {canManagePublicProfile && featuredShows.length > 1 ? (
                   <TouchableOpacity
                     onPress={() => setFeaturedMenuOpen(true)}
                     style={styles.iconBtn}
@@ -777,7 +751,16 @@ const styles = StyleSheet.create({
   bioBlock: { marginTop: 12 },
   bioLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' },
   bio: { fontSize: 15, lineHeight: 22, marginTop: 6 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
+  socialRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+  socialBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -787,14 +770,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  socialBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   section: { marginTop: 24, paddingLeft: 20 },
   sectionPad: { paddingRight: 20 },
   videoStack: { gap: 12 },

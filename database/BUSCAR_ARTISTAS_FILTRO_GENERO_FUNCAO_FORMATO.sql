@@ -5,6 +5,7 @@ DROP FUNCTION IF EXISTS public.listar_todos_artistas(integer, integer);
 DROP FUNCTION IF EXISTS public.listar_todos_artistas(text, text, text, integer, integer);
 DROP FUNCTION IF EXISTS public.listar_todos_artistas(text, text, text, text, integer, integer);
 DROP FUNCTION IF EXISTS public.listar_todos_artistas(text, text, text, text, text, text, integer, integer);
+DROP FUNCTION IF EXISTS public.listar_todos_artistas(text, text, text, text, text, text, integer, integer, uuid);
 
 CREATE FUNCTION public.listar_todos_artistas(
   p_estado text DEFAULT NULL,
@@ -14,7 +15,8 @@ CREATE FUNCTION public.listar_todos_artistas(
   p_funcao text DEFAULT NULL,
   p_formato text DEFAULT NULL,
   p_limit integer DEFAULT 20,
-  p_offset integer DEFAULT 0
+  p_offset integer DEFAULT 0,
+  p_excluir_artista_id uuid DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid,
@@ -52,7 +54,8 @@ AS $$
         AND e.event_date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
     )
   FROM public.artists a
-  WHERE (
+  WHERE (p_excluir_artista_id IS NULL OR a.id <> p_excluir_artista_id)
+    AND (
       NULLIF(trim(p_estado), '') IS NULL
       OR a.state = CASE upper(trim(p_estado))
         WHEN 'AC' THEN 'Acre'
@@ -120,8 +123,8 @@ AS $$
   OFFSET GREATEST(0, COALESCE(p_offset, 0));
 $$;
 
-GRANT EXECUTE ON FUNCTION public.listar_todos_artistas(text, text, text, text, text, text, integer, integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.listar_todos_artistas(text, text, text, text, text, text, integer, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.listar_todos_artistas(text, text, text, text, text, text, integer, integer, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.listar_todos_artistas(text, text, text, text, text, text, integer, integer, uuid) TO service_role;
 
 DROP FUNCTION IF EXISTS public.listar_artistas_favoritos(uuid, text, text, text, text, integer, integer);
 DROP FUNCTION IF EXISTS public.listar_artistas_favoritos(uuid, text, text, text, text, text, integer, integer);

@@ -221,6 +221,7 @@ function abortedResult(signal?: AbortSignal, error?: unknown) {
 
 /** Artistas do Feed: estado, cidade, gênero, função, formato e nome. Sem filtro → todos. */
 export async function listarTodosArtistas(params: {
+  artistaAtualId?: string | null;
   estado?: string | null;
   cidade?: string | null;
   genero?: string | null;
@@ -239,11 +240,13 @@ export async function listarTodosArtistas(params: {
   const funcao = (params.funcao || '').trim();
   const formato = (params.formato || '').trim();
   const termo = (params.termo || '').trim();
+  const excluirId = params.artistaAtualId || null;
   const signal = params.abortSignal;
 
   const finish = (data: unknown[] | null) => {
-    const artists = ((data || []) as Record<string, unknown>[]).map(mapArtistaBuscaRow);
-    return { artists, hasMore: artists.length >= limit, error: null as string | null };
+    const rows = ((data || []) as Record<string, unknown>[]).map(mapArtistaBuscaRow);
+    const artists = excluirId ? rows.filter((item) => item.id !== excluirId) : rows;
+    return { artists, hasMore: rows.length >= limit, error: null as string | null };
   };
 
   try {
@@ -320,6 +323,7 @@ export async function listarTodosArtistas(params: {
       .select('id, name, profile_url, musical_style, work_roles, show_formats, city, state')
       .order('name', { ascending: true })
       .range(offset, offset + limit - 1);
+    if (excluirId) table = table.neq('id', excluirId);
     if (estadoNome) table = table.eq('state', estadoNome);
     if (cidade.length >= 2) table = table.ilike('city', `${cidade}%`);
     if (genero.length > 0) table = table.ilike('musical_style', `%${genero}%`);
