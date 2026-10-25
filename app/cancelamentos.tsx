@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatCityAndRegion } from '../lib/brazilGeo';
-import { formatCalendarDate } from '../lib/dateUtils';
+import { formatCalendarDate, toCalendarYmd, todayCalendarYmd } from '../lib/dateUtils';
 import {
   isEventoParceriaCancelado,
   listarEventosParceriaArtista,
@@ -26,7 +26,7 @@ type Periodo = 0 | 10 | 30 | 60;
 
 function badgeOf(
   item: RegistroCancelamento
-): { label: string; tone: 'error' | 'warning' | 'success' } {
+): { label: string; tone: 'error' | 'warning' | 'success' | 'muted' } {
   if (item.status_convite === 'pendente') {
     return { label: 'Em andamento', tone: 'warning' };
   }
@@ -43,9 +43,13 @@ function badgeOf(
     return { label: 'Cancelada', tone: 'error' };
   }
   if (item.ciclo_status === 'completed') {
-    return { label: 'Encerrada', tone: 'success' };
+    return { label: 'Encerrada', tone: 'muted' };
   }
-  return { label: 'Em andamento', tone: 'success' };
+  const dataYmd = toCalendarYmd(item.data_evento);
+  if (dataYmd && dataYmd < todayCalendarYmd()) {
+    return { label: 'Encerrada', tone: 'muted' };
+  }
+  return { label: 'Em andamento', tone: 'warning' };
 }
 
 export default function EventosParceriaScreen() {
@@ -85,9 +89,10 @@ export default function EventosParceriaScreen() {
     }, [load])
   );
 
-  const toneColor = (tone: 'error' | 'warning' | 'success') => {
+  const toneColor = (tone: 'error' | 'warning' | 'success' | 'muted') => {
     if (tone === 'warning') return colors.warning;
     if (tone === 'success') return colors.success;
+    if (tone === 'muted') return colors.textSecondary;
     return colors.error;
   };
 
@@ -220,10 +225,7 @@ export default function EventosParceriaScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/contratacao',
-                    params: {
-                      conviteId: item.convite_id,
-                      ...(aba === 'collabs' ? { somenteLeitura: '1' } : {}),
-                    },
+                    params: { conviteId: item.convite_id, somenteLeitura: '1' },
                   })
                 }
               >

@@ -706,6 +706,13 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.rpc_app_listar_cancelamentos_artista(UUID, INT) TO authenticated;
 
+-- Collab = convite cuja disputa é um evento do feed (grupo_disputa_id = id do anúncio).
+-- Convite de agenda usa UUID aleatório em grupo_disputa_id e NÃO deve aparecer em Collabs.
+UPDATE public.convite_participacao_evento c
+SET parceria_feed = EXISTS (
+  SELECT 1 FROM public.events e WHERE e.id = c.grupo_disputa_id
+);
+
 DROP FUNCTION IF EXISTS public.rpc_app_listar_eventos_parceria_artista(UUID, INT);
 DROP FUNCTION IF EXISTS public.rpc_app_listar_eventos_parceria_artista(UUID, INT, TEXT);
 
@@ -795,12 +802,13 @@ AS $$
       CASE
         WHEN lower(COALESCE(p_origem, 'collab')) = 'parceria' THEN
           c.status IN ('aceito', 'cancelado', 'pendente')
-          AND COALESCE(c.parceria_feed, false) = false
+          AND NOT EXISTS (
+            SELECT 1 FROM public.events e WHERE e.id = c.grupo_disputa_id
+          )
         ELSE
           c.status IN ('aceito', 'cancelado')
-          AND (
-            COALESCE(c.parceria_feed, false) = true
-            OR c.evento_origem_id IS DISTINCT FROM c.grupo_disputa_id
+          AND EXISTS (
+            SELECT 1 FROM public.events e WHERE e.id = c.grupo_disputa_id
           )
       END
     )

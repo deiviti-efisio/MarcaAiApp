@@ -366,22 +366,8 @@ export async function listarEventosParceriaArtista(
   dias: number | null = null,
   origem: 'collab' | 'parceria' = 'collab'
 ): Promise<{ itens: RegistroCancelamento[]; error: string | null }> {
-  try {
-    const pDias = dias && dias > 0 ? dias : 0;
-    const { data, error } = await supabase.rpc('rpc_app_listar_eventos_parceria_artista', {
-      p_artista_id: artistId,
-      p_dias: pDias,
-      p_origem: origem,
-    });
-    if (!error) {
-      const rows = (data || []) as Record<string, unknown>[];
-      return { itens: rows.map(mapRegistroCancelamento), error: null };
-    }
-
-    return listarEventosParceriaFallback(artistId, pDias || null, origem);
-  } catch {
-    return { itens: [], error: 'Erro de conexão' };
-  }
+  const pDias = dias && dias > 0 ? dias : 0;
+  return listarEventosParceriaFallback(artistId, pDias || null, origem);
 }
 
 export async function listarCancelamentosArtista(
@@ -438,15 +424,23 @@ async function listarEventosParceriaFallback(
     }
     if (convErr) return { itens: [], error: convErr.message };
 
+    const grupoIds = Array.from(
+      new Set(
+        (convites || [])
+          .map((c: Record<string, unknown>) => String(c.grupo_disputa_id || ''))
+          .filter(Boolean)
+      )
+    );
+    const { data: listingRows } = grupoIds.length
+      ? await supabase.from('events').select('id').in('id', grupoIds)
+      : { data: [] as { id: string }[] };
+    const listingIds = new Set((listingRows || []).map((e: { id: string }) => e.id));
+
     const minYmd = dias && dias > 0 ? ymdMinusDays(todayCalendarYmd(), dias) : null;
     const filtered = (convites || []).filter((c: Record<string, unknown>) => {
       const status = String(c.status || '');
       const motivo = String(c.motivo_cancelamento || '');
-      const isFeedCollab =
-        c.parceria_feed === true ||
-        (c.evento_origem_id != null &&
-          c.grupo_disputa_id != null &&
-          String(c.evento_origem_id) !== String(c.grupo_disputa_id));
+      const isFeedCollab = listingIds.has(String(c.grupo_disputa_id || ''));
       if (origem === 'parceria') {
         if (status !== 'aceito' && status !== 'cancelado' && status !== 'pendente') return false;
         if (isFeedCollab) return false;

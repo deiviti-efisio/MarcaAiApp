@@ -277,7 +277,7 @@ export default function ContratacaoScreen() {
             ) : null}
           </View>
 
-          {souParte ? (
+          {souParte && !somenteLeitura ? (
             <TouchableOpacity
               style={[styles.outlineBtn, { borderColor: colors.border }]}
               onPress={abrirChat}
