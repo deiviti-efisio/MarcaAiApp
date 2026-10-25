@@ -234,9 +234,9 @@ export default function EventosParceriaScreen() {
                 </Text>
                 <View style={styles.cardStatusRow}>
                   {item.data_evento ? (
-                    <View style={[styles.dateBadge, { backgroundColor: `${colors.primary}14` }]}>
-                      <Ionicons name="calendar-outline" size={14} color={colors.primary} />
-                      <Text style={[styles.dateText, { color: colors.primary }]}>
+                    <View style={[styles.dateBadge, { backgroundColor: `${colors.textSecondary}14` }]}>
+                      <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                      <Text style={[styles.dateText, { color: colors.textSecondary }]}>
                         {formatCalendarDate(item.data_evento)}
                       </Text>
                     </View>
@@ -348,12 +348,12 @@ const styles = StyleSheet.create({
   dateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
   },
-  dateText: { fontSize: 13, fontWeight: '800' },
+  dateText: { fontSize: 11, fontWeight: '700' },
   badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0 },
   badgeText: { fontSize: 11, fontWeight: '700' },
   meta: { fontSize: 13, lineHeight: 18 },
