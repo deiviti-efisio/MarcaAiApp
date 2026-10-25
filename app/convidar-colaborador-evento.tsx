@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabase';
 import { getEventById } from '../services/supabase/eventService';
 import {
   ARTIST_WORK_ROLE_PRESETS,
+  normalizeShowFormats,
   parseArtistStringArrayFromJson,
 } from '../constants/artistProfileLists';
 import {
@@ -294,7 +295,7 @@ export default function ConvidarColaboradorEventoScreen() {
           const style = String(row.musical_style || '').trim();
           if (style) nextStyles[row.id] = style;
           nextWorkRoles[row.id] = parseArtistStringArrayFromJson(row.work_roles);
-          nextShowFormats[row.id] = parseArtistStringArrayFromJson(row.show_formats);
+          nextShowFormats[row.id] = normalizeShowFormats(row.show_formats);
         });
         setArtistStyles(nextStyles);
         setArtistWorkRoles(nextWorkRoles);
@@ -509,7 +510,7 @@ export default function ConvidarColaboradorEventoScreen() {
     const artistLocation = locationLine(item, artistLocations[item.id] || 'Não informado');
     const artistStyle = (item.musical_style || artistStyles[item.id] || '').trim();
     const rolesFromRpc = parseArtistStringArrayFromJson(item.work_roles);
-    const formatsFromRpc = parseArtistStringArrayFromJson(item.show_formats);
+    const formatsFromRpc = normalizeShowFormats(item.show_formats);
     const roles = rolesFromRpc.length > 0 ? rolesFromRpc : artistWorkRoles[item.id] || [];
     const selectedFunctionNormalized = normalizeRole(functionDraft);
     const artistMatchesLeilaoFunction =
@@ -699,7 +700,7 @@ export default function ConvidarColaboradorEventoScreen() {
 
             {formats.length > 0 && (
               <View style={styles.cardBlockSection}>
-                <Text style={[styles.groupLabel, { color: colors.textSecondary }]}>Formatos</Text>
+                <Text style={[styles.groupLabel, { color: colors.textSecondary }]}>Como se apresenta</Text>
                 <View style={styles.rolesWrap}>
                   {formats.map((fmt) => (
                     <View

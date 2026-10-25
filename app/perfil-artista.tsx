@@ -23,8 +23,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import FeaturedShowCard from '../components/FeaturedShowCard';
 import PressKitAudioPlayer from '../components/PressKitAudioPlayer';
 import PublicAgendaCalendar from '../components/PublicAgendaCalendar';
+import ArtistReputationBadge from '../components/ArtistReputationBadge';
+import ArtistReviewsModal from '../components/ArtistReviewsModal';
 import { isPressKitAudio } from '../lib/pressKitMedia';
 import { collectSocialPreviewItems, parseArtistSocialLinks } from '../lib/socialLinks';
+import { normalizeShowFormats } from '../constants/artistProfileLists';
 import { getArtistPublicProfile, type Artist } from '../services/supabase/artistService';
 import {
   alternarArtistaFavorito,
@@ -43,20 +46,26 @@ import {
   type ArtistPressKitItem,
 } from '../services/supabase/artistPressKitService';
 import { maskBrazilMobile, openWhatsAppConversation } from '../utils/brazilPhone';
+import {
+  listarAvaliacoesPendentes,
+  obterEstatisticasPerfilArtista,
+  type AvaliacaoPendente,
+  type EstatisticasPerfilArtista,
+} from '../services/supabase/contratacaoService';
 
 function styleChips(artist: Artist | null): string[] {
   if (!artist) return [];
   const out: string[] = [];
+  const push = (value: string) => {
+    const t = value.trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
   const style = (artist.musical_style || '').trim();
   if (style) {
-    style.split(/[·,;/|]+/).forEach((part) => {
-      const t = part.trim();
-      if (t) out.push(t);
-    });
+    style.split(/[·,;/|]+/).forEach(push);
   }
-  (artist.work_roles || []).forEach((role) => {
-    if (role && !out.includes(role)) out.push(role);
-  });
+  normalizeShowFormats(artist.show_formats).forEach(push);
+  (artist.work_roles || []).forEach(push);
   return out.slice(0, 8);
 }
 
@@ -78,13 +87,20 @@ export default function PerfilArtistaScreen() {
   const [pressKitItems, setPressKitItems] = useState<ArtistPressKitItem[]>([]);
   const [pressKitMenuOpen, setPressKitMenuOpen] = useState(false);
   const [playingPressKit, setPlayingPressKit] = useState<ArtistPressKitItem | null>(null);
+  const [stats, setStats] = useState<EstatisticasPerfilArtista | null>(null);
+  const [showReviews, setShowReviews] = useState(false);
+  const [pendentes, setPendentes] = useState<AvaliacaoPendente[]>([]);
 
   const isOwn = !!activeArtist?.id && activeArtist.id === artistId;
   const canManagePublicProfile = isOwn && isAdmin;
-  const canSocialWithArtists = isAdmin && !isOwn;
+  const canSocialWithArtists = !isOwn && !!activeArtist?.id;
   const previews = useMemo(
     () => collectSocialPreviewItems(parseArtistSocialLinks(artist?.social_links)),
     [artist?.social_links]
+  );
+  const presentationFormats = useMemo(
+    () => (artist ? normalizeShowFormats(artist.show_formats) : []),
+    [artist]
   );
 
   const load = useCallback(async () => {
@@ -92,18 +108,26 @@ export default function PerfilArtistaScreen() {
       setLoading(false);
       return;
     }
-    const [profileRes, agendaRes, featuredRes, pressKitRes, favoriteIds] = await Promise.all([
+    const [profileRes, agendaRes, featuredRes, pressKitRes, favoriteIds, statsRes] = await Promise.all([
       getArtistPublicProfile(artistId),
       listarAgendaPublicaArtista(artistId),
       listarShowsDestaqueArtista(artistId),
       listarPressKitPublicoArtista(artistId),
       listarIdsArtistasFavoritos(),
+      obterEstatisticasPerfilArtista(artistId),
     ]);
     setArtist(profileRes.artist);
     setPublicEvents(agendaRes.events);
     setFeaturedShows(featuredRes.shows.filter((item) => !isEventDateAlreadyPast(item.event_date)));
     setPressKitItems(pressKitRes.items);
     setFavorito(favoriteIds.has(artistId));
+    setStats(statsRes.stats);
+    if (activeArtist?.id === artistId) {
+      const pend = await listarAvaliacoesPendentes(artistId);
+      setPendentes(pend.itens);
+    } else {
+      setPendentes([]);
+    }
   }, [artistId]);
 
   useEffect(() => {
@@ -121,10 +145,6 @@ export default function PerfilArtistaScreen() {
   };
 
   const handleConversar = () => {
-    if (!isAdmin) {
-      Alert.alert('Conversa', 'Somente o administrador pode conversar com outros artistas.');
-      return;
-    }
     if (!activeArtist?.id) {
       Alert.alert('Conversa', 'Selecione um artista para iniciar o bate-papo.');
       return;
@@ -331,9 +351,75 @@ export default function PerfilArtistaScreen() {
             ) : null}
             {artist.bio ? (
               <View style={styles.bioBlock}>
-                <Text style={[styles.bioLabel, { color: colors.textSecondary }]}>Sobre a carreira</Text>
+                <Text style={[styles.bioLabel, { color: colors.textSecondary }]}>
+                  Experiência (não verificada pelo MeuShow)
+                </Text>
                 <Text style={[styles.bio, { color: colors.text }]}>{artist.bio}</Text>
               </View>
+            ) : null}
+
+            {stats ? (
+              <View style={styles.statsGrid}>
+                <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                  <Text style={[styles.statNum, { color: colors.text }]}>{stats.shows_realizados}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Shows no MeuShow</Text>
+                </View>
+                <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                  <Text style={[styles.statNum, { color: colors.text }]}>{stats.contratantes_atendidos}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Contratantes</Text>
+                </View>
+                <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                  <Text style={[styles.statNum, { color: colors.text }]}>
+                    {stats.taxa_conclusao != null ? `${stats.taxa_conclusao}%` : '—'}
+                  </Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Conclusão</Text>
+                </View>
+              </View>
+            ) : null}
+            {stats ? (
+              <View style={{ marginTop: 10 }}>
+                <ArtistReputationBadge
+                  reputation={{
+                    mediaNota: stats.media_nota,
+                    totalAvaliacoes: stats.total_avaliacoes,
+                    showsRealizados: stats.shows_realizados,
+                  }}
+                  onPressReviews={
+                    stats.total_avaliacoes > 0 ? () => setShowReviews(true) : undefined
+                  }
+                />
+              </View>
+            ) : null}
+            {presentationFormats.length ? (
+              <View style={styles.bioBlock}>
+                <Text style={[styles.bioLabel, { color: colors.textSecondary }]}>
+                  Como se apresenta
+                </Text>
+                <View style={styles.formatChipsWrap}>
+                  {presentationFormats.map((fmt) => (
+                    <View
+                      key={`fmt-${fmt}`}
+                      style={[styles.chip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                    >
+                      <Text style={[styles.chipText, { color: colors.text }]}>{fmt}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {isOwn && pendentes.length ? (
+              <TouchableOpacity
+                style={[styles.remind, { backgroundColor: `${colors.primary}14`, borderColor: colors.primary }]}
+                onPress={() =>
+                  router.push({ pathname: '/contratacao', params: { conviteId: pendentes[0].convite_id } })
+                }
+              >
+                <Text style={[styles.remindText, { color: colors.primary }]}>
+                  {pendentes.length === 1
+                    ? `Avaliação pendente: ${pendentes[0].nome_evento}`
+                    : `${pendentes.length} avaliações pendentes após shows concluídos`}
+                </Text>
+              </TouchableOpacity>
             ) : null}
 
             <View style={styles.actions}>
@@ -344,6 +430,15 @@ export default function PerfilArtistaScreen() {
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
                   <Text style={styles.primaryBtnText}>Conversar</Text>
+                </TouchableOpacity>
+              ) : null}
+              {canSocialWithArtists && isAdmin ? (
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                  onPress={() => router.push('/(tabs)/feed')}
+                >
+                  <Ionicons name="newspaper-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.primaryBtnText, { color: colors.primary }]}>Oportunidade</Text>
                 </TouchableOpacity>
               ) : null}
               {publicWhatsapp ? (
@@ -595,6 +690,13 @@ export default function PerfilArtistaScreen() {
         </View>
       </Modal>
 
+      <ArtistReviewsModal
+        visible={showReviews}
+        artistId={artistId || null}
+        artistName={artist?.name || 'Artista'}
+        artistImage={artist?.profile_url}
+        onClose={() => setShowReviews(false)}
+      />
       <PressKitAudioPlayer
         visible={!!playingPressKit}
         uri={playingPressKit?.url || null}
@@ -659,6 +761,12 @@ const styles = StyleSheet.create({
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   locText: { fontSize: 13 },
   chipsRow: { gap: 8, paddingVertical: 12 },
+  formatChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
   chip: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
@@ -738,4 +846,23 @@ const styles = StyleSheet.create({
   },
   principalBadgeText: { fontSize: 11, fontWeight: '800' },
   previewRow: { paddingRight: 20 },
+  statsGrid: { flexDirection: 'row', gap: 8, marginTop: 14 },
+  statCard: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  statNum: { fontSize: 18, fontWeight: '800' },
+  statLabel: { fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
+  remind: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  remindText: { fontSize: 13, fontWeight: '700' },
 });

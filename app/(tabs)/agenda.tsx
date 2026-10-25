@@ -2904,7 +2904,15 @@ export default function AgendaScreen() {
                         flex: 1,
                       },
                     ]}
-                    onPress={() => void handleCancelInviteParticipation()}
+                    onPress={() => {
+                      const cid =
+                        selectedInviteEventInfo?.convite_participacao_id ||
+                        conviteIdByEventId[selectedInviteEventInfo?.id || ""];
+                      setShowInviteEventInfoModal(false);
+                      if (cid) {
+                        router.push({ pathname: "/contratacao", params: { conviteId: cid } });
+                      }
+                    }}
                     disabled={isCancellingInviteParticipation}
                   >
                     <Text
@@ -2915,7 +2923,7 @@ export default function AgendaScreen() {
                     >
                       {isCancellingInviteParticipation
                         ? "Cancelando..."
-                        : "Cancelar participação"}
+                        : "Abrir contratação"}
                     </Text>
                   </TouchableOpacity>
                 </View>

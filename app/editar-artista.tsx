@@ -23,6 +23,7 @@ import {
   ARTIST_SHOW_FORMAT_PRESETS,
   ARTIST_WORK_ROLE_PRESETS,
   buildOrderedOptionsForPicker,
+  normalizeShowFormats,
   parseArtistStringArrayFromJson,
 } from '../constants/artistProfileLists';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
@@ -202,7 +203,12 @@ export default function EditarArtistaScreen() {
       Alert.alert('Atenção', 'Este formato já está na lista.');
       return;
     }
-    setSelectedShowFormats((prev) => [...prev, t]);
+    const next = normalizeShowFormats([...selectedShowFormats, t]);
+    if (next.length === selectedShowFormats.length) {
+      Alert.alert('Atenção', 'Use formação de palco (solo, duo, banda…), não o tipo de festa.');
+      return;
+    }
+    setSelectedShowFormats(next);
     setShowFormatDraft('');
   };
 
@@ -289,7 +295,7 @@ export default function EditarArtistaScreen() {
           : ''
       );
       setSelectedWorkRoles(parseArtistStringArrayFromJson(currentArtist.work_roles));
-      setSelectedShowFormats(parseArtistStringArrayFromJson(currentArtist.show_formats));
+      setSelectedShowFormats(normalizeShowFormats(currentArtist.show_formats));
       setProfileUrl(currentArtist.profile_url || '');
       setOriginalProfileUrl(currentArtist.profile_url || '');
       setCoverUrl(currentArtist.cover_url || '');
@@ -501,7 +507,7 @@ export default function EditarArtistaScreen() {
         show_whatsapp: isAvailableForGigs && showWhatsappInSearch,
         average_cache_value: isAvailableForGigs ? parsedAverageCacheValue : null,
         work_roles: isAvailableForGigs ? selectedWorkRoles : [],
-        show_formats: isAvailableForGigs ? selectedShowFormats : [],
+        show_formats: isAvailableForGigs ? normalizeShowFormats(selectedShowFormats) : [],
         profile_url: finalProfileUrl,
         cover_url: finalCoverUrl.trim() ? finalCoverUrl : null,
         bio: bio.trim() || null,
@@ -1027,7 +1033,8 @@ export default function EditarArtistaScreen() {
               </View>
 
               <ChipMultiSelectField
-                title="Funções de trabalho"
+                title="Função no palco"
+                hint="Instrumento, papel musical ou função de palco/evento (som, luz, roadie, dança)."
                 options={workRoleOptions}
                 selected={selectedWorkRoles}
                 onToggle={toggleWorkRole}
@@ -1035,20 +1042,23 @@ export default function EditarArtistaScreen() {
                 onDraftChange={setWorkRoleDraft}
                 onAddCustom={addCustomWorkRole}
                 addSectionLabel="Incluir outra função"
-                addPlaceholder="Digite e toque em Adicionar"
+                addPlaceholder="Ex.: violinista"
                 presetStrip={ARTIST_WORK_ROLE_PRESETS}
               />
 
               <ChipMultiSelectField
-                title="Modelo / formato de show"
+                title="Como se apresenta"
+                hint="Formação do palco — o que o contratante precisa saber para encaixar o show."
                 options={showFormatOptions}
                 selected={selectedShowFormats}
                 onToggle={toggleShowFormat}
                 draft={showFormatDraft}
                 onDraftChange={setShowFormatDraft}
                 onAddCustom={addCustomShowFormat}
-                addSectionLabel="Incluir outro formato"
-                addPlaceholder="Digite e toque em Adicionar"
+                addSectionLabel="Outra formação"
+                addPlaceholder="Ex.: quarteto"
+                presetStrip={ARTIST_SHOW_FORMAT_PRESETS}
+                horizontalOnly
               />
             </>
           )}

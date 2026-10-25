@@ -25,6 +25,7 @@ export interface ChipMultiSelectFieldProps {
   presetStrip?: readonly string[];
   /** Só carrossel horizontal + campo para digitar, sem grade. */
   horizontalOnly?: boolean;
+  hint?: string;
 }
 
 export function ChipMultiSelectField({
@@ -39,6 +40,7 @@ export function ChipMultiSelectField({
   addPlaceholder,
   presetStrip,
   horizontalOnly = false,
+  hint,
 }: ChipMultiSelectFieldProps) {
   const { colors } = useTheme();
 
@@ -67,6 +69,9 @@ export function ChipMultiSelectField({
   return (
     <View style={styles.wrapper}>
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+      {hint ? (
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>{hint}</Text>
+      ) : null}
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
 
       <View
@@ -186,6 +191,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 6,
+  },
+  hint: {
+    fontSize: 13,
+    lineHeight: 18,
     marginBottom: 6,
   },
   subtitle: {

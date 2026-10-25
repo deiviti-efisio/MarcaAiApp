@@ -367,6 +367,18 @@ export default function NotificacoesScreen() {
     // Convite de participação: abrir tela de convites só para convite propriamente (ex.: "Convite de participação em evento").
     // Avisos informativos (recusa, cancelamento pelo convidado): apenas marcar como lida acima.
     if (notification.type === "participacao_evento") {
+      const title = (notification.title || "").toLowerCase();
+      const conviteId = notification.convite_participacao_evento_id;
+      if (
+        conviteId &&
+        (title.includes("cancelamento") ||
+          title.includes("contratação") ||
+          title.includes("show aconteceu") ||
+          title.includes("avaliação"))
+      ) {
+        router.push({ pathname: "/contratacao", params: { conviteId } });
+        return;
+      }
       if (
         !isParticipationRejectedNotification(notification) &&
         !isParticipationCanceledByGuestNotification(notification) &&

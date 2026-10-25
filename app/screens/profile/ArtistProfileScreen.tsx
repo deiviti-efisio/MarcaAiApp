@@ -23,6 +23,7 @@ import {
     ARTIST_SHOW_FORMAT_PRESETS,
     ARTIST_WORK_ROLE_PRESETS,
     buildOrderedOptionsForPicker,
+    normalizeShowFormats,
 } from '../../../constants/artistProfileLists';
 import { useActiveArtistContext } from '../../../contexts/ActiveArtistContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -32,6 +33,7 @@ import { uploadImageToSupabase } from '../../../services/supabase/imageUploadSer
 import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES, getUserProfile } from '../../../services/supabase/userService';
 import { ChipMultiSelectField } from '../../../components/ChipMultiSelectField';
 import BrazilPlaceSearchField from '../../../components/BrazilPlaceSearchField';
+import { isCompleteBrazilMobile, maskBrazilMobile } from '../../../utils/brazilPhone';
 
 const estilosMusicais = [
   'Alternative',
@@ -209,7 +211,12 @@ export default function ArtistProfileScreen() {
       Alert.alert('Atenção', 'Este formato já está na lista.');
       return;
     }
-    setSelectedShowFormats((prev) => [...prev, t]);
+    const next = normalizeShowFormats([...selectedShowFormats, t]);
+    if (next.length === selectedShowFormats.length) {
+      Alert.alert('Atenção', 'Use formação de palco (solo, duo, banda…), não o tipo de festa.');
+      return;
+    }
+    setSelectedShowFormats(next);
     setShowFormatDraft('');
   };
 
@@ -296,8 +303,8 @@ export default function ArtistProfileScreen() {
     }
 
     if (isAvailableForGigs) {
-      if (!whatsapp.trim()) {
-        Alert.alert('Atenção', 'Informe o WhatsApp para aparecer na busca de convites.');
+      if (!isCompleteBrazilMobile(whatsapp)) {
+        Alert.alert('Atenção', 'Informe o WhatsApp com DDD, no formato (00) 00000-0000.');
         return;
       }
     }
@@ -370,7 +377,7 @@ export default function ArtistProfileScreen() {
         bio: bio.trim() || null,
         profile_url: finalProfileUrl || undefined,
         user_id: user.id,
-        whatsapp: isAvailableForGigs ? whatsapp.trim() || undefined : undefined,
+        whatsapp: isAvailableForGigs ? maskBrazilMobile(whatsapp) || undefined : undefined,
         email: emailTrim || undefined,
         show_email: showEmailOnProfile && Boolean(emailTrim),
         city: city.trim() || undefined,
@@ -379,7 +386,7 @@ export default function ArtistProfileScreen() {
         show_whatsapp: isAvailableForGigs && showWhatsappInSearch,
         average_cache_value: isAvailableForGigs ? parsedAverageCacheValue : null,
         work_roles: isAvailableForGigs ? selectedWorkRoles : [],
-        show_formats: isAvailableForGigs ? selectedShowFormats : [],
+        show_formats: isAvailableForGigs ? normalizeShowFormats(selectedShowFormats) : [],
       });
 
       console.log('📊 [ArtistProfileScreen] Resposta do createArtist:', {
@@ -695,10 +702,11 @@ export default function ArtistProfileScreen() {
                       <TextInput
                         style={[styles.input, { color: colors.text }]}
                         value={whatsapp}
-                        onChangeText={setWhatsapp}
+                        onChangeText={(text) => setWhatsapp(maskBrazilMobile(text))}
                         placeholder="(00) 00000-0000"
                         placeholderTextColor={colors.textSecondary}
                         keyboardType="phone-pad"
+                        maxLength={15}
                       />
                     </View>
                   </View>
@@ -748,7 +756,8 @@ export default function ArtistProfileScreen() {
                   </View>
 
                   <ChipMultiSelectField
-                    title="Funções de trabalho"
+                    title="Função no palco"
+                    hint="Instrumento, papel musical ou função de palco/evento (som, luz, roadie, dança)."
                     options={workRoleOptions}
                     selected={selectedWorkRoles}
                     onToggle={toggleWorkRole}
@@ -756,20 +765,23 @@ export default function ArtistProfileScreen() {
                     onDraftChange={setWorkRoleDraft}
                     onAddCustom={addCustomWorkRole}
                     addSectionLabel="Incluir outra função"
-                    addPlaceholder="Digite e toque em Adicionar"
+                    addPlaceholder="Ex.: violinista"
                     presetStrip={ARTIST_WORK_ROLE_PRESETS}
                   />
 
                   <ChipMultiSelectField
-                    title="Modelo / formato de show"
+                    title="Como se apresenta"
+                    hint="Formação do palco — o que o contratante precisa saber para encaixar o show."
                     options={showFormatOptions}
                     selected={selectedShowFormats}
                     onToggle={toggleShowFormat}
                     draft={showFormatDraft}
                     onDraftChange={setShowFormatDraft}
                     onAddCustom={addCustomShowFormat}
-                    addSectionLabel="Incluir outro formato"
-                    addPlaceholder="Digite e toque em Adicionar"
+                    addSectionLabel="Outra formação"
+                    addPlaceholder="Ex.: quarteto"
+                    presetStrip={ARTIST_SHOW_FORMAT_PRESETS}
+                    horizontalOnly
                   />
                 </>
               )}

@@ -37,6 +37,7 @@ import { formatCalendarDate, formatCalendarDateLongParts, weekdayFromCalendarDat
 import {
   ARTIST_MUSICAL_STYLE_PRESETS,
   ARTIST_WORK_ROLE_PRESETS,
+  normalizeShowFormats,
   parseArtistStringArrayFromJson,
 } from '../../constants/artistProfileLists';
 import { supabase } from '../../lib/supabase';
@@ -1065,13 +1066,15 @@ export default function FeedScreen() {
     const initial = item.name.trim().charAt(0).toUpperCase() || '?';
     const place = [item.city, item.state].filter(Boolean).join(' / ');
     const genre = item.musical_style?.trim() || '';
+    const formats = normalizeShowFormats(item.show_formats).slice(0, 2);
     const roles = parseArtistStringArrayFromJson(item.work_roles).slice(0, 3);
+    const tags = [...formats, ...roles.filter((role) => !formats.includes(role))].slice(0, 4);
     const favorito = favoriteIds.has(item.id);
     const openProfile = () =>
       router.push({ pathname: '/perfil-artista', params: { artistId: item.id } });
     return (
       <TouchableOpacity
-        style={[styles.artistRow, { alignItems: roles.length ? 'flex-start' : 'center' }]}
+        style={[styles.artistRow, { alignItems: tags.length ? 'flex-start' : 'center' }]}
         onPress={openProfile}
         activeOpacity={0.7}
       >
@@ -1099,18 +1102,18 @@ export default function FeedScreen() {
               {place}
             </Text>
           ) : null}
-          {roles.length ? (
+          {tags.length ? (
             <View style={styles.artistRoles}>
-              {roles.map((role) => (
+              {tags.map((tag) => (
                 <View
-                  key={role}
+                  key={tag}
                   style={[
                     styles.artistRoleTag,
                     { backgroundColor: `${colors.primary}14`, borderColor: `${colors.primary}28` },
                   ]}
                 >
                   <Text style={[styles.artistRoleTagText, { color: colors.primary }]} numberOfLines={1}>
-                    {role}
+                    {tag}
                   </Text>
                 </View>
               ))}

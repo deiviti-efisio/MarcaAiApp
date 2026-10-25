@@ -1172,18 +1172,10 @@ export default function DetalhesEventoScreen() {
     }
 
     if (isInviteEvent) {
-      Alert.alert(
-        "Cancelar participação",
-        `Cancelar a parceria em "${event?.name}"? O outro artista recebe um aviso claro e a data some da agenda dos dois.`,
-        [
-          { text: "Voltar", style: "cancel" },
-          {
-            text: "Cancelar participação",
-            style: "destructive",
-            onPress: () => void confirmCancelInviteEvent(),
-          },
-        ],
-      );
+      router.push({
+        pathname: "/contratacao",
+        params: { conviteId: event?.convite_participacao_id || "" },
+      });
       return;
     }
 
@@ -2027,6 +2019,34 @@ export default function DetalhesEventoScreen() {
                       }}
                     >
                       Conversar
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {event?.convite_participacao_id ? (
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: "/contratacao",
+                        params: { conviteId: event.convite_participacao_id },
+                      })
+                    }
+                    style={{
+                      marginTop: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      alignSelf: "flex-start",
+                      gap: 6,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="document-text-outline" size={16} color={colors.text} />
+                    <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>
+                      Ver contratação
                     </Text>
                   </TouchableOpacity>
                 ) : null}

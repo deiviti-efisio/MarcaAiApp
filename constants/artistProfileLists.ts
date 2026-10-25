@@ -1,42 +1,40 @@
 /** Opções sugeridas para `artists.work_roles` (JSONB array de strings). */
 export const ARTIST_WORK_ROLE_PRESETS = [
-  'Arranjador',
-  'Ator',
+  'Cantor',
+  'Vocalista',
   'Backing vocal',
+  'Guitarrista',
+  'Violonista',
   'Baixista',
   'Baterista',
-  'Cantor',
-  'Compositor',
-  'Contrabaixista',
-  'Coreógrafo',
-  'Dançarino',
-  'DJ',
-  'Fotógrafo',
-  'Guitarrista',
-  'Harmonicista',
-  'Iluminador',
-  'Instrumentista',
-  'MC',
-  'Percussionista',
-  'Produtor musical',
-  'Roadie',
-  'Roundie',
+  'Tecladista',
   'Sanfoneiro',
   'Saxofonista',
-  'Tecladista',
+  'Percussionista',
+  'DJ',
+  'MC',
+  'Compositor',
+  'Arranjador',
+  'Produtor musical',
+  'Roadie',
   'Técnico de som',
-  'Trompetista',
+  'Iluminador',
+  'Operador de palco',
+  'Diretor de palco',
+  'Técnico de backline',
+  'Contrarregra',
+  'Bailarino',
+  'Coreógrafo',
+  'Técnico de vídeo',
+  'Fotógrafo',
   'Videomaker',
-  'Violinista',
-  'Violonista',
-  'Vocalista',
+  'Produtor de eventos',
 ] as const;
 
 /** Estilos musicais do cadastro (`artists.musical_style`). */
 export const ARTIST_MUSICAL_STYLE_PRESETS = [
   'Alternative',
   'Arrocha',
-  'Artista Solo',
   'Axé',
   'Baião',
   'Bailão',
@@ -96,27 +94,49 @@ export const ARTIST_MUSICAL_STYLE_PRESETS = [
   'Outros',
 ] as const;
 
-/** Opções sugeridas para `artists.show_formats` (JSONB array de strings). */
+/** Formação de palco — o que o contratante precisa para encaixar o show. */
 export const ARTIST_SHOW_FORMAT_PRESETS = [
-  'Show solo',
+  'Solo',
+  'Voz e violão',
   'Duo',
   'Trio',
-  'Banda completa',
-  'Orquestra / big band',
-  'DJ set',
-  'Acústico',
-  'Voz e violão',
+  'Banda',
+  'DJ',
+] as const;
+
+const SHOW_FORMAT_ALIASES: Record<string, string> = {
+  'Show solo': 'Solo',
+  'Banda completa': 'Banda',
+  'Orquestra / big band': 'Banda',
+  'DJ set': 'DJ',
+  Acústico: 'Voz e violão',
+};
+
+const SHOW_FORMAT_IRRELEVANT = new Set([
   'Cerimônia',
   'Festa / animação',
   'Palco / festival',
   'Bar / restaurante',
-] as const;
+]);
 
 export function parseArtistStringArrayFromJson(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => (typeof item === 'string' ? item.trim() : ''))
     .filter(Boolean);
+}
+
+/** Remove tipo de festa/local e unifica nomes antigos. */
+export function normalizeShowFormats(value: unknown): string[] {
+  const out: string[] = [];
+  for (const raw of parseArtistStringArrayFromJson(value)) {
+    if (SHOW_FORMAT_IRRELEVANT.has(raw)) continue;
+    const mapped = SHOW_FORMAT_ALIASES[raw] || raw;
+    if (!mapped) continue;
+    if (out.some((item) => item.toLowerCase() === mapped.toLowerCase())) continue;
+    out.push(mapped);
+  }
+  return out;
 }
 
 export function joinArtistStringArrayJson(value: unknown): string {

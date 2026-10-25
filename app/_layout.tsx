@@ -145,6 +145,7 @@ function RootLayoutContent() {
         <Stack.Screen name="editar-usuario" options={{ headerShown: false }} />
         <Stack.Screen name="editar-artista" options={{ headerShown: false }} />
         <Stack.Screen name="perfil-artista" options={{ headerShown: false }} />
+        <Stack.Screen name="contratacao" options={{ headerShown: false }} />
         <Stack.Screen name="conversas" options={{ headerShown: false }} />
         <Stack.Screen name="conversa" options={{ headerShown: false }} />
         <Stack.Screen name="configuracoes-artista" options={{ headerShown: false }} />

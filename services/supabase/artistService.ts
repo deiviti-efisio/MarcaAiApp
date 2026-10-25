@@ -3,7 +3,10 @@ import {
   parseArtistSocialLinks,
   type ArtistSocialLinks,
 } from '../../lib/socialLinks';
-import { parseArtistStringArrayFromJson } from '../../constants/artistProfileLists';
+import {
+  normalizeShowFormats,
+  parseArtistStringArrayFromJson,
+} from '../../constants/artistProfileLists';
 import { normalizeArtistMemberRole } from './permissionsService';
 import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES } from './userService';
 
@@ -79,7 +82,7 @@ function mapArtistRow(
     average_cache_value:
       row.average_cache_value == null ? null : Number(row.average_cache_value),
     work_roles: parseArtistStringArrayFromJson(row.work_roles),
-    show_formats: parseArtistStringArrayFromJson(row.show_formats),
+    show_formats: normalizeShowFormats(row.show_formats),
     role: row.role ? normalizeArtistMemberRole(String(row.role)) : undefined,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
