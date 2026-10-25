@@ -229,18 +229,26 @@ export default function EventosParceriaScreen() {
                   })
                 }
               >
-                <View style={styles.cardTop}>
-                  <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={2}>
-                    {item.nome_evento}
-                  </Text>
+                <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={2}>
+                  {item.nome_evento}
+                </Text>
+                <View style={styles.cardStatusRow}>
+                  {item.data_evento ? (
+                    <View style={[styles.dateBadge, { backgroundColor: `${colors.primary}14` }]}>
+                      <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                      <Text style={[styles.dateText, { color: colors.primary }]}>
+                        {formatCalendarDate(item.data_evento)}
+                      </Text>
+                    </View>
+                  ) : <View />}
                   <View style={[styles.badge, { backgroundColor: `${badgeColor}18` }]}>
                     <Text style={[styles.badgeText, { color: badgeColor }]}>{badge.label}</Text>
                   </View>
                 </View>
                 <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                  {item.data_evento ? formatCalendarDate(item.data_evento) : ''}
-                  {item.hora_inicio ? ` · ${String(item.hora_inicio).slice(0, 5)}` : ''}
-                  {local ? ` · ${local}` : ''}
+                  {item.hora_inicio ? String(item.hora_inicio).slice(0, 5) : ''}
+                  {item.hora_inicio && local ? ' · ' : ''}
+                  {local}
                 </Text>
                 <Text style={[styles.partner, { color: colors.text }]} numberOfLines={1}>
                   {papel} · {parceiro}
@@ -328,14 +336,24 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
-  cardTop: {
+  cardStatusRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 8,
   },
   cardName: { flex: 1, fontSize: 16, fontWeight: '700' },
+  dateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  dateText: { fontSize: 13, fontWeight: '800' },
   badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0 },
   badgeText: { fontSize: 11, fontWeight: '700' },
   meta: { fontSize: 13, lineHeight: 18 },
