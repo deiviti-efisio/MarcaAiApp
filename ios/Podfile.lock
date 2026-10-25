@@ -1,4 +1,6 @@
 PODS:
+  - AgendaWidgetModule (1.0.0):
+    - ExpoModulesCore
   - AppAuth (2.0.0):
     - AppAuth/Core (= 2.0.0)
     - AppAuth/ExternalUserAgent (= 2.0.0)
@@ -2302,6 +2304,7 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
+  - AgendaWidgetModule (from `../modules/agenda-widget/ios`)
   - EXApplication (from `../node_modules/expo-application/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - EXImageLoader (from `../node_modules/expo-image-loader/ios`)
@@ -2440,6 +2443,8 @@ SPEC REPOS:
     - SDWebImageWebPCoder
 
 EXTERNAL SOURCES:
+  AgendaWidgetModule:
+    :path: "../modules/agenda-widget/ios"
   EXApplication:
     :path: "../node_modules/expo-application/ios"
   EXConstants:
@@ -2661,6 +2666,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  AgendaWidgetModule: 56b3f2785392771891ef5dd975e7c4af7067e4de
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
   EXApplication: 27a524f5c3e671c6218220fba04752629466a1a9

@@ -1,5 +1,8 @@
 {
-  "platforms": ["android"],
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["AgendaWidgetModule"]
+  },
   "android": {
     "modules": ["expo.modules.agendawidget.AgendaWidgetModule"]
   }

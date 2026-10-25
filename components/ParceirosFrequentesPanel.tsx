@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   Linking,
   Platform,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -137,21 +139,32 @@ export async function compartilharParceirosFrequentes(node: View | null, empty: 
     return;
   }
   await new Promise<void>((r) => requestAnimationFrame(() => r()));
-  await new Promise<void>((r) => setTimeout(r, Platform.OS === 'android' ? 450 : 350));
-  const uri = await captureRef(node, {
-    format: 'png',
-    quality: 1,
+  await new Promise<void>((r) => setTimeout(r, Platform.OS === 'android' ? 500 : 400));
+  const capturedUri = await captureRef(node, {
+    format: 'jpg',
+    quality: 0.92,
     result: 'tmpfile',
     snapshotContentContainer: false,
+    ...(Platform.OS === 'ios' ? { pixelRatio: 2 } : {}),
   });
+  const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  const fileUri = baseDir
+    ? `${baseDir}parceiros-frequentes-${Date.now()}.jpg`
+    : capturedUri;
+  if (baseDir) {
+    await FileSystem.copyAsync({ from: capturedUri, to: fileUri });
+  }
+  if (Platform.OS === 'ios') {
+    await Share.share({ url: fileUri });
+    return;
+  }
   const ok = await Sharing.isAvailableAsync();
   if (!ok) {
     Alert.alert('Indisponível', 'Compartilhamento não está disponível neste dispositivo.');
     return;
   }
-  await Sharing.shareAsync(uri, {
-    mimeType: 'image/png',
-    UTI: 'public.png',
+  await Sharing.shareAsync(fileUri, {
+    mimeType: 'image/jpeg',
     dialogTitle: 'Compartilhar parceiros frequentes',
   });
 }

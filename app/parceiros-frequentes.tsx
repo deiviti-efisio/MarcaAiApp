@@ -70,7 +70,7 @@ export default function ParceirosFrequentesScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <SafeAreaView style={styles.root} edges={['top']}>
+      <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -147,7 +147,6 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     width: SCREEN_W,
-    opacity: 0.02,
     zIndex: -1,
   },
 });

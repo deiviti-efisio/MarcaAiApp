@@ -13,11 +13,12 @@ class AgendaWidgetModule : Module() {
 
     Function("saveSnapshot") { json: String ->
       val context = appContext.reactContext ?: appContext.currentActivity ?: return@Function
+      java.io.File(context.filesDir, "agenda_widget.json").writeText(json)
       context
         .getSharedPreferences("agenda_widget", Context.MODE_PRIVATE)
         .edit()
         .putString("snapshot", json)
-        .apply()
+        .commit()
       refreshWidgets(context)
     }
   }

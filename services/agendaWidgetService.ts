@@ -1,9 +1,6 @@
 import { Platform } from "react-native";
 import { todayCalendarYmd, toCalendarYmd } from "../lib/dateUtils";
 
-const APP_GROUP = "group.com.marcaai.app";
-const SNAPSHOT_KEY = "agendaWidget";
-
 export type AgendaWidgetEvent = {
   event_date?: string | null;
   name?: string | null;
@@ -94,21 +91,13 @@ export async function refreshAgendaWidget(artistId: string | null | undefined) {
 }
 
 async function writeSnapshot(json: string) {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return;
   try {
-    if (Platform.OS === "ios") {
-      const { ExtensionStorage } = await import("@bacons/apple-targets");
-      const storage = new ExtensionStorage(APP_GROUP);
-      storage.set(SNAPSHOT_KEY, json);
-      ExtensionStorage.reloadWidget("AgendaWidget");
-      return;
-    }
-    if (Platform.OS === "android") {
-      const { requireNativeModule } = await import("expo-modules-core");
-      const native = requireNativeModule("AgendaWidget") as {
-        saveSnapshot: (value: string) => void;
-      };
-      native.saveSnapshot(json);
-    }
+    const { requireNativeModule } = await import("expo-modules-core");
+    const native = requireNativeModule("AgendaWidget") as {
+      saveSnapshot: (value: string) => void;
+    };
+    native.saveSnapshot(json);
   } catch {
     /* nativo ainda não gerado neste build */
   }

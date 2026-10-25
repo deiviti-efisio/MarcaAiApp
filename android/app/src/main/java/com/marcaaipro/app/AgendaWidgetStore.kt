@@ -31,7 +31,16 @@ object AgendaWidgetStore {
   private val shortDateFmt = SimpleDateFormat("dd/MM", ptBr)
 
   fun load(context: Context): WidgetSnapshot {
-    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
+    val file = java.io.File(context.filesDir, "agenda_widget.json")
+    val raw = if (file.exists()) {
+      try {
+        file.readText()
+      } catch (_: Exception) {
+        null
+      }
+    } else {
+      context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
+    }
     if (raw.isNullOrBlank()) {
       return WidgetSnapshot("", emptySet(), null, null, null, null)
     }
