@@ -541,9 +541,6 @@ export default function ArtistProfileScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.text }]}>Bio</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8, lineHeight: 18 }}>
-                  Um pouco sobre a carreira, o palco e o que te define.
-                </Text>
                 <TextInput
                   style={[
                     styles.bioInput,
@@ -551,7 +548,7 @@ export default function ArtistProfileScreen() {
                   ]}
                   value={bio}
                   onChangeText={setBio}
-                  placeholder="Ex.: Músico e compositor com 20 anos de estrada, voz e violão, repertório de MPB."
+                  placeholder="Fale um pouco da sua história"
                   placeholderTextColor={colors.textSecondary}
                   multiline
                   maxLength={600}
@@ -770,6 +767,8 @@ export default function ArtistProfileScreen() {
                     filteredList
                     openListLabel="Buscar e marcar funções"
                     searchPlaceholder="Filtrar função..."
+                    emptyFieldLabel="Selecione as funções"
+                    fieldIcon="mic-outline"
                   />
 
                   <ChipMultiSelectField
@@ -788,6 +787,8 @@ export default function ArtistProfileScreen() {
                     openListLabel="Buscar e marcar formação"
                     searchPlaceholder="Filtrar formação..."
                     emptyListLabel="Nenhuma formação encontrada. Digite para incluir outra."
+                    emptyFieldLabel="Selecione como se apresenta"
+                    fieldIcon="people-outline"
                   />
                 </>
               )}

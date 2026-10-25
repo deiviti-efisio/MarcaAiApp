@@ -98,18 +98,32 @@ export const ARTIST_MUSICAL_STYLE_PRESETS = [
 export const ARTIST_SHOW_FORMAT_PRESETS = [
   'Solo',
   'Voz e violão',
+  'Voz e piano',
+  'Voz e guitarra',
+  'Acústico',
+  'Instrumental',
+  'Loop station',
   'Duo',
   'Trio',
+  'Quarteto',
+  'Quinteto',
+  'Sexteto',
   'Banda',
+  'Banda autoral',
+  'Banda cover',
+  'Grupo vocal',
+  'Coral',
+  'Orquestra',
+  'Big band',
   'DJ',
+  'DJ + vocalista',
 ] as const;
 
 const SHOW_FORMAT_ALIASES: Record<string, string> = {
   'Show solo': 'Solo',
   'Banda completa': 'Banda',
-  'Orquestra / big band': 'Banda',
+  'Orquestra / big band': 'Orquestra',
   'DJ set': 'DJ',
-  Acústico: 'Voz e violão',
 };
 
 const SHOW_FORMAT_IRRELEVANT = new Set([

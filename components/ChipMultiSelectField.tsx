@@ -40,6 +40,8 @@ export interface ChipMultiSelectFieldProps {
   openListLabel?: string;
   searchPlaceholder?: string;
   emptyListLabel?: string;
+  emptyFieldLabel?: string;
+  fieldIcon?: React.ComponentProps<typeof Ionicons>['name'];
   hint?: string;
 }
 
@@ -59,6 +61,8 @@ export function ChipMultiSelectField({
   openListLabel = 'Buscar e marcar',
   searchPlaceholder = 'Filtrar...',
   emptyListLabel = 'Nada encontrado. Digite para incluir outra opção.',
+  emptyFieldLabel = 'Selecione',
+  fieldIcon = 'list-outline',
   hint,
 }: ChipMultiSelectFieldProps) {
   const { colors } = useTheme();
@@ -120,55 +124,40 @@ export function ChipMultiSelectField({
   return (
     <View style={styles.wrapper}>
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-      {hint ? (
+      {hint && !filteredList ? (
         <Text style={[styles.hint, { color: colors.textSecondary }]}>{hint}</Text>
       ) : null}
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
+      {!filteredList ? (
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
+      ) : null}
 
       {filteredList ? (
-        <View
+        <TouchableOpacity
           style={[
-            styles.card,
+            styles.styleField,
             {
               borderColor: colors.border,
               backgroundColor: colors.background,
             },
           ]}
+          onPress={() => {
+            setQuery('');
+            setPickerOpen(true);
+          }}
+          activeOpacity={0.8}
         >
-          {selected.length > 0 ? (
-            <View style={styles.selectedWrap}>
-              {selected.map((item) => (
-                <TouchableOpacity
-                  key={`sel-${item}`}
-                  style={[
-                    styles.selectedChip,
-                    { borderColor: colors.primary, backgroundColor: `${colors.primary}18` },
-                  ]}
-                  onPress={() => onToggle(item)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.selectedChipText, { color: colors.primary }]}>{item}</Text>
-                  <Ionicons name="close-circle" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            style={[styles.openListBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
-            onPress={() => {
-              setQuery('');
-              setPickerOpen(true);
-            }}
-            activeOpacity={0.8}
+          <Ionicons name={fieldIcon} size={20} color={colors.textSecondary} style={styles.fieldIcon} />
+          <Text
+            style={[
+              styles.fieldValue,
+              { color: selected.length ? colors.text : colors.textSecondary },
+            ]}
+            numberOfLines={1}
           >
-            <Ionicons name="search-outline" size={18} color={colors.primary} />
-            <Text style={[styles.openListBtnText, { color: colors.text }]}>
-              {openListLabel}
-            </Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+            {selected.length ? selected.join(', ') : emptyFieldLabel}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
       ) : (
         <View
           style={[
@@ -391,38 +380,20 @@ const styles = StyleSheet.create({
     padding: 12,
     overflow: 'hidden',
   },
-  selectedWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  selectedChip: {
+  styleField: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
+    height: 56,
   },
-  selectedChipText: {
-    fontSize: 13,
-    fontWeight: '700',
+  fieldIcon: {
+    marginRight: 12,
   },
-  openListBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  openListBtnText: {
+  fieldValue: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
   },
   overlay: {
     flex: 1,

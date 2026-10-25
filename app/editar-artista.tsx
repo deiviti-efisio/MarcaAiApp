@@ -831,9 +831,6 @@ export default function EditarArtistaScreen() {
 
           <View style={styles.inputContainer}>
             <Text style={[styles.inputLabel, { color: colors.text }]}>Bio</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8, lineHeight: 18 }}>
-              Um pouco sobre a carreira: história, palco e o que te define.
-            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -842,7 +839,7 @@ export default function EditarArtistaScreen() {
               ]}
               value={bio}
               onChangeText={setBio}
-              placeholder="Ex.: Músico e compositor com 20 anos de estrada, voz e violão, shows autorais e repertório de MPB."
+              placeholder="Fale um pouco da sua história"
               placeholderTextColor={colors.textSecondary}
               multiline
               maxLength={600}
@@ -1047,6 +1044,8 @@ export default function EditarArtistaScreen() {
                 filteredList
                 openListLabel="Buscar e marcar funções"
                 searchPlaceholder="Filtrar função..."
+                emptyFieldLabel="Selecione as funções"
+                fieldIcon="mic-outline"
               />
 
               <ChipMultiSelectField
@@ -1065,6 +1064,8 @@ export default function EditarArtistaScreen() {
                 openListLabel="Buscar e marcar formação"
                 searchPlaceholder="Filtrar formação..."
                 emptyListLabel="Nenhuma formação encontrada. Digite para incluir outra."
+                emptyFieldLabel="Selecione como se apresenta"
+                fieldIcon="people-outline"
               />
             </>
           )}
