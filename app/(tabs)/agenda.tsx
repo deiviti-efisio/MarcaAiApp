@@ -1050,12 +1050,7 @@ export default function AgendaScreen() {
     React.useCallback(() => {
       agendaFocusedRef.current = true;
       if (activeArtist) {
-        cacheService.invalidateEventsCache(
-          activeArtist.id,
-          currentYear,
-          currentMonth,
-        );
-        loadEvents(true);
+        void loadEvents(true);
       } else {
         checkIfUserHasArtists();
       }
@@ -1274,9 +1269,12 @@ export default function AgendaScreen() {
       );
       if (abort.signal.aborted || !agendaFocusedRef.current) return false;
 
-      if (cachedEvents && !isInitialLoad) {
+      if (cachedEvents) {
         setEvents(cachedEvents);
-        return true;
+        if (!isInitialLoad) return true;
+        setIsLoadingMonthEvents(false);
+      } else {
+        setIsLoadingMonthEvents(true);
       }
 
       const result = await getEventsByMonthWithRole(
@@ -1291,6 +1289,7 @@ export default function AgendaScreen() {
         const eventsData = result.events || [];
         setEvents(eventsData);
         setLastUpdate(new Date());
+        setIsLoadingMonthEvents(false);
         await cacheService.setEventsData(
           activeArtist.id,
           currentYear,
@@ -1325,6 +1324,7 @@ export default function AgendaScreen() {
       }
 
       setEvents([]);
+      setIsLoadingMonthEvents(false);
       return true;
     } catch (error: any) {
       if (
@@ -1357,6 +1357,7 @@ export default function AgendaScreen() {
       }
 
       setEvents([]);
+      setIsLoadingMonthEvents(false);
       return true;
     }
   };
@@ -2245,10 +2246,11 @@ export default function AgendaScreen() {
           />
         }
       >
-        {isLoading ? (
+        {isLoading || (activeArtist && isLoadingMonthEvents && events.length === 0) ? (
           <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Carregando...
+              {isLoading ? "Carregando perfil…" : "Carregando agenda…"}
             </Text>
           </View>
         ) : !activeArtist ? (
@@ -4084,10 +4086,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 40,
+    paddingVertical: 64,
+    gap: 14,
   },
   loadingText: {
     fontSize: 16,
+    fontWeight: "600",
   },
   emptyStateContainer: {
     flex: 1,

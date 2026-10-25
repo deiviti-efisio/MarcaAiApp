@@ -1202,34 +1202,54 @@ export const getEventsByMonthWithRole = async (
   aborted?: boolean;
 }> => {
   try {
-    const startDate = new Date(year, month, 1).toISOString().split("T")[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split("T")[0];
+    const { startDate, endDate } = calendarMonthBounds(year, month);
 
-    console.log("🔐 getEventsByMonthWithRole:", {
-      artistId,
-      year,
-      month,
-      startDate,
-      endDate,
-    });
+    const { data: userRes, error: userError } = await supabase.auth.getUser();
+    if (userError || !userRes.user) {
+      return { success: false, error: "Usuário não autenticado" };
+    }
 
-    const { events, error, errorCode, aborted } =
-      await getEventsByArtistWithRole(artistId, abortSignal);
+    let eventsQuery = supabase
+      .from("events")
+      .select(EVENT_AGENDA_SELECT)
+      .eq("artist_id", artistId)
+      .eq("ativo", true)
+      .is("feed_tipo", null)
+      .gte("event_date", startDate)
+      .lte("event_date", endDate)
+      .order("event_date", { ascending: true })
+      .order("start_time", { ascending: true });
+    if (abortSignal) eventsQuery = eventsQuery.abortSignal(abortSignal);
 
-    if (aborted || abortSignal?.aborted) {
+    const [permissions, eventsRes] = await Promise.all([
+      getUserPermissions(userRes.user.id, artistId),
+      eventsQuery,
+    ]);
+
+    if (abortSignal?.aborted || isAbortError(eventsRes.error)) {
       return { success: false, error: null, aborted: true };
     }
-    if (error) {
-      return { success: false, error, errorCode };
+    if (!permissions) {
+      return {
+        success: false,
+        error: "Usuário não tem acesso a este artista",
+        errorCode: "P0001",
+      };
+    }
+    if (eventsRes.error) {
+      return {
+        success: false,
+        error: eventsRes.error.message,
+        errorCode: eventsRes.error.code || undefined,
+      };
     }
 
-    // Filtrar por mês no cliente (só eventos com ativo = true)
-    const filteredEvents =
-      events?.filter(
-        (event) => event.event_date >= startDate && event.event_date <= endDate,
-      ) ?? [];
-
-    console.log("✅ Eventos filtrados por mês:", filteredEvents.length);
+    const filteredEvents = excludeFeedMarketplaceEvents(
+      ((eventsRes.data || []) as EventWithRole[]).map((row) => ({
+        ...maskEventValueForRole(row, permissions.role, userRes.user.id),
+        user_role: permissions.role,
+      })),
+    );
     return { success: true, error: null, events: filteredEvents };
   } catch (error: any) {
     if (abortSignal?.aborted || isAbortError(error)) {

@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import CancelamentoPedidoModal from '../components/CancelamentoPedidoModal';
 import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatCityAndRegion } from '../lib/brazilGeo';
@@ -70,6 +71,7 @@ export default function ContratacaoScreen() {
   const [notaC, setNotaC] = useState(0);
   const [notaD, setNotaD] = useState(0);
   const [comentario, setComentario] = useState('');
+  const [showCancelOk, setShowCancelOk] = useState(false);
 
   const load = useCallback(async () => {
     if (!conviteId) {
@@ -134,6 +136,21 @@ export default function ContratacaoScreen() {
     [item]
   );
 
+  const abrirChat = () => {
+    if (!item || !myId || !outroId) return;
+    openArtistChatInApp({
+      myArtistId: myId,
+      isAdmin: true,
+      otherArtistId: outroId,
+      otherArtistName: nomes[outroId],
+      showContext: {
+        nome: item.nome_evento,
+        data: formatCalendarDate(item.data_evento),
+        local,
+      },
+    });
+  };
+
   const run = async (fn: () => Promise<{ success: boolean; error: string | null }>, ok: string) => {
     setSaving(true);
     const res = await fn();
@@ -143,6 +160,26 @@ export default function ContratacaoScreen() {
       return;
     }
     Alert.alert('Pronto', ok);
+    await load();
+  };
+
+  const enviarPedidoCancelamento = async () => {
+    if (!item) return;
+    setSaving(true);
+    const res = await solicitarCancelamentoContratacao({
+      conviteId: item.id,
+      motivo,
+      descricao,
+      pagamentoInfo: pagamento,
+    });
+    setSaving(false);
+    if (!res.success) {
+      Alert.alert('Não foi possível', res.error || 'Tente de novo.');
+      return;
+    }
+    setDescricao('');
+    setPagamento('');
+    setShowCancelOk(true);
     await load();
   };
 
@@ -215,19 +252,7 @@ export default function ContratacaoScreen() {
           {souParte ? (
             <TouchableOpacity
               style={[styles.outlineBtn, { borderColor: colors.border }]}
-              onPress={() =>
-                openArtistChatInApp({
-                  myArtistId: myId,
-                  isAdmin: true,
-                  otherArtistId: outroId,
-                  otherArtistName: nomes[outroId],
-                  showContext: {
-                    nome: item.nome_evento,
-                    data: formatCalendarDate(item.data_evento),
-                    local,
-                  },
-                })
-              }
+              onPress={abrirChat}
             >
               <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
               <Text style={[styles.outlineBtnText, { color: colors.primary }]}>Conversar</Text>
@@ -435,18 +460,7 @@ export default function ContratacaoScreen() {
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: colors.error, opacity: saving ? 0.7 : 1 }]}
                 disabled={saving}
-                onPress={() =>
-                  void run(
-                    () =>
-                      solicitarCancelamentoContratacao({
-                        conviteId: item.id,
-                        motivo,
-                        descricao,
-                        pagamentoInfo: pagamento,
-                      }),
-                    'Pedido enviado. A outra parte será avisada para aceitar ou contestar.'
-                  )
-                }
+                onPress={() => void enviarPedidoCancelamento()}
               >
                 <Text style={styles.primaryBtnText}>Enviar pedido de cancelamento</Text>
               </TouchableOpacity>
@@ -454,6 +468,21 @@ export default function ContratacaoScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      <CancelamentoPedidoModal
+        visible={showCancelOk}
+        partnerName={outroId ? nomes[outroId] : null}
+        eventName={item?.nome_evento}
+        onClose={() => setShowCancelOk(false)}
+        onConversar={
+          item && myId && outroId
+            ? () => {
+                setShowCancelOk(false);
+                abrirChat();
+              }
+            : undefined
+        }
+      />
     </SafeAreaView>
   );
 }
