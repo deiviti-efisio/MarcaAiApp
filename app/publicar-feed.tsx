@@ -872,7 +872,9 @@ export default function PublicarFeedScreen() {
             addSectionLabel="Ou digite uma função"
             addPlaceholder="Ex.: Vocalista"
             presetStrip={funcaoPresets}
-            horizontalOnly
+            filteredList
+            openListLabel="Buscar e marcar funções"
+            searchPlaceholder="Filtrar função..."
           />
 
           <Text style={[styles.label, { color: colors.text }]}>WhatsApp para contato *</Text>

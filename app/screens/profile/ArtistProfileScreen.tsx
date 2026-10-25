@@ -767,6 +767,9 @@ export default function ArtistProfileScreen() {
                     addSectionLabel="Incluir outra função"
                     addPlaceholder="Ex.: violinista"
                     presetStrip={ARTIST_WORK_ROLE_PRESETS}
+                    filteredList
+                    openListLabel="Buscar e marcar funções"
+                    searchPlaceholder="Filtrar função..."
                   />
 
                   <ChipMultiSelectField
@@ -781,7 +784,10 @@ export default function ArtistProfileScreen() {
                     addSectionLabel="Outra formação"
                     addPlaceholder="Ex.: quarteto"
                     presetStrip={ARTIST_SHOW_FORMAT_PRESETS}
-                    horizontalOnly
+                    filteredList
+                    openListLabel="Buscar e marcar formação"
+                    searchPlaceholder="Filtrar formação..."
+                    emptyListLabel="Nenhuma formação encontrada. Digite para incluir outra."
                   />
                 </>
               )}
