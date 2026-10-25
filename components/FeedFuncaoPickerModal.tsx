@@ -30,6 +30,7 @@ export default function FeedFuncaoPickerModal({
   searchPlaceholder = 'Buscar ou digitar função...',
   clearLabel = 'Todas funções',
   emptyLabel = 'Nenhuma função encontrada. Digite para filtrar por outro termo.',
+  customOptionLabel,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -40,6 +41,7 @@ export default function FeedFuncaoPickerModal({
   searchPlaceholder?: string;
   clearLabel?: string;
   emptyLabel?: string;
+  customOptionLabel?: (query: string) => string;
 }) {
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
@@ -128,7 +130,9 @@ export default function FeedFuncaoPickerModal({
             >
               <Ionicons name="search" size={18} color={colors.primary} />
               <Text style={[styles.customRowText, { color: colors.text }]}>
-                Filtrar por &quot;{customQuery}&quot;
+                {customOptionLabel
+                  ? customOptionLabel(customQuery)
+                  : `Filtrar por "${customQuery}"`}
               </Text>
             </TouchableOpacity>
           ) : null}

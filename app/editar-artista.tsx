@@ -27,6 +27,7 @@ import {
   parseArtistStringArrayFromJson,
 } from '../constants/artistProfileLists';
 import { ChipMultiSelectField } from '../components/ChipMultiSelectField';
+import FeedFuncaoPickerModal from '../components/FeedFuncaoPickerModal';
 import SocialMediaPreviewCard from '../components/SocialMediaPreviewCard';
 import BrazilPlaceSearchField from '../components/BrazilPlaceSearchField';
 import PermissionModal from '../components/PermissionModal';
@@ -1112,57 +1113,18 @@ export default function EditarArtistaScreen() {
         icon="lock-closed"
       />
 
-      {/* Modal de Seleção de Estilo Musical */}
-      <Modal
+      <FeedFuncaoPickerModal
         visible={showEstilos}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEstilos(false)}
-      >
-        <TouchableOpacity 
-          style={styles.estilosModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEstilos(false)}
-        >
-          <View 
-            style={[styles.estilosModalContent, { backgroundColor: colors.surface }]} 
-            onStartShouldSetResponder={() => true}
-          >
-            <View style={[styles.estilosModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.estilosModalTitle, { color: colors.text }]}>Selecione o Estilo Musical</Text>
-              <TouchableOpacity onPress={() => setShowEstilos(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.estilosModalList}>
-              {estilosMusicais.map((estilo) => (
-                <TouchableOpacity
-                  key={estilo}
-                  style={[
-                    styles.estilosModalItem,
-                    { borderBottomColor: colors.border },
-                    musicalStyle === estilo && { backgroundColor: colors.primary + '20' }
-                  ]}
-                  onPress={() => {
-                    setMusicalStyle(estilo);
-                    setShowEstilos(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.estilosModalItemText, 
-                    { color: musicalStyle === estilo ? colors.primary : colors.text }
-                  ]}>
-                    {estilo}
-                  </Text>
-                  {musicalStyle === estilo && (
-                    <Ionicons name="checkmark" size={24} color={colors.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        onClose={() => setShowEstilos(false)}
+        options={estilosMusicais}
+        selectedFuncao={musicalStyle}
+        onSelect={setMusicalStyle}
+        title="Estilo musical"
+        searchPlaceholder="Filtrar ou incluir gênero..."
+        clearLabel="Limpar estilo"
+        emptyLabel="Nenhum gênero encontrado. Digite para incluir outro."
+        customOptionLabel={(query) => `Incluir "${query}"`}
+      />
 
       {/* Modal de sucesso */}
       <Modal

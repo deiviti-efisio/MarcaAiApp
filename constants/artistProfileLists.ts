@@ -140,6 +140,22 @@ export function parseArtistStringArrayFromJson(value: unknown): string[] {
     .filter(Boolean);
 }
 
+export function normalizeArtistSearch(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+export function artistJsonArrayMatches(value: unknown, query: string): boolean {
+  const q = normalizeArtistSearch(query);
+  if (q.length < 2) return true;
+  return parseArtistStringArrayFromJson(value).some((item) =>
+    normalizeArtistSearch(item).includes(q)
+  );
+}
+
 /** Remove tipo de festa/local e unifica nomes antigos. */
 export function normalizeShowFormats(value: unknown): string[] {
   const out: string[] = [];

@@ -33,6 +33,7 @@ import { uploadImageToSupabase } from '../../../services/supabase/imageUploadSer
 import { canCreateArtist, FREE_PLAN_MAX_OWNED_ARTIST_PROFILES, getUserProfile } from '../../../services/supabase/userService';
 import { ChipMultiSelectField } from '../../../components/ChipMultiSelectField';
 import BrazilPlaceSearchField from '../../../components/BrazilPlaceSearchField';
+import FeedFuncaoPickerModal from '../../../components/FeedFuncaoPickerModal';
 import { isCompleteBrazilMobile, maskBrazilMobile } from '../../../utils/brazilPhone';
 
 const estilosMusicais = [
@@ -845,57 +846,18 @@ export default function ArtistProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modal de Seleção de Estilo Musical */}
-      <Modal
+      <FeedFuncaoPickerModal
         visible={showEstilos}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEstilos(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowEstilos(false)}
-        >
-          <View 
-            style={[styles.modalContent, { backgroundColor: colors.surface }]} 
-            onStartShouldSetResponder={() => true}
-          >
-            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Selecione o Estilo Musical</Text>
-              <TouchableOpacity onPress={() => setShowEstilos(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.modalList}>
-              {estilosMusicais.map((estilo) => (
-                <TouchableOpacity
-                  key={estilo}
-                  style={[
-                    styles.modalItem,
-                    { borderBottomColor: colors.border },
-                    musicalStyle === estilo && { backgroundColor: colors.primary + '20' }
-                  ]}
-                  onPress={() => {
-                    setMusicalStyle(estilo);
-                    setShowEstilos(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.modalItemText, 
-                    { color: musicalStyle === estilo ? colors.primary : colors.text }
-                  ]}>
-                    {estilo}
-                  </Text>
-                  {musicalStyle === estilo && (
-                    <Ionicons name="checkmark" size={24} color={colors.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        onClose={() => setShowEstilos(false)}
+        options={estilosMusicais}
+        selectedFuncao={musicalStyle}
+        onSelect={setMusicalStyle}
+        title="Estilo musical"
+        searchPlaceholder="Filtrar ou incluir gênero..."
+        clearLabel="Limpar estilo"
+        emptyLabel="Nenhum gênero encontrado. Digite para incluir outro."
+        customOptionLabel={(query) => `Incluir "${query}"`}
+      />
 
       {/* Modal de Sucesso */}
       <Modal

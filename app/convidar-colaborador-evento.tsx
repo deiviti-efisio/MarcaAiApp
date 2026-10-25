@@ -17,12 +17,15 @@ import {
   View,
 } from 'react-native';
 import { ESTADOS_BRASIL } from '../constants/estadosBrasil';
+import FeedFuncaoPickerModal, { FeedFuncaoFieldButton } from '../components/FeedFuncaoPickerModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import OptimizedImage from '../components/OptimizedImage';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { getEventById } from '../services/supabase/eventService';
 import {
+  ARTIST_MUSICAL_STYLE_PRESETS,
+  ARTIST_SHOW_FORMAT_PRESETS,
   ARTIST_WORK_ROLE_PRESETS,
   normalizeShowFormats,
   parseArtistStringArrayFromJson,
@@ -87,6 +90,11 @@ export default function ConvidarColaboradorEventoScreen() {
   const [filterCity, setFilterCity] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterRole, setFilterRole] = useState('');
+  const [filterGenero, setFilterGenero] = useState('');
+  const [filterFormato, setFilterFormato] = useState('');
+  const [showFilterGenero, setShowFilterGenero] = useState(false);
+  const [showFilterFuncao, setShowFilterFuncao] = useState(false);
+  const [showFilterFormato, setShowFilterFormato] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showFilterEstados, setShowFilterEstados] = useState(false);
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
@@ -244,6 +252,8 @@ export default function ConvidarColaboradorEventoScreen() {
         cidade: filterCity,
         estado: filterState,
         funcao: filterRole,
+        genero: filterGenero,
+        formato: filterFormato,
       });
       // A RPC já devolve somente artistas com is_available_for_gigs = true.
       // Não filtrar aqui por esse campo, pois algumas versões da RPC não retornam a coluna.
@@ -253,7 +263,7 @@ export default function ConvidarColaboradorEventoScreen() {
       setSearchLoading(false);
     }, 350);
     return () => clearTimeout(t);
-  }, [search, filterCity, filterState, filterRole, canInvite, eventData?.artist_id, blockedArtists, leilaoMode, functionDraft]);
+  }, [search, filterCity, filterState, filterRole, filterGenero, filterFormato, canInvite, eventData?.artist_id, blockedArtists, leilaoMode, functionDraft]);
 
   useEffect(() => {
     if (!leilaoMode) return;
@@ -411,8 +421,10 @@ export default function ConvidarColaboradorEventoScreen() {
   }, [searchResults, selectedArtist, recentPartners]);
   const activeFiltersCount = useMemo(
     () =>
-      [filterCity, filterState, filterRole].filter((s) => String(s || '').trim().length >= 2).length,
-    [filterCity, filterState, filterRole]
+      [filterCity, filterState, filterRole, filterGenero, filterFormato].filter(
+        (s) => String(s || '').trim().length >= 2
+      ).length,
+    [filterCity, filterState, filterRole, filterGenero, filterFormato]
   );
 
   const recentPartnerRoleBuckets = useMemo(() => {
@@ -1449,56 +1461,32 @@ export default function ConvidarColaboradorEventoScreen() {
                           </ScrollView>
                         </View>
                       )}
-                      <Text style={[styles.filterFieldLabel, { color: colors.text, marginTop: 10 }]}>Função (opcional)</Text>
-                      <Text style={[styles.filterFieldHint, { color: colors.textSecondary }]}>
-                        Sugestões rápidas — você ainda pode editar ou digitar outra função no campo abaixo.
+                      <Text style={[styles.filterFieldLabel, { color: colors.text, marginTop: 10 }]}>
+                        Gênero, função e formato
                       </Text>
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.funcPresetRow}
-                        nestedScrollEnabled
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {ARTIST_WORK_ROLE_PRESETS.map((role) => {
-                          const selected = filterRole.trim() === role;
-                          return (
-                            <TouchableOpacity
-                              key={role}
-                              onPress={() => setFilterRole(role)}
-                              activeOpacity={0.75}
-                              style={[
-                                styles.funcPresetChip,
-                                {
-                                  borderColor: selected ? colors.primary : colors.border,
-                                  backgroundColor: selected ? `${colors.primary}16` : colors.background,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.funcPresetChipText,
-                                  { color: selected ? colors.primary : colors.text, fontWeight: selected ? '800' : '600' },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {role}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-                      <TextInput
-                        style={[
-                          styles.filterInput,
-                          styles.filterInputLast,
-                          { color: colors.text, borderColor: colors.border },
-                        ]}
-                        placeholder="Ou digite a função (ex.: violão, vocal)"
-                        placeholderTextColor={colors.textSecondary}
-                        value={filterRole}
-                        onChangeText={setFilterRole}
-                      />
+                      <View style={{ gap: 8, marginBottom: 4 }}>
+                        <FeedFuncaoFieldButton
+                          selectedFuncao={filterGenero}
+                          onPress={() => setShowFilterGenero(true)}
+                          colors={colors}
+                          emptyLabel="Todos os gêneros"
+                          icon="musical-notes-outline"
+                        />
+                        <FeedFuncaoFieldButton
+                          selectedFuncao={filterRole}
+                          onPress={() => setShowFilterFuncao(true)}
+                          colors={colors}
+                          emptyLabel="Todas as funções"
+                          icon="mic-outline"
+                        />
+                        <FeedFuncaoFieldButton
+                          selectedFuncao={filterFormato}
+                          onPress={() => setShowFilterFormato(true)}
+                          colors={colors}
+                          emptyLabel="Todos os formatos"
+                          icon="people-outline"
+                        />
+                      </View>
                     </View>
                   )}
                 </View>
@@ -2001,6 +1989,39 @@ export default function ConvidarColaboradorEventoScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+      <FeedFuncaoPickerModal
+        visible={showFilterGenero}
+        onClose={() => setShowFilterGenero(false)}
+        options={[...ARTIST_MUSICAL_STYLE_PRESETS]}
+        selectedFuncao={filterGenero}
+        onSelect={(value) => setFilterGenero(value || '')}
+        title="Filtrar por gênero"
+        searchPlaceholder="Buscar gênero..."
+        clearLabel="Todos os gêneros"
+        emptyLabel="Nenhum gênero encontrado."
+      />
+      <FeedFuncaoPickerModal
+        visible={showFilterFuncao}
+        onClose={() => setShowFilterFuncao(false)}
+        options={[...ARTIST_WORK_ROLE_PRESETS]}
+        selectedFuncao={filterRole}
+        onSelect={(value) => setFilterRole(value || '')}
+        title="Filtrar por função"
+        searchPlaceholder="Buscar função..."
+        clearLabel="Todas as funções"
+        emptyLabel="Nenhuma função encontrada."
+      />
+      <FeedFuncaoPickerModal
+        visible={showFilterFormato}
+        onClose={() => setShowFilterFormato(false)}
+        options={[...ARTIST_SHOW_FORMAT_PRESETS]}
+        selectedFuncao={filterFormato}
+        onSelect={(value) => setFilterFormato(value || '')}
+        title="Filtrar por formato de show"
+        searchPlaceholder="Buscar formação..."
+        clearLabel="Todos os formatos"
+        emptyLabel="Nenhum formato encontrado."
+      />
     </SafeAreaView>
   );
 }

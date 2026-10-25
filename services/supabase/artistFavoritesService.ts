@@ -21,6 +21,7 @@ function mapRow(row: Record<string, unknown>): ArtistaBuscaConvite {
     image_url: image,
     musical_style: row.musical_style != null ? String(row.musical_style) : undefined,
     work_roles: row.work_roles,
+    show_formats: row.show_formats,
     city: row.city != null ? String(row.city) : null,
     state: row.state != null ? String(row.state) : null,
     tem_show_hoje:
@@ -89,6 +90,7 @@ export async function listarArtistasFavoritos(params: {
   termo?: string | null;
   funcao?: string | null;
   genero?: string | null;
+  formato?: string | null;
   limit?: number;
   offset?: number;
   abortSignal?: AbortSignal;
@@ -100,6 +102,7 @@ export async function listarArtistasFavoritos(params: {
   const funcao = (params.funcao || '').trim();
   const estado = (params.estado || '').trim();
   const genero = (params.genero || '').trim();
+  const formato = (params.formato || '').trim();
 
   try {
     let query = supabase.rpc('listar_artistas_favoritos', {
@@ -109,6 +112,7 @@ export async function listarArtistasFavoritos(params: {
       p_termo: termo.length >= 2 ? termo : null,
       p_funcao: funcao.length >= 2 ? funcao : null,
       p_genero: genero.length > 0 ? genero : null,
+      p_formato: formato.length >= 2 ? formato : null,
       p_limit: limit,
       p_offset: offset,
     });

@@ -152,7 +152,7 @@ export default function PublicarFeedScreen() {
   const [selectedFuncoes, setSelectedFuncoes] = useState<string[]>([]);
   const [funcaoDraft, setFuncaoDraft] = useState('');
   const [whatsappDraft, setWhatsappDraft] = useState('');
-  const [mostrarCache, setMostrarCache] = useState(true);
+  const [mostrarCache, setMostrarCache] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -342,8 +342,8 @@ export default function PublicarFeedScreen() {
         if (uf) setEstadoUf(uf);
         if (artist?.average_cache_value && artist.average_cache_value > 0) {
           setCacheDraft(formatCurrencyBRLFromAmount(artist.average_cache_value));
-          setMostrarCache(true);
         }
+        setMostrarCache(false);
       }
     });
 
@@ -614,7 +614,7 @@ export default function PublicarFeedScreen() {
               <Text style={[styles.rolesHint, { color: colors.textSecondary, marginTop: 2 }]}>
                 {mostrarCache
                   ? 'Todos verão “até R$ …” no card.'
-                  : 'O valor só aparece quando alguém demonstrar interesse.'}
+                  : 'No feed aparece “Cachê a combinar”.'}
               </Text>
             </View>
             <Switch
@@ -629,7 +629,7 @@ export default function PublicarFeedScreen() {
             <View style={[styles.lockHint, { backgroundColor: `${colors.primary}12` }]}>
               <Ionicons name="lock-closed" size={16} color={colors.primary} />
               <Text style={[styles.lockHintText, { color: colors.textSecondary }]}>
-                Com a opção desligada, o teto fica oculto no feed e só é revelado na negociação.
+                Com a opção desligada, o feed mostra “Cachê a combinar”.
               </Text>
             </View>
           ) : null}

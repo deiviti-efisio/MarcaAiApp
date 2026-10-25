@@ -36,6 +36,7 @@ import { brazilUfFromStateName, formatCityAndRegion } from '../../lib/brazilGeo'
 import { formatCalendarDate, formatCalendarDateLongParts, weekdayFromCalendarDate } from '../../lib/dateUtils';
 import {
   ARTIST_MUSICAL_STYLE_PRESETS,
+  ARTIST_SHOW_FORMAT_PRESETS,
   ARTIST_WORK_ROLE_PRESETS,
   normalizeShowFormats,
   parseArtistStringArrayFromJson,
@@ -82,7 +83,7 @@ export default function FeedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeArtist } = useActiveArtistContext();
-  const { canCreateEvents, isAdmin, isVendedor } = usePermissions();
+  const { isAdmin, isVendedor } = usePermissions();
   const { unreadCount, loadUnreadCount } = useNotifications();
   const { unreadChats, refreshUnreadChats } = useUnreadConversas();
   const [filtro, setFiltro] = useState<FeedFiltro>('todos');
@@ -101,6 +102,8 @@ export default function FeedScreen() {
   const [artistasProntoGeo, setArtistasProntoGeo] = useState(false);
   const [filtroFuncao, setFiltroFuncao] = useState('');
   const [filtroGenero, setFiltroGenero] = useState('');
+  const [filtroFuncaoArtista, setFiltroFuncaoArtista] = useState('');
+  const [filtroFormatoArtista, setFiltroFormatoArtista] = useState('');
   const [filtroFavoritos, setFiltroFavoritos] = useState(false);
   const [filtroFavoritosFeed, setFiltroFavoritosFeed] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
@@ -115,6 +118,8 @@ export default function FeedScreen() {
   const [showEstados, setShowEstados] = useState(false);
   const [showFuncaoPicker, setShowFuncaoPicker] = useState(false);
   const [showGeneroPicker, setShowGeneroPicker] = useState(false);
+  const [showFuncaoArtistaPicker, setShowFuncaoArtistaPicker] = useState(false);
+  const [showFormatoArtistaPicker, setShowFormatoArtistaPicker] = useState(false);
   const [anuncios, setAnuncios] = useState<FeedAnuncio[]>([]);
   const [propostasPorEvento, setPropostasPorEvento] = useState<Record<string, FeedProposta[]>>({});
   const [loading, setLoading] = useState(true);
@@ -156,10 +161,16 @@ export default function FeedScreen() {
     () => [...ARTIST_MUSICAL_STYLE_PRESETS],
     []
   );
+  const formatoFilterOptions = useMemo(
+    () => [...ARTIST_SHOW_FORMAT_PRESETS],
+    []
+  );
   const artistaFiltrosRef = useRef({
     estadoUf: '',
     cidade: '',
     genero: '',
+    funcao: '',
+    formato: '',
     nome: '',
     favoritos: false,
   });
@@ -167,6 +178,8 @@ export default function FeedScreen() {
     estadoUf: estadoUfArtistas,
     cidade: cidadeArtistasDebounced,
     genero: filtroGenero,
+    funcao: filtroFuncaoArtista,
+    formato: filtroFormatoArtista,
     nome: buscaArtistaDebounced,
     favoritos: filtroFavoritos,
   };
@@ -306,13 +319,16 @@ export default function FeedScreen() {
     const abort = artistasAbortRef.current;
     const offset = append ? artistasLenRef.current : 0;
     try {
-      const { estadoUf: estado, cidade, genero, nome, favoritos } = artistaFiltrosRef.current;
+      const { estadoUf: estado, cidade, genero, funcao, formato, nome, favoritos } =
+        artistaFiltrosRef.current;
       const listar = favoritos ? listarArtistasFavoritos : listarTodosArtistas;
       const { artists, hasMore, error: artistsError, aborted } = await listar({
         artistaAtualId: activeArtistIdRef.current,
         estado,
         cidade,
         genero,
+        funcao,
+        formato,
         termo: nome,
         limit: ARTISTAS_BUSCA_PAGE_SIZE,
         offset,
@@ -408,7 +424,7 @@ export default function FeedScreen() {
     setArtistasProximos([]);
     artistasLenRef.current = 0;
     void loadArtistas();
-  }, [verArtistas, estadoUfArtistas, cidadeArtistasDebounced, filtroGenero, filtroFavoritos, buscaArtistaDebounced, artistasProntoGeo, loadArtistas]);
+  }, [verArtistas, estadoUfArtistas, cidadeArtistasDebounced, filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, filtroFavoritos, buscaArtistaDebounced, artistasProntoGeo, loadArtistas]);
 
   useFocusEffect(
     useCallback(() => {
@@ -504,7 +520,7 @@ export default function FeedScreen() {
       if (buscaArtistaDebounced) {
         return 'Nenhum artista encontrado com esse nome.';
       }
-      if (filtroGenero || estadoUfArtistas || cidadeArtistas.trim()) {
+      if (filtroGenero || filtroFuncaoArtista || filtroFormatoArtista || estadoUfArtistas || cidadeArtistas.trim()) {
         return 'Nenhum artista neste filtro.';
       }
       return 'Nenhum artista encontrado.';
@@ -522,7 +538,7 @@ export default function FeedScreen() {
       return 'Você ainda não publicou no feed.';
     }
     return 'Ainda não há oportunidades no feed.';
-  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFavoritos, filtroFavoritosFeed, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
+  }, [filtro, verMinhas, filtroFuncao, filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, filtroFavoritos, filtroFavoritosFeed, verArtistas, buscaArtistaDebounced, cidadeArtistas, estadoUfArtistas, cidadeFeed, estadoUfFeed]);
 
   const handlePublicar = () => {
     if (!activeArtist) {
@@ -546,27 +562,12 @@ export default function FeedScreen() {
   const isMeuAnuncio = (item: FeedAnuncio) =>
     !!activeArtist?.id && item.artist_id === activeArtist.id;
 
+  const openOportunidade = (item: FeedAnuncio) => {
+    router.push({ pathname: '/oportunidade', params: { eventId: item.id } });
+  };
+
   const handleNegociar = (item: FeedAnuncio) => {
-    if (isMeuAnuncio(item)) {
-      Alert.alert('Seu anúncio', 'Você não pode iniciar negociação na sua própria publicação.');
-      return;
-    }
-    if (!activeArtist) {
-      Alert.alert(
-        'Perfil de artista',
-        'Crie ou selecione um perfil de artista para negociar no feed.',
-        [
-          { text: 'Agora não', style: 'cancel' },
-          { text: 'Criar perfil', onPress: () => router.push('/cadastro-artista') },
-        ],
-      );
-      return;
-    }
-    if (!canCreateEvents) {
-      setShowPermissionModal(true);
-      return;
-    }
-    router.push({ pathname: '/negociar-feed', params: { eventId: item.id } });
+    openOportunidade(item);
   };
 
   const handleWhatsappCandidato = async (artistId: string, artistName: string) => {
@@ -700,11 +701,7 @@ export default function FeedScreen() {
             currency: 'BRL',
           })
         : null;
-    const cacheDisplay = item.feed_mostrar_cache
-      ? cacheTxt
-      : meuAnuncio
-        ? 'oculto no feed'
-        : null;
+    const cacheDisplay = item.feed_mostrar_cache && cacheTxt ? `Até ${cacheTxt}` : 'Cachê a combinar';
     const propostas = meuAnuncio ? propostasPorEvento[item.id] || [] : [];
     const avatarUrls = meuAnuncio
       ? (
@@ -726,7 +723,7 @@ export default function FeedScreen() {
     const offerLine = funcoesTxt || 'Show nesta data';
 
     return (
-      <View
+      <TouchableOpacity
         style={[
           styles.card,
           {
@@ -734,6 +731,8 @@ export default function FeedScreen() {
             borderColor: colors.border,
           },
         ]}
+        onPress={() => openOportunidade(item)}
+        activeOpacity={0.92}
       >
         <View style={styles.cardBody}>
           <View style={styles.cardTopRow}>
@@ -879,9 +878,7 @@ export default function FeedScreen() {
           {cacheDisplay ? (
             <View style={[styles.cachePill, { backgroundColor: `${colors.primary}10` }]}>
               <Ionicons name="cash-outline" size={14} color={colors.primary} />
-              <Text style={[styles.cachePillText, { color: colors.text }]}>
-                {item.feed_mostrar_cache && cacheTxt ? `Até ${cacheTxt}` : `Cachê ${cacheDisplay}`}
-              </Text>
+              <Text style={[styles.cachePillText, { color: colors.text }]}>{cacheDisplay}</Text>
             </View>
           ) : null}
 
@@ -1055,7 +1052,7 @@ export default function FeedScreen() {
           </View>
         ) : null}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1340,7 +1337,7 @@ export default function FeedScreen() {
             <View style={styles.metaRow}>
               <Text style={[styles.nearHint, { color: colors.textSecondary }]} numberOfLines={1}>
                 {verArtistas
-                  ? [filtroGenero, cidadeArtistas.trim(), estadoUfArtistas].filter(Boolean).join(' · ')
+                  ? [filtroGenero, filtroFuncaoArtista, filtroFormatoArtista, cidadeArtistas.trim(), estadoUfArtistas].filter(Boolean).join(' · ')
                   : `${anuncios.length} ${anuncios.length === 1 ? 'oportunidade' : 'oportunidades'}${
                       cidadeFeed.trim() || estadoUfFeed
                         ? ` · ${[cidadeFeed.trim(), estadoUfFeed].filter(Boolean).join(' - ')}`
@@ -1387,7 +1384,7 @@ export default function FeedScreen() {
                   size={18}
                   color={
                     verArtistas
-                      ? estadoUfArtistas || cidadeArtistas.trim() || filtroGenero || filtroFavoritos
+                      ? estadoUfArtistas || cidadeArtistas.trim() || filtroGenero || filtroFuncaoArtista || filtroFormatoArtista || filtroFavoritos
                         ? colors.primary
                         : colors.textSecondary
                       : cidadeFeed || estadoUfFeed || filtroFuncao || filtroFavoritosFeed
@@ -1489,6 +1486,20 @@ export default function FeedScreen() {
                         colors={colors}
                         emptyLabel="Todos os gêneros"
                         icon="musical-notes-outline"
+                      />
+                      <FeedFuncaoFieldButton
+                        selectedFuncao={filtroFuncaoArtista}
+                        onPress={() => setShowFuncaoArtistaPicker(true)}
+                        colors={colors}
+                        emptyLabel="Todas as funções"
+                        icon="mic-outline"
+                      />
+                      <FeedFuncaoFieldButton
+                        selectedFuncao={filtroFormatoArtista}
+                        onPress={() => setShowFormatoArtistaPicker(true)}
+                        colors={colors}
+                        emptyLabel="Todos os formatos"
+                        icon="people-outline"
                       />
                     </View>
                   </>
@@ -1708,6 +1719,28 @@ export default function FeedScreen() {
         searchPlaceholder="Buscar gênero..."
         clearLabel="Todos os gêneros"
         emptyLabel="Nenhum gênero encontrado."
+      />
+      <FeedFuncaoPickerModal
+        visible={showFuncaoArtistaPicker}
+        onClose={() => setShowFuncaoArtistaPicker(false)}
+        options={funcaoFilterOptions}
+        selectedFuncao={filtroFuncaoArtista}
+        onSelect={(funcao) => setFiltroFuncaoArtista(funcao || '')}
+        title="Filtrar por função"
+        searchPlaceholder="Buscar função..."
+        clearLabel="Todas as funções"
+        emptyLabel="Nenhuma função encontrada."
+      />
+      <FeedFuncaoPickerModal
+        visible={showFormatoArtistaPicker}
+        onClose={() => setShowFormatoArtistaPicker(false)}
+        options={formatoFilterOptions}
+        selectedFuncao={filtroFormatoArtista}
+        onSelect={(formato) => setFiltroFormatoArtista(formato || '')}
+        title="Filtrar por formato de show"
+        searchPlaceholder="Buscar formação..."
+        clearLabel="Todos os formatos"
+        emptyLabel="Nenhum formato encontrado."
       />
       <ArtistReviewsModal
         visible={!!reviewsArtist}
@@ -2180,6 +2213,7 @@ const styles = StyleSheet.create({
   },
   funcaoRow: {
     paddingTop: 6,
+    gap: 8,
   },
   errorBanner: {
     marginHorizontal: 16,

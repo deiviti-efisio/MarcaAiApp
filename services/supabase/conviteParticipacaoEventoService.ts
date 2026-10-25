@@ -1,5 +1,10 @@
 import { isAbortError } from '../../lib/abortError';
 import { estadoNomeCompletoParaBusca } from '../../lib/brazilGeo';
+import {
+  artistJsonArrayMatches,
+  normalizeArtistSearch,
+  normalizeShowFormats,
+} from '../../constants/artistProfileLists';
 import { supabase } from '../../lib/supabase';
 
 export type StatusConviteParticipacao = 'pendente' | 'aceito' | 'recusado' | 'cancelado';
@@ -88,6 +93,8 @@ export interface BuscarArtistasParaConviteFiltros {
   cidade?: string;
   estado?: string;
   funcao?: string;
+  genero?: string;
+  formato?: string;
 }
 
 export async function buscarArtistasParaConvite(
@@ -96,13 +103,33 @@ export async function buscarArtistasParaConvite(
   filtros?: BuscarArtistasParaConviteFiltros
 ): Promise<{ artists: ArtistaBuscaConvite[]; error: string | null }> {
   try {
-    const { data, error } = await supabase.rpc('buscar_artistas_para_convite', {
+    const payload = {
       p_termo: termo?.trim() || '',
       p_excluir_artista_id: excluirArtistaId,
       p_cidade: filtros?.cidade?.trim() ? filtros.cidade.trim() : null,
       p_estado: filtros?.estado?.trim() ? filtros.estado.trim() : null,
       p_funcao: filtros?.funcao?.trim() ? filtros.funcao.trim() : null,
-    });
+      p_genero: filtros?.genero?.trim() ? filtros.genero.trim() : null,
+      p_formato: filtros?.formato?.trim() ? filtros.formato.trim() : null,
+    };
+    let { data, error } = await supabase.rpc('buscar_artistas_para_convite', payload);
+    if (error && isMissingRpc(error)) {
+      const retry = await supabase.rpc('buscar_artistas_para_convite', {
+        p_termo: payload.p_termo,
+        p_excluir_artista_id: payload.p_excluir_artista_id,
+        p_cidade: payload.p_cidade,
+        p_estado: payload.p_estado,
+        p_funcao: payload.p_funcao,
+      });
+      data = retry.data;
+      error = retry.error;
+      if (!error && data) {
+        const artists = ((data || []) as Record<string, unknown>[])
+          .map((row) => mapArtistaBuscaRow(row))
+          .filter((item) => matchesArtistSearchFilters(item, filtros));
+        return { artists, error: null };
+      }
+    }
     if (error) return { artists: [], error: error.message };
     const raw = (data || []) as Record<string, unknown>[];
     const artists: ArtistaBuscaConvite[] = raw.map((row) => ({
@@ -138,6 +165,7 @@ function mapArtistaBuscaRow(row: Record<string, unknown>): ArtistaBuscaConvite {
     image_url: image,
     musical_style: row.musical_style != null ? String(row.musical_style) : undefined,
     work_roles: row.work_roles,
+    show_formats: row.show_formats,
     city: row.city != null ? String(row.city) : null,
     state: row.state != null ? String(row.state) : null,
     tem_show_hoje:
@@ -163,15 +191,41 @@ function isMissingRpc(error: unknown): boolean {
   );
 }
 
+function matchesArtistSearchFilters(
+  item: ArtistaBuscaConvite,
+  filtros?: { funcao?: string | null; genero?: string | null; formato?: string | null }
+): boolean {
+  const genero = (filtros?.genero || '').trim();
+  const funcao = (filtros?.funcao || '').trim();
+  const formato = (filtros?.formato || '').trim();
+  if (
+    genero.length >= 2 &&
+    !normalizeArtistSearch(String(item.musical_style || '')).includes(normalizeArtistSearch(genero))
+  ) {
+    return false;
+  }
+  if (funcao.length >= 2 && !artistJsonArrayMatches(item.work_roles, funcao)) return false;
+  if (
+    formato.length >= 2 &&
+    !artistJsonArrayMatches(item.show_formats, formato) &&
+    !artistJsonArrayMatches(normalizeShowFormats(item.show_formats), formato)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function abortedResult(signal?: AbortSignal, error?: unknown) {
   return Boolean(signal?.aborted || isAbortError(error));
 }
 
-/** Artistas do Feed: estado, cidade, gênero e nome. Sem filtro → todos. */
+/** Artistas do Feed: estado, cidade, gênero, função, formato e nome. Sem filtro → todos. */
 export async function listarTodosArtistas(params: {
   estado?: string | null;
   cidade?: string | null;
   genero?: string | null;
+  funcao?: string | null;
+  formato?: string | null;
   termo?: string | null;
   limit?: number;
   offset?: number;
@@ -182,6 +236,8 @@ export async function listarTodosArtistas(params: {
   const estado = (params.estado || '').trim();
   const cidade = (params.cidade || '').trim();
   const genero = (params.genero || '').trim();
+  const funcao = (params.funcao || '').trim();
+  const formato = (params.formato || '').trim();
   const termo = (params.termo || '').trim();
   const signal = params.abortSignal;
 
@@ -196,6 +252,8 @@ export async function listarTodosArtistas(params: {
       p_cidade: cidade.length >= 2 ? cidade : null,
       p_genero: genero.length > 0 ? genero : null,
       p_termo: termo.length >= 2 ? termo : null,
+      p_funcao: funcao.length >= 2 ? funcao : null,
+      p_formato: formato.length >= 2 ? formato : null,
       p_limit: limit,
       p_offset: offset,
     });
@@ -207,12 +265,33 @@ export async function listarTodosArtistas(params: {
     if (!first.error) return finish((first.data || []) as unknown[]);
 
     if (isMissingRpc(first.error)) {
+      let legacy = supabase.rpc('listar_todos_artistas', {
+        p_estado: estado.length > 0 ? estado : null,
+        p_cidade: cidade.length >= 2 ? cidade : null,
+        p_genero: genero.length > 0 ? genero : null,
+        p_termo: termo.length >= 2 ? termo : null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (signal) legacy = legacy.abortSignal(signal);
+      const legacyRes = await legacy;
+      if (abortedResult(signal, legacyRes.error)) {
+        return { artists: [], hasMore: false, error: null, aborted: true };
+      }
+      if (!legacyRes.error) {
+        const mapped = finish((legacyRes.data || []) as unknown[]);
+        const filtered = mapped.artists.filter((item) =>
+          matchesArtistSearchFilters(item, { funcao, genero, formato })
+        );
+        return { artists: filtered, hasMore: false, error: null };
+      }
+
       let prox = supabase.rpc('buscar_artistas_proximos', {
         p_artista_atual_id: null,
         p_cidade: cidade.length >= 2 ? cidade : null,
         p_estado: estado.length > 0 ? estado : null,
         p_termo: termo.length >= 2 ? termo : null,
-        p_funcao: null,
+        p_funcao: funcao.length >= 2 ? funcao : null,
         p_limit: limit,
         p_offset: offset,
       });
@@ -223,10 +302,8 @@ export async function listarTodosArtistas(params: {
       }
       if (!second.error) {
         const mapped = finish((second.data || []) as unknown[]);
-        if (!genero) return mapped;
-        const g = genero.toLowerCase();
         const filtered = mapped.artists.filter((item) =>
-          String(item.musical_style || '').toLowerCase().includes(g)
+          matchesArtistSearchFilters(item, { funcao, genero, formato })
         );
         return { artists: filtered, hasMore: false, error: null };
       }
@@ -240,12 +317,12 @@ export async function listarTodosArtistas(params: {
     const estadoNome = estadoNomeCompletoParaBusca(estado);
     let table = supabase
       .from('artists')
-      .select('id, name, profile_url, musical_style, work_roles, city, state')
+      .select('id, name, profile_url, musical_style, work_roles, show_formats, city, state')
       .order('name', { ascending: true })
       .range(offset, offset + limit - 1);
     if (estadoNome) table = table.eq('state', estadoNome);
     if (cidade.length >= 2) table = table.ilike('city', `${cidade}%`);
-    if (genero.length > 0) table = table.ilike('musical_style', `${genero}%`);
+    if (genero.length > 0) table = table.ilike('musical_style', `%${genero}%`);
     if (termo.length >= 2) table = table.ilike('name', `${termo}%`);
     if (signal) table = table.abortSignal(signal);
     const third = await table;
@@ -253,7 +330,11 @@ export async function listarTodosArtistas(params: {
       return { artists: [], hasMore: false, error: null, aborted: true };
     }
     if (third.error) return { artists: [], hasMore: false, error: third.error.message };
-    return finish((third.data || []) as unknown[]);
+    const mapped = finish((third.data || []) as unknown[]);
+    const filtered = mapped.artists.filter((item) =>
+      matchesArtistSearchFilters(item, { funcao, genero, formato })
+    );
+    return { artists: filtered, hasMore: false, error: null };
   } catch (error) {
     if (abortedResult(signal, error)) {
       return { artists: [], hasMore: false, error: null, aborted: true };
