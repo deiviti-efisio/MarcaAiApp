@@ -240,14 +240,11 @@ RETURNS TABLE (
   mensagem TEXT,
   criado_em TIMESTAMPTZ
 )
-LANGUAGE plpgsql
+LANGUAGE sql
+STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-BEGIN
-  PERFORM public.encerrar_anuncios_feed_vencidos();
-
-  RETURN QUERY
   SELECT
     e.id,
     c.id,
@@ -269,7 +266,6 @@ BEGIN
     AND p_artista_atual_id IS NOT NULL
     AND e.artist_id = p_artista_atual_id
   ORDER BY c.criado_em DESC;
-END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.listar_propostas_feed_marketplace(UUID) TO authenticated;

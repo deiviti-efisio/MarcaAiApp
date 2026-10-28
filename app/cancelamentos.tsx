@@ -27,9 +27,6 @@ type Periodo = 0 | 10 | 30 | 60;
 function badgeOf(
   item: RegistroCancelamento
 ): { label: string; tone: 'error' | 'warning' | 'success' | 'muted' } {
-  if (item.status_convite === 'pendente') {
-    return { label: 'Em andamento', tone: 'warning' };
-  }
   if (item.solicitacao_status === 'pending' || item.ciclo_status === 'cancellation_requested') {
     return { label: 'Pedido de cancelamento', tone: 'warning' };
   }
