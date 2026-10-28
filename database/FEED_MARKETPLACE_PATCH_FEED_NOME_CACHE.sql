@@ -103,10 +103,7 @@ AS $$
             SELECT ARRAY(
               SELECT NULLIF(trim(COALESCE(ar.profile_url, '')), '')
               FROM convite_participacao_evento c
-              INNER JOIN artists ar ON ar.id = CASE
-                WHEN e.feed_tipo = 'demanda' THEN c.artista_convidado_id
-                ELSE c.artista_que_convidou_id
-              END
+              INNER JOIN artists ar ON ar.id = c.artista_convidado_id
               WHERE c.status IN ('pendente', 'aceito')
                 AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
               ORDER BY c.criado_em DESC
@@ -124,10 +121,7 @@ AS $$
         FROM convite_participacao_evento c
         WHERE c.status IN ('pendente', 'aceito')
           AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
-          AND (
-            (e.feed_tipo = 'demanda' AND c.artista_convidado_id = p_artista_atual_id)
-            OR (e.feed_tipo <> 'demanda' AND c.artista_que_convidou_id = p_artista_atual_id)
-          )
+          AND c.artista_convidado_id = p_artista_atual_id
       )
     ),
     (
@@ -137,10 +131,7 @@ AS $$
         FROM convite_participacao_evento c
         WHERE c.status = 'pendente'
           AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
-          AND (
-            (e.feed_tipo = 'demanda' AND c.artista_convidado_id = p_artista_atual_id)
-            OR (e.feed_tipo <> 'demanda' AND c.artista_que_convidou_id = p_artista_atual_id)
-          )
+          AND c.artista_convidado_id = p_artista_atual_id
       )
     ),
     rep.media_nota_geral,
@@ -313,16 +304,6 @@ BEGIN
     SET whatsapp = v_whatsapp_save,
         updated_at = NOW()
     WHERE id = v_event.artist_id;
-  ELSE
-    SELECT regexp_replace(trim(coalesce(a.whatsapp, '')), '\D', '', 'g')
-    INTO v_whatsapp_digits
-    FROM public.artists a
-    WHERE a.id = v_event.artist_id;
-  END IF;
-
-  IF length(v_whatsapp_digits) <> 11 THEN
-    RETURN QUERY SELECT false, 'Informe um WhatsApp válido para contato (DDD + número).';
-    RETURN;
   END IF;
 
   v_city := NULLIF(trim(coalesce(p_city, '')), '');
@@ -332,10 +313,6 @@ BEGIN
   END IF;
   v_start := p_start_time;
   v_end := p_end_time;
-  IF v_end <= v_start THEN
-    RETURN QUERY SELECT false, 'O horário final precisa ser depois do início.';
-    RETURN;
-  END IF;
 
   v_name := NULLIF(trim(coalesce(p_nome, '')), '');
   IF v_event.feed_tipo = 'demanda' THEN

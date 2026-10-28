@@ -127,16 +127,6 @@ BEGIN
     SET whatsapp = v_whatsapp_save,
         updated_at = NOW()
     WHERE id = p_artista_id;
-  ELSE
-    SELECT regexp_replace(trim(coalesce(a.whatsapp, '')), '\D', '', 'g')
-    INTO v_whatsapp_digits
-    FROM public.artists a
-    WHERE a.id = p_artista_id;
-  END IF;
-
-  IF length(v_whatsapp_digits) <> 11 THEN
-    RETURN QUERY SELECT false, 'Informe um WhatsApp válido para contato (DDD + número).', NULL::UUID;
-    RETURN;
   END IF;
 
   v_city := NULLIF(trim(coalesce(p_city, '')), '');
@@ -146,10 +136,6 @@ BEGIN
   END IF;
   v_start := p_start_time;
   v_end := p_end_time;
-  IF v_end <= v_start THEN
-    RETURN QUERY SELECT false, 'O horário final precisa ser depois do início.', NULL::UUID;
-    RETURN;
-  END IF;
 
   v_name := NULLIF(trim(coalesce(p_nome, '')), '');
   IF p_feed_tipo = 'demanda' THEN

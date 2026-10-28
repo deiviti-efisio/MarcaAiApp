@@ -61,28 +61,24 @@ BEGIN
     RETURN;
   END IF;
 
-  v_pode_aceitar := public._is_member_of_artist(
-    v_uid,
-    v_convite.artista_convidado_id,
-    ARRAY['editor', 'admin', 'owner']
-  );
+  SELECT * INTO v_origem
+  FROM events e
+  WHERE e.id = v_convite.evento_origem_id
+  LIMIT 1;
 
-  -- Procurando: o anunciante escolhe o candidato (despesa continua no nome do convidado).
-  IF NOT v_pode_aceitar THEN
-    SELECT * INTO v_origem
-    FROM events e
-    WHERE e.id = v_convite.evento_origem_id
-    LIMIT 1;
-
-    IF v_origem.feed_tipo = 'demanda'
-      AND public._is_member_of_artist(
-        v_uid,
-        v_convite.artista_que_convidou_id,
-        ARRAY['editor', 'vendedor', 'admin', 'owner']
-      )
-    THEN
-      v_pode_aceitar := true;
-    END IF;
+  IF v_origem.feed_tipo IS NOT NULL THEN
+    -- Oportunidade: só o dono do anúncio aceita. O evento nasce no aceite.
+    v_pode_aceitar := public._is_member_of_artist(
+      v_uid,
+      v_convite.artista_que_convidou_id,
+      ARRAY['editor', 'vendedor', 'admin', 'owner']
+    );
+  ELSE
+    v_pode_aceitar := public._is_member_of_artist(
+      v_uid,
+      v_convite.artista_convidado_id,
+      ARRAY['editor', 'admin', 'owner']
+    );
   END IF;
 
   IF NOT v_pode_aceitar THEN
@@ -389,26 +385,7 @@ BEGIN
       ativo = true,
       updated_at = NOW()
     WHERE id = NEW.evento_origem_id
-      AND feed_tipo = 'demanda';
-
-    UPDATE events
-    SET
-      ativo = true,
-      confirmed = true,
-      feed_tipo = NULL,
-      updated_at = NOW()
-    WHERE id = NEW.evento_origem_id
-      AND artist_id = NEW.artista_que_convidou_id
-      AND feed_tipo IS NULL;
-
-    UPDATE events
-    SET
-      feed_tipo = NULL,
-      confirmed = true,
-      ativo = true,
-      updated_at = NOW()
-    WHERE id = NEW.grupo_disputa_id
-      AND feed_tipo = 'disponivel';
+      AND feed_tipo IS NOT NULL;
   END IF;
 
   RETURN NEW;

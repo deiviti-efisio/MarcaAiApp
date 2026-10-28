@@ -1206,10 +1206,7 @@ BEGIN
   FROM convite_participacao_evento c
   WHERE c.status IN ('pendente', 'aceito')
     AND (c.grupo_disputa_id = v_event.id OR c.evento_origem_id = v_event.id)
-    AND (
-      (v_event.feed_tipo = 'demanda' AND c.artista_convidado_id = p_artista_interessado_id)
-      OR (v_event.feed_tipo <> 'demanda' AND c.artista_que_convidou_id = p_artista_interessado_id)
-    )
+    AND c.artista_convidado_id = p_artista_interessado_id
   ORDER BY c.criado_em DESC
   LIMIT 1;
 
@@ -1354,10 +1351,7 @@ BEGIN
       c.grupo_disputa_id = e.id
       OR c.evento_origem_id = e.id
     )
-  INNER JOIN artists a ON a.id = CASE
-    WHEN e.feed_tipo = 'demanda' THEN c.artista_convidado_id
-    ELSE c.artista_que_convidou_id
-  END
+  INNER JOIN artists a ON a.id = c.artista_convidado_id
   WHERE e.feed_tipo IS NOT NULL
     AND COALESCE(e.ativo, true) = true
     AND e.event_date >= public.feed_data_hoje_brasil()

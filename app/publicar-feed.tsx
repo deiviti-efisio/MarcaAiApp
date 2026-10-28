@@ -333,6 +333,11 @@ export default function PublicarFeedScreen() {
       if (cancelled) return;
       if (!isEditMode) {
         setWhatsappDraft(maskBrazilMobile(artist?.whatsapp || ''));
+        const funcoesConta = (artist?.work_roles || [])
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 8);
+        if (funcoesConta.length) setSelectedFuncoes(funcoesConta);
         const parsedCity = parseCityUf(artist?.city || '');
         if (parsedCity.cityLabel) setCidade(parsedCity.cityLabel);
         const uf =
@@ -340,9 +345,6 @@ export default function PublicarFeedScreen() {
           brazilUfFromStateName(artist?.state) ||
           '';
         if (uf) setEstadoUf(uf);
-        if (artist?.average_cache_value && artist.average_cache_value > 0) {
-          setCacheDraft(formatCurrencyBRLFromAmount(artist.average_cache_value));
-        }
         setMostrarCache(false);
       }
     });
@@ -487,10 +489,6 @@ export default function PublicarFeedScreen() {
       Alert.alert('Horário', 'Informe o horário inicial e o final.');
       return;
     }
-    if (toHm(fim) <= toHm(inicio)) {
-      Alert.alert('Horário', 'O horário final precisa ser depois do início.');
-      return;
-    }
     if (selectedFuncoes.length === 0) {
       Alert.alert(
         'Funções',
@@ -506,11 +504,8 @@ export default function PublicarFeedScreen() {
       Alert.alert('Cidade e região', 'Selecione o estado da região.');
       return;
     }
-    if (!isCompleteBrazilMobile(whatsappDraft)) {
-      Alert.alert(
-        'WhatsApp',
-        'Informe um WhatsApp válido para contato (DDD + número). Usamos o número salvo no perfil do artista, se já existir.'
-      );
+    if (whatsappDraft.trim() && !isCompleteBrazilMobile(whatsappDraft)) {
+      Alert.alert('WhatsApp', 'Se informar o WhatsApp, use DDD + número.');
       return;
     }
     setSaving(true);
@@ -877,7 +872,7 @@ export default function PublicarFeedScreen() {
             searchPlaceholder="Filtrar função..."
           />
 
-          <Text style={[styles.label, { color: colors.text }]}>WhatsApp para contato *</Text>
+          <Text style={[styles.label, { color: colors.text }]}>WhatsApp para contato</Text>
           <View style={[styles.field, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
             <TextInput
@@ -891,7 +886,7 @@ export default function PublicarFeedScreen() {
             />
           </View>
           <Text style={[styles.rolesHint, { color: colors.textSecondary }]}>
-            Quem ver seu anúncio poderá entrar em contato por este número. Se o artista já tem WhatsApp salvo, ele aparece aqui.
+            Opcional. Se o artista já tem WhatsApp salvo, ele aparece aqui.
           </Text>
 
           <Text style={[styles.label, { color: colors.text }]}>Observações (opcional)</Text>

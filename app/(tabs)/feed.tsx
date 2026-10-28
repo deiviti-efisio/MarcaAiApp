@@ -74,6 +74,10 @@ import {
   type PerfilCompat,
 } from '../../lib/feedCompatibility';
 import { getArtistById } from '../../services/supabase/artistService';
+import {
+  listarVisualizacoesDoArtista,
+  type OportunidadeVisualizacao,
+} from '../../services/supabase/opportunityViewsService';
 import { openWhatsAppConversation } from '../../utils/brazilPhone';
 
 function formatTime(t: string) {
@@ -130,6 +134,13 @@ export default function FeedScreen() {
   const [showFormatoArtistaPicker, setShowFormatoArtistaPicker] = useState(false);
   const [anuncios, setAnuncios] = useState<FeedAnuncio[]>([]);
   const [propostasPorEvento, setPropostasPorEvento] = useState<Record<string, FeedProposta[]>>({});
+  const [visualizacoesPorEvento, setVisualizacoesPorEvento] = useState<
+    Record<string, OportunidadeVisualizacao[]>
+  >({});
+  const [viewsSheet, setViewsSheet] = useState<{
+    title: string;
+    items: OportunidadeVisualizacao[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,8 +263,14 @@ export default function FeedScreen() {
           });
           setPropostasPorEvento(grouped);
         })();
+        void (async () => {
+          const { byEvent } = await listarVisualizacoesDoArtista(artistId);
+          if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
+          setVisualizacoesPorEvento(byEvent);
+        })();
       } else {
         setPropostasPorEvento({});
+        setVisualizacoesPorEvento({});
       }
     } finally {
       if (generation === loadGenerationRef.current) {
@@ -740,6 +757,7 @@ export default function FeedScreen() {
         : null;
     const cacheDisplay = item.feed_mostrar_cache && cacheTxt ? `Até ${cacheTxt}` : 'Cachê a combinar';
     const propostas = meuAnuncio ? propostasPorEvento[item.id] || [] : [];
+    const visualizacoes = meuAnuncio ? visualizacoesPorEvento[item.id] || [] : [];
     const avatarUrls = meuAnuncio
       ? (
           item.propostas_avatars.length
@@ -931,6 +949,56 @@ export default function FeedScreen() {
             <Text style={[styles.notes, { color: colors.textSecondary }]} numberOfLines={2}>
               {item.description}
             </Text>
+          ) : null}
+
+          {meuAnuncio && visualizacoes.length > 0 ? (
+            <TouchableOpacity
+              style={styles.viewsCardRow}
+              onPress={() =>
+                setViewsSheet({
+                  title: item.evento_nome?.trim() || 'Oportunidade',
+                  items: visualizacoes,
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <View style={styles.avatarStack}>
+                {visualizacoes.slice(0, 4).map((viewer, index) => {
+                  const initial = viewer.artistName.trim().charAt(0).toUpperCase() || '?';
+                  return (
+                    <View
+                      key={viewer.artistId}
+                      style={[
+                        styles.viewAvatar,
+                        {
+                          marginLeft: index === 0 ? 0 : -8,
+                          zIndex: 10 - index,
+                          backgroundColor: colors.secondary,
+                          borderColor: colors.surface,
+                        },
+                      ]}
+                    >
+                      {viewer.artistImage ? (
+                        <OptimizedImage
+                          imageUrl={viewer.artistImage}
+                          style={styles.viewAvatarImg}
+                          fallbackText={initial}
+                          fallbackIconSize={10}
+                          showLoadingIndicator={false}
+                        />
+                      ) : (
+                        <Text style={[styles.viewAvatarInitial, { color: colors.primary }]}>{initial}</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={[styles.countPillText, { color: colors.textSecondary }]}>
+                {visualizacoes.length === 1
+                  ? '1 visualizou'
+                  : `${visualizacoes.length} visualizaram`}
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {item.propostas_count > 0 || meuAnuncio ? (
@@ -1886,6 +1954,58 @@ export default function FeedScreen() {
         }}
       />
       <Modal
+        visible={!!viewsSheet}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewsSheet(null)}
+      >
+        <Pressable style={styles.acceptOverlay} onPress={() => setViewsSheet(null)}>
+          <Pressable
+            style={[styles.viewsSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.viewsSheetTitle, { color: colors.text }]}>Quem visualizou</Text>
+            <Text style={[styles.viewsSheetSub, { color: colors.textSecondary }]} numberOfLines={1}>
+              {viewsSheet?.title}
+            </Text>
+            <ScrollView style={styles.viewsSheetList} keyboardShouldPersistTaps="handled">
+              {(viewsSheet?.items || []).map((viewer) => {
+                const initial = viewer.artistName.trim().charAt(0).toUpperCase() || '?';
+                return (
+                  <TouchableOpacity
+                    key={viewer.artistId}
+                    style={styles.viewsSheetRow}
+                    onPress={() => {
+                      setViewsSheet(null);
+                      router.push({ pathname: '/perfil-artista', params: { artistId: viewer.artistId } });
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.viewsSheetAvatar, { backgroundColor: colors.background }]}>
+                      {viewer.artistImage ? (
+                        <OptimizedImage
+                          imageUrl={viewer.artistImage}
+                          style={styles.viewsSheetAvatarImg}
+                          fallbackText={initial}
+                          fallbackIconSize={16}
+                          showLoadingIndicator={false}
+                        />
+                      ) : (
+                        <Text style={[styles.viewsSheetInitial, { color: colors.primary }]}>{initial}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.viewsSheetName, { color: colors.text }]} numberOfLines={1}>
+                      {viewer.artistName}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal
         visible={!!aceiteInteresse}
         transparent
         animationType="fade"
@@ -2568,6 +2688,51 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
+  viewsCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  viewAvatarImg: { width: 26, height: 26, borderRadius: 13 },
+  viewAvatarInitial: { fontSize: 11, fontWeight: '800' },
+  viewsSheet: {
+    width: '100%',
+    maxHeight: '70%',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  viewsSheetTitle: { fontSize: 18, fontWeight: '800' },
+  viewsSheetSub: { marginTop: 2, marginBottom: 12, fontSize: 13 },
+  viewsSheetList: { flexGrow: 0 },
+  viewsSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  viewsSheetAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewsSheetAvatarImg: { width: 44, height: 44, borderRadius: 22 },
+  viewsSheetInitial: { fontSize: 16, fontWeight: '800' },
+  viewsSheetName: { flex: 1, fontSize: 16, fontWeight: '700' },
   propostasResumo: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -466,10 +466,7 @@ AS $$
         SELECT ARRAY(
           SELECT NULLIF(trim(COALESCE(ar.profile_url, '')), '')
           FROM convite_participacao_evento c
-          INNER JOIN artists ar ON ar.id = CASE
-            WHEN e.feed_tipo = 'demanda' THEN c.artista_convidado_id
-            ELSE c.artista_que_convidou_id
-          END
+          INNER JOIN artists ar ON ar.id = c.artista_convidado_id
           WHERE c.status IN ('pendente', 'aceito')
             AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
           ORDER BY c.criado_em DESC
@@ -485,10 +482,7 @@ AS $$
         FROM convite_participacao_evento c
         WHERE c.status IN ('pendente', 'aceito')
           AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
-          AND (
-            (e.feed_tipo = 'demanda' AND c.artista_convidado_id = p_artista_atual_id)
-            OR (e.feed_tipo <> 'demanda' AND c.artista_que_convidou_id = p_artista_atual_id)
-          )
+          AND c.artista_convidado_id = p_artista_atual_id
       )
     ),
     (
@@ -498,10 +492,7 @@ AS $$
         FROM convite_participacao_evento c
         WHERE c.status = 'pendente'
           AND (c.grupo_disputa_id = e.id OR c.evento_origem_id = e.id)
-          AND (
-            (e.feed_tipo = 'demanda' AND c.artista_convidado_id = p_artista_atual_id)
-            OR (e.feed_tipo <> 'demanda' AND c.artista_que_convidou_id = p_artista_atual_id)
-          )
+          AND c.artista_convidado_id = p_artista_atual_id
       )
     ),
     rep.media_nota_geral,

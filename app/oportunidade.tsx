@@ -24,6 +24,11 @@ import {
   perfilCompatFromArtist,
 } from '../lib/feedCompatibility';
 import { getArtistById } from '../services/supabase/artistService';
+import {
+  listarVisualizacoesOportunidade,
+  registrarVisualizacaoOportunidade,
+  type OportunidadeVisualizacao,
+} from '../services/supabase/opportunityViewsService';
 import { alternarEventoFavorito, listarIdsEventosFavoritos } from '../services/supabase/eventFavoritesService';
 import {
   desfazerPropostaFeed,
@@ -44,6 +49,17 @@ function formatDayMonth(dateString: string) {
   if (!parts) return formatCalendarDate(dateString);
   const monthOnly = parts.rest.replace(/\s+de\s+\d{4}\s*$/, '');
   return `${parts.day} ${monthOnly}`;
+}
+
+function formatViewedAt(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function durationLabel(start: string, end: string) {
@@ -82,6 +98,7 @@ export default function OportunidadeScreen() {
   const [desfazendoProposta, setDesfazendoProposta] = useState(false);
   const [podeDesfazer, setPodeDesfazer] = useState(false);
   const [compativel, setCompativel] = useState(false);
+  const [visualizacoes, setVisualizacoes] = useState<OportunidadeVisualizacao[]>([]);
   const canFavorite = isAdmin || isVendedor;
 
   useEffect(() => {
@@ -91,6 +108,7 @@ export default function OportunidadeScreen() {
         setLoading(false);
         return;
       }
+      setVisualizacoes([]);
       const [{ anuncios, error }, favoriteIds] = await Promise.all([
         listarFeedMarketplace({
           filtro: 'todos',
@@ -118,6 +136,7 @@ export default function OportunidadeScreen() {
         return;
       }
       if (activeArtist?.id && found.artist_id !== activeArtist.id) {
+        void registrarVisualizacaoOportunidade(found.id, activeArtist.id);
         const { artist } = await getArtistById(activeArtist.id);
         if (!cancelled) {
           setCompativel(
@@ -126,6 +145,10 @@ export default function OportunidadeScreen() {
         }
       } else if (!cancelled) {
         setCompativel(false);
+        if (activeArtist?.id && found.artist_id === activeArtist.id) {
+          const views = await listarVisualizacoesOportunidade(found.id);
+          if (!cancelled) setVisualizacoes(views.items);
+        }
       }
     })();
     return () => {
@@ -340,6 +363,55 @@ export default function OportunidadeScreen() {
               </Text>
               <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
+
+            {meuAnuncio ? (
+              <View style={styles.viewsBlock}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  Quem visualizou{visualizacoes.length ? ` (${visualizacoes.length})` : ''}
+                </Text>
+                {visualizacoes.length === 0 ? (
+                  <Text style={[styles.about, { color: colors.textSecondary }]}>
+                    Ninguém abriu esta oportunidade ainda.
+                  </Text>
+                ) : (
+                  visualizacoes.map((item) => (
+                    <TouchableOpacity
+                      key={item.artistId}
+                      style={[styles.hirerRow, styles.viewerRow, { backgroundColor: cardBg }]}
+                      onPress={() =>
+                        router.push({ pathname: '/perfil-artista', params: { artistId: item.artistId } })
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.hirerAvatar, { backgroundColor: colors.background }]}>
+                        {item.artistImage ? (
+                          <OptimizedImage
+                            imageUrl={item.artistImage}
+                            style={styles.hirerAvatarImg}
+                            fallbackText={item.artistName}
+                            fallbackIconSize={16}
+                            showLoadingIndicator={false}
+                          />
+                        ) : (
+                          <Text style={[styles.hirerInitial, { color: colors.primary }]}>
+                            {(item.artistName || '?').trim().charAt(0).toUpperCase()}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.viewerText}>
+                        <Text style={[styles.hirerName, { color: colors.text }]} numberOfLines={1}>
+                          {item.artistName}
+                        </Text>
+                        <Text style={[styles.viewerWhen, { color: colors.textSecondary }]}>
+                          {formatViewedAt(item.viewedAt)}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            ) : null}
           </ScrollView>
 
           {!meuAnuncio ? (
@@ -494,6 +566,10 @@ const styles = StyleSheet.create({
   hirerAvatarImg: { width: 44, height: 44 },
   hirerInitial: { fontSize: 16, fontWeight: '800' },
   hirerName: { flex: 1, fontSize: 16, fontWeight: '700' },
+  viewsBlock: { marginTop: 24, gap: 8 },
+  viewerRow: { marginTop: 0 },
+  viewerText: { flex: 1 },
+  viewerWhen: { marginTop: 2, fontSize: 12 },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
