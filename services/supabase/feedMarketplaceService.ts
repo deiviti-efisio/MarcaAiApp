@@ -4,6 +4,13 @@ import { supabase } from '../../lib/supabase';
 export type FeedTipo = 'disponivel' | 'demanda';
 export type FeedFiltro = 'todos' | 'disponivel' | 'demanda' | 'meus';
 
+export interface CriadorOportunidade {
+  userId: string;
+  nome: string;
+  avatar: string | null;
+  criadoEm: string;
+}
+
 export interface FeedAnuncio {
   id: string;
   artist_id: string;
@@ -262,6 +269,27 @@ export async function listarPropostasFeedMarketplace(
       return { propostas: [], error: null, aborted: true };
     }
     return { propostas: [], error: 'Erro de conexão' };
+  }
+}
+
+export async function buscarCriadorOportunidade(
+  eventoId: string
+): Promise<CriadorOportunidade | null> {
+  try {
+    const { data, error } = await supabase.rpc('rpc_app_criador_oportunidade', {
+      p_evento_id: eventoId,
+    });
+    if (error) return null;
+    const row = pickRpcRow(data as Record<string, unknown>[] | Record<string, unknown> | null);
+    if (!row || row.user_id == null) return null;
+    return {
+      userId: String(row.user_id),
+      nome: String(row.nome ?? 'Usuário'),
+      avatar: row.avatar != null && String(row.avatar).trim() ? String(row.avatar) : null,
+      criadoEm: String(row.criado_em ?? ''),
+    };
+  } catch {
+    return null;
   }
 }
 

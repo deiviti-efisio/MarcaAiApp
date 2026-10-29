@@ -1,5 +1,5 @@
 -- Quem visualizou uma oportunidade do feed.
--- Só o artista que publicou (e os membros dele) consulta a lista.
+-- Só administrador ou dono do artista que publicou consulta a lista.
 -- Execute no SQL Editor do Supabase.
 
 CREATE TABLE IF NOT EXISTS public.opportunity_views (
@@ -97,7 +97,7 @@ BEGIN
   FROM public.events e
   WHERE e.id = p_evento_id;
 
-  IF v_owner IS NULL OR NOT public._is_member_of_artist(v_uid, v_owner, NULL) THEN
+  IF v_owner IS NULL OR NOT public._is_member_of_artist(v_uid, v_owner, ARRAY['admin', 'owner']) THEN
     RETURN;
   END IF;
 
@@ -140,7 +140,7 @@ BEGIN
     RETURN;
   END IF;
 
-  IF NOT public._is_member_of_artist(v_uid, p_artista_id, NULL) THEN
+  IF NOT public._is_member_of_artist(v_uid, p_artista_id, ARRAY['admin', 'owner']) THEN
     RETURN;
   END IF;
 

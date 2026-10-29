@@ -31,10 +31,12 @@ import {
 } from '../services/supabase/opportunityViewsService';
 import { alternarEventoFavorito, listarIdsEventosFavoritos } from '../services/supabase/eventFavoritesService';
 import {
+  buscarCriadorOportunidade,
   desfazerPropostaFeed,
   iniciarNegociacaoFeed,
   isErroPropostaDuplicada,
   listarFeedMarketplace,
+  type CriadorOportunidade,
   type FeedAnuncio,
 } from '../services/supabase/feedMarketplaceService';
 import { useActiveArtist } from '../services/useActiveArtist';
@@ -49,6 +51,23 @@ function formatDayMonth(dateString: string) {
   if (!parts) return formatCalendarDate(dateString);
   const monthOnly = parts.rest.replace(/\s+de\s+\d{4}\s*$/, '');
   return `${parts.day} ${monthOnly}`;
+}
+
+function formatCriadoEm(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const data = date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const hora = date.toLocaleTimeString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${data} às ${hora}`;
 }
 
 function formatViewedAt(iso: string) {
@@ -99,6 +118,7 @@ export default function OportunidadeScreen() {
   const [podeDesfazer, setPodeDesfazer] = useState(false);
   const [compativel, setCompativel] = useState(false);
   const [visualizacoes, setVisualizacoes] = useState<OportunidadeVisualizacao[]>([]);
+  const [criador, setCriador] = useState<CriadorOportunidade | null>(null);
   const canFavorite = isAdmin || isVendedor;
 
   useEffect(() => {
@@ -109,6 +129,7 @@ export default function OportunidadeScreen() {
         return;
       }
       setVisualizacoes([]);
+      setCriador(null);
       const [{ anuncios, error }, favoriteIds] = await Promise.all([
         listarFeedMarketplace({
           filtro: 'todos',
@@ -145,16 +166,22 @@ export default function OportunidadeScreen() {
         }
       } else if (!cancelled) {
         setCompativel(false);
-        if (activeArtist?.id && found.artist_id === activeArtist.id) {
-          const views = await listarVisualizacoesOportunidade(found.id);
-          if (!cancelled) setVisualizacoes(views.items);
+        if (isAdmin && activeArtist?.id && found.artist_id === activeArtist.id) {
+          const [views, autor] = await Promise.all([
+            listarVisualizacoesOportunidade(found.id),
+            buscarCriadorOportunidade(found.id),
+          ]);
+          if (!cancelled) {
+            setVisualizacoes(views.items);
+            setCriador(autor);
+          }
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [eventId, activeArtist?.id]);
+  }, [eventId, activeArtist?.id, isAdmin]);
 
   const location = useMemo(
     () => (anuncio ? formatCityAndRegion({ city: anuncio.city, state_uf: anuncio.state_uf }) : ''),
@@ -298,6 +325,31 @@ export default function OportunidadeScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
+            {meuAnuncio && isAdmin && criador ? (
+              <View style={styles.creatorRow}>
+                <View style={[styles.creatorAvatar, { backgroundColor: cardBg }]}>
+                  {criador.avatar ? (
+                    <OptimizedImage
+                      imageUrl={criador.avatar}
+                      style={styles.creatorAvatarImg}
+                      fallbackText={criador.nome}
+                      fallbackIconSize={10}
+                      showLoadingIndicator={false}
+                    />
+                  ) : (
+                    <Text style={[styles.creatorInitial, { color: colors.primary }]}>
+                      {(criador.nome || '?').trim().charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.creatorName, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {criador.nome}
+                </Text>
+                <Text style={[styles.creatorWhen, { color: colors.textSecondary }]}>
+                  {formatCriadoEm(criador.criadoEm)}
+                </Text>
+              </View>
+            ) : null}
             {compativel ? (
               <View style={styles.compatBadge}>
                 <Ionicons name="checkmark-circle" size={15} color="#16A34A" />
@@ -364,7 +416,7 @@ export default function OportunidadeScreen() {
               <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            {meuAnuncio ? (
+            {meuAnuncio && isAdmin ? (
               <View style={styles.viewsBlock}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>
                   Quem visualizou{visualizacoes.length ? ` (${visualizacoes.length})` : ''}
@@ -498,6 +550,24 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     letterSpacing: -0.5,
   },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  creatorAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorAvatarImg: { width: 22, height: 22 },
+  creatorInitial: { fontSize: 11, fontWeight: '800' },
+  creatorName: { flexShrink: 1, fontSize: 12, fontWeight: '600' },
+  creatorWhen: { fontSize: 12 },
   compatBadge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

@@ -263,11 +263,15 @@ export default function FeedScreen() {
           });
           setPropostasPorEvento(grouped);
         })();
-        void (async () => {
-          const { byEvent } = await listarVisualizacoesDoArtista(artistId);
-          if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
-          setVisualizacoesPorEvento(byEvent);
-        })();
+        if (isAdmin) {
+          void (async () => {
+            const { byEvent } = await listarVisualizacoesDoArtista(artistId);
+            if (abort.signal.aborted || generation !== loadGenerationRef.current) return;
+            setVisualizacoesPorEvento(byEvent);
+          })();
+        } else {
+          setVisualizacoesPorEvento({});
+        }
       } else {
         setPropostasPorEvento({});
         setVisualizacoesPorEvento({});
@@ -278,7 +282,7 @@ export default function FeedScreen() {
         setRefreshing(false);
       }
     }
-  }, [filtro, verMinhas, verArtistas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, filtroFavoritosFeed, activeArtist?.id]);
+  }, [filtro, verMinhas, verArtistas, estadoUfFeed, cidadeFeedDebounced, filtroFuncao, filtroFavoritosFeed, activeArtist?.id, isAdmin]);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaArtistaDebounced(buscaArtista.trim()), 280);
@@ -757,7 +761,7 @@ export default function FeedScreen() {
         : null;
     const cacheDisplay = item.feed_mostrar_cache && cacheTxt ? `Até ${cacheTxt}` : 'Cachê a combinar';
     const propostas = meuAnuncio ? propostasPorEvento[item.id] || [] : [];
-    const visualizacoes = meuAnuncio ? visualizacoesPorEvento[item.id] || [] : [];
+    const visualizacoes = meuAnuncio && isAdmin ? visualizacoesPorEvento[item.id] || [] : [];
     const avatarUrls = meuAnuncio
       ? (
           item.propostas_avatars.length

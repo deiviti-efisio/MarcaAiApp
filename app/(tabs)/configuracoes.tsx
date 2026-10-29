@@ -39,7 +39,7 @@ import {
 } from '../../services/supabase/userService';
 import { dispatchResetToLogin } from '../../lib/resetToLoginStack';
 import { LEGAL_URLS } from '../../constants/legal';
-import { isArtistAdminRole } from '../../services/supabase/permissionsService';
+import { isArtistAdminRole, normalizeArtistMemberRole } from '../../services/supabase/permissionsService';
 
 const getRoleLabel = (role?: string) => {
   switch (role) {
@@ -748,12 +748,13 @@ export default function ConfiguracoesScreen() {
                 () => router.push('/sair-artista')
               )}
 
-              {renderSettingItem(
-                'mail',
-                'Convites Enviados',
-                'Ver e gerenciar convites',
-                () => router.push('/convites-enviados')
-              )}
+              {normalizeArtistMemberRole(String(currentArtist.role || '')) !== 'viewer' &&
+                renderSettingItem(
+                  'mail',
+                  'Convites Enviados',
+                  'Ver e gerenciar convites',
+                  () => router.push('/convites-enviados')
+                )}
 
               {isArtistAdminRole(currentArtist.role) &&
                 renderSettingItem(
@@ -766,6 +767,7 @@ export default function ConfiguracoesScreen() {
           </View>
         )}
 
+        {normalizeArtistMemberRole(String(currentArtist?.role || '')) !== 'viewer' ? (
         <View style={dynamicStyles.section}>
           <Text style={dynamicStyles.sectionTitle}>Eventos</Text>
           <View style={dynamicStyles.settingsCard}>
@@ -783,6 +785,7 @@ export default function ConfiguracoesScreen() {
             )}
           </View>
         </View>
+        ) : null}
 
         {/* Seção: Preferências do App */}
         <View style={dynamicStyles.section}>
