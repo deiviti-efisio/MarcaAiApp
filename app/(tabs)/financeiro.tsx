@@ -181,6 +181,7 @@ export default function FinanceiroScreen() {
   }
 
   const financeLoadSeqRef = useRef(0);
+  const loadedFinanceKeyRef = useRef<string | null>(null);
   const loadFinancialDataRef = useRef<() => Promise<void>>(async () => {});
   const loadAnnualFinancialDataRef = useRef<() => Promise<void>>(async () => {});
   const loadMonthRevenueGoalRef = useRef<() => Promise<void>>(async () => {});
@@ -253,6 +254,7 @@ export default function FinanceiroScreen() {
       return;
     }
 
+    const scopeKey = `${artistId}|month|${currentYear}|${currentMonth}`;
     const seq = ++financeLoadSeqRef.current;
     const moneyOf = (raw: unknown) => {
       const n = Number(raw);
@@ -260,10 +262,12 @@ export default function FinanceiroScreen() {
     };
 
     try {
-      setEvents([]);
-      setStandaloneExpenses([]);
-      setMonthRevenueGoal(null);
-      setIsLoading(true);
+      if (loadedFinanceKeyRef.current !== scopeKey) {
+        setEvents([]);
+        setStandaloneExpenses([]);
+        setMonthRevenueGoal(null);
+        setIsLoading(true);
+      }
 
       let monthEvents: Array<{
         id: string;
@@ -315,6 +319,7 @@ export default function FinanceiroScreen() {
       });
 
       setEvents(eventsWithExpenses);
+      loadedFinanceKeyRef.current = scopeKey;
 
       const { success: expensesSuccess, expenses: standalone } = await getStandaloneExpensesByArtist(
         artistId,
@@ -351,11 +356,14 @@ export default function FinanceiroScreen() {
       return;
     }
 
+    const scopeKey = `${artistId}|year|${annualSummaryYear}`;
     const seq = ++financeLoadSeqRef.current;
 
     try {
-      setYearMonthSummaries(emptyYearSummaries());
-      setIsLoading(true);
+      if (loadedFinanceKeyRef.current !== scopeKey) {
+        setYearMonthSummaries(emptyYearSummaries());
+        setIsLoading(true);
+      }
 
       const { events: yearEvents, error: eventsError } = await getEventsByYear(
         artistId,
@@ -411,6 +419,7 @@ export default function FinanceiroScreen() {
       }
 
       setYearMonthSummaries(buckets);
+      loadedFinanceKeyRef.current = scopeKey;
     } catch (error: unknown) {
       if (seq !== financeLoadSeqRef.current) return;
       if (!maybeShowConnectionError(error)) {
@@ -438,6 +447,13 @@ export default function FinanceiroScreen() {
       if (!artistId) {
         return undefined;
       }
+      const scopeKey =
+        financeViewMode === 'year'
+          ? `${artistId}|year|${annualSummaryYear}`
+          : `${artistId}|month|${currentYear}|${currentMonth}`;
+      if (loadedFinanceKeyRef.current === scopeKey) {
+        return undefined;
+      }
       if (financeViewMode === 'year') {
         void loadAnnualFinancialDataRef.current();
       } else {
@@ -447,15 +463,6 @@ export default function FinanceiroScreen() {
       return undefined;
     }, [activeArtist?.id, financeViewMode, currentMonth, currentYear, annualSummaryYear])
   );
-
-  useEffect(() => {
-    if (!activeArtist?.id) return;
-    if (financeViewMode === 'year') {
-      void loadAnnualFinancialDataRef.current();
-    } else {
-      void loadFinancialDataRef.current();
-    }
-  }, [activeArtist?.id, currentMonth, currentYear, financeViewMode, annualSummaryYear]);
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
