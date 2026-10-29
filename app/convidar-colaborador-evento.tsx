@@ -1593,7 +1593,6 @@ export default function ConvidarColaboradorEventoScreen() {
                     {item.comentario_publico}
                   </Text>
                   <Text style={[styles.reviewItemMeta, { color: colors.textSecondary }]}>
-                    {item.nome_evento ? `${item.nome_evento} · ` : ''}
                     {formatReviewDate(item.criado_em)}
                   </Text>
                 </View>

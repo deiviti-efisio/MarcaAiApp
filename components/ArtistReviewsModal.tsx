@@ -106,20 +106,33 @@ export default function ArtistReviewsModal({
               renderItem={({ item }) => (
                 <View style={[styles.reviewCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
                   <View style={styles.reviewTop}>
-                    <Text style={[styles.reviewer, { color: colors.text }]} numberOfLines={1}>
-                      {item.artista_avaliador_nome}
-                    </Text>
+                    <OptimizedImage
+                      imageUrl={item.artista_avaliador_imagem || ''}
+                      style={styles.reviewerAvatar}
+                      fallbackText={item.artista_avaliador_nome || 'Artista'}
+                      fallbackIcon="person"
+                      fallbackIconSize={14}
+                      fallbackIconColor={colors.primary}
+                      showLoadingIndicator={false}
+                    />
+                    <View style={styles.reviewerInfo}>
+                      <Text style={[styles.reviewer, { color: colors.text }]} numberOfLines={1}>
+                        {item.artista_avaliador_nome}
+                      </Text>
+                      <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                        {formatReviewDate(item.criado_em)}
+                      </Text>
+                    </View>
                     <Text style={styles.stars}>
                       {'★'.repeat(Math.max(1, Math.min(5, item.nota_geral)))}
+                      {'☆'.repeat(Math.max(0, 5 - Math.max(1, Math.min(5, item.nota_geral))))}
                     </Text>
                   </View>
-                  <Text style={[styles.comment, { color: colors.textSecondary }]}>
-                    {item.comentario_publico}
-                  </Text>
-                  <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                    {item.nome_evento ? `${item.nome_evento} · ` : ''}
-                    {formatReviewDate(item.criado_em)}
-                  </Text>
+                  {item.comentario_publico ? (
+                    <Text style={[styles.comment, { color: colors.text }]}>
+                      {item.comentario_publico}
+                    </Text>
+                  ) : null}
                 </View>
               )}
             />
@@ -187,14 +200,22 @@ const styles = StyleSheet.create({
   },
   reviewTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+  },
+  reviewerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  reviewerInfo: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 8,
   },
   reviewer: {
     fontWeight: '700',
-    flex: 1,
-    marginRight: 8,
+    fontSize: 15,
   },
   stars: {
     color: '#F59E0B',

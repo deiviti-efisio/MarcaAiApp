@@ -41,7 +41,6 @@ import {
   getArtistMonthRevenueGoal,
   upsertArtistMonthRevenueGoal,
 } from '../../services/supabase/artistMonthRevenueGoalService';
-import { cacheService } from '../../services/cacheService';
 import { getEventsByMonth, getEventsByMonthWithRole, getEventsByYear } from '../../services/supabase/eventService';
 import {
   deleteStandaloneExpense,
@@ -171,6 +170,16 @@ export default function FinanceiroScreen() {
   const [financeViewMode, setFinanceViewMode] = useState<FinanceViewMode>('month');
   const [annualSummaryYear, setAnnualSummaryYear] = useState(() => selectedDate.getFullYear());
   const [yearMonthSummaries, setYearMonthSummaries] = useState<YearMonthSummary[]>(emptyYearSummaries);
+  const [trackedArtistId, setTrackedArtistId] = useState<string | null>(activeArtist?.id ?? null);
+  if ((activeArtist?.id ?? null) !== trackedArtistId) {
+    setTrackedArtistId(activeArtist?.id ?? null);
+    setEvents([]);
+    setStandaloneExpenses([]);
+    setYearMonthSummaries(emptyYearSummaries());
+    setMonthRevenueGoal(null);
+    setIsLoading(Boolean(activeArtist?.id));
+  }
+
   const financeLoadSeqRef = useRef(0);
   const loadFinancialDataRef = useRef<() => Promise<void>>(async () => {});
   const loadAnnualFinancialDataRef = useRef<() => Promise<void>>(async () => {});
@@ -251,29 +260,10 @@ export default function FinanceiroScreen() {
     };
 
     try {
-      const cached = await cacheService.getEventsData<Array<Record<string, unknown>>>(
-        artistId,
-        currentYear,
-        currentMonth,
-      );
-      if (seq !== financeLoadSeqRef.current) return;
-      if (cached && cached.length > 0) {
-        setEvents(
-          cached.map((event) => ({
-            id: String(event.id || ''),
-            name: String(event.name || ''),
-            event_date: String(event.event_date || ''),
-            created_by: event.created_by ? String(event.created_by) : undefined,
-            city: event.city ? String(event.city) : undefined,
-            value: moneyOf(event.value),
-            expenses: Array.isArray(event.expenses) ? event.expenses : [],
-            totalExpenses: moneyOf(event.totalExpenses),
-          })),
-        );
-        setIsLoading(false);
-      } else {
-        setIsLoading(true);
-      }
+      setEvents([]);
+      setStandaloneExpenses([]);
+      setMonthRevenueGoal(null);
+      setIsLoading(true);
 
       let monthEvents: Array<{
         id: string;
@@ -325,7 +315,6 @@ export default function FinanceiroScreen() {
       });
 
       setEvents(eventsWithExpenses);
-      await cacheService.setEventsData(artistId, currentYear, currentMonth, eventsWithExpenses);
 
       const { success: expensesSuccess, expenses: standalone } = await getStandaloneExpensesByArtist(
         artistId,
@@ -365,6 +354,7 @@ export default function FinanceiroScreen() {
     const seq = ++financeLoadSeqRef.current;
 
     try {
+      setYearMonthSummaries(emptyYearSummaries());
       setIsLoading(true);
 
       const { events: yearEvents, error: eventsError } = await getEventsByYear(
@@ -1389,7 +1379,7 @@ export default function FinanceiroScreen() {
                     adjustsFontSizeToFit
                     minimumFontScale={0.6}
                   >
-                    {formatCurrency(yearTotals.netProfit)}
+                    {isLoading ? '—' : formatCurrency(yearTotals.netProfit)}
                   </Text>
                 </View>
 
@@ -1404,7 +1394,7 @@ export default function FinanceiroScreen() {
                       adjustsFontSizeToFit
                       minimumFontScale={0.7}
                     >
-                      {formatCurrency(yearTotals.totalRevenue)}
+                      {isLoading ? '—' : formatCurrency(yearTotals.totalRevenue)}
                     </Text>
                   </View>
 
@@ -1418,7 +1408,7 @@ export default function FinanceiroScreen() {
                       adjustsFontSizeToFit
                       minimumFontScale={0.7}
                     >
-                      {formatCurrency(yearTotals.totalExpenses)}
+                      {isLoading ? '—' : formatCurrency(yearTotals.totalExpenses)}
                     </Text>
                   </View>
                 </View>
@@ -1428,7 +1418,7 @@ export default function FinanceiroScreen() {
                     Eventos no ano
                   </Text>
                   <Text style={[styles.annualTotalEventsValue, { color: colors.text }]}>
-                    {yearTotals.eventCount}
+                    {isLoading ? '—' : yearTotals.eventCount}
                   </Text>
                 </View>
               </View>
@@ -1448,7 +1438,7 @@ export default function FinanceiroScreen() {
                     Eventos no ano
                   </Text>
                   <Text style={[styles.annualTotalEventsValue, { color: colors.text }]}>
-                    {yearTotals.eventCount}
+                    {isLoading ? '—' : yearTotals.eventCount}
                   </Text>
                 </View>
               </View>
@@ -1578,7 +1568,7 @@ export default function FinanceiroScreen() {
                 adjustsFontSizeToFit
                 minimumFontScale={0.6}
               >
-                {formatCurrency(netProfit)}
+                {isLoading ? '—' : formatCurrency(netProfit)}
               </Text>
             </View>
             
@@ -1593,7 +1583,7 @@ export default function FinanceiroScreen() {
                   adjustsFontSizeToFit
                   minimumFontScale={0.7}
                 >
-                  {formatCurrency(totalRevenueWithIncome)}
+                  {isLoading ? '—' : formatCurrency(totalRevenueWithIncome)}
                 </Text>
               </View>
               
@@ -1607,7 +1597,7 @@ export default function FinanceiroScreen() {
                   adjustsFontSizeToFit
                   minimumFontScale={0.7}
                 >
-                  {formatCurrency(totalExpenses)}
+                  {isLoading ? '—' : formatCurrency(totalExpenses)}
                 </Text>
               </View>
             </View>
@@ -1711,7 +1701,7 @@ export default function FinanceiroScreen() {
         {/* Lista de eventos */}
         <View style={styles.eventsSection}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Eventos de {months[currentMonth]} ({events.length})
+            Eventos de {months[currentMonth]}{isLoading ? '' : ` (${events.length})`}
           </Text>
           
           {isLoading ? (

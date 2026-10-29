@@ -340,18 +340,29 @@ export default function PerfilArtistaScreen() {
               <View style={styles.statsGrid}>
                 <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                   <Text style={[styles.statNum, { color: colors.text }]}>{stats.shows_realizados}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Shows no App</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Shows em Collab</Text>
                 </View>
                 <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                   <Text style={[styles.statNum, { color: colors.text }]}>{stats.contratantes_atendidos}</Text>
                   <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Contratantes</Text>
                 </View>
-                <View style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                  <Text style={[styles.statNum, { color: colors.text }]}>
-                    {stats.taxa_conclusao != null ? `${stats.taxa_conclusao}%` : '—'}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Conclusão</Text>
-                </View>
+                <TouchableOpacity
+                  style={[styles.statCard, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                  activeOpacity={stats.total_avaliacoes > 0 ? 0.75 : 1}
+                  onPress={() => {
+                    if (stats.total_avaliacoes > 0) setShowReviews(true);
+                  }}
+                >
+                  <View style={styles.statNotaRow}>
+                    <Ionicons name="star" size={14} color="#F59E0B" />
+                    <Text style={[styles.statNum, { color: colors.text }]}>
+                      {stats.media_nota != null
+                        ? stats.media_nota.toFixed(1).replace('.', ',')
+                        : '—'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Nota média</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
             {stats ? (
@@ -831,6 +842,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statNum: { fontSize: 18, fontWeight: '800' },
+  statNotaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statLabel: { fontSize: 11, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   remind: {
     marginTop: 12,
