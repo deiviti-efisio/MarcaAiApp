@@ -1,3 +1,8 @@
+import {
+  buildShowChatMessage,
+  packQuotedChatMessage,
+  type ShowChatContext,
+} from '../../lib/openArtistChat';
 import { supabase } from '../../lib/supabase';
 
 export type ConversaResumo = {
@@ -130,6 +135,32 @@ export async function enviarMensagemConversa(params: {
   });
   if (error) return { id: null, error: error.message };
   return { id: data != null ? String(data) : null, error: null };
+}
+
+export async function avisarCancelamentoNoChat(params: {
+  meuArtistaId: string;
+  donoArtistaId: string;
+  evento: ShowChatContext;
+  motivo: string;
+}): Promise<{ error: string | null }> {
+  const dono = params.donoArtistaId.trim();
+  if (!dono || dono === params.meuArtistaId) {
+    return { error: 'Dono do evento não encontrado.' };
+  }
+  const aberta = await abrirConversaArtistas(params.meuArtistaId, dono);
+  if (!aberta.conversationId) {
+    return { error: aberta.error || 'Não foi possível abrir a conversa.' };
+  }
+  const body = packQuotedChatMessage(
+    buildShowChatMessage(params.evento),
+    `Cancelei minha participação neste evento. Motivo: ${params.motivo.trim()}`
+  );
+  const enviada = await enviarMensagemConversa({
+    conversationId: aberta.conversationId,
+    meuArtistaId: params.meuArtistaId,
+    body,
+  });
+  return { error: enviada.error };
 }
 
 export async function excluirMensagemConversa(params: {

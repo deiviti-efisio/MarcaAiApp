@@ -39,13 +39,18 @@ import { useActiveArtistContext } from "../../contexts/ActiveArtistContext";
 import { useSharedTabMonth } from "../../contexts/SharedTabMonthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { formatEventLocationSlash } from "../../lib/brazilGeo";
+import { formatChatCache } from "../../lib/openArtistChat";
+import { avisarCancelamentoNoChat } from "../../services/supabase/conversaArtistaService";
 import { supabase } from "../../lib/supabase";
 import { setAppIconBadge } from "../../services/appIconBadge";
 import { artistImageUpdateService } from "../../services/artistImageUpdateService";
 import { cacheService } from "../../services/cacheService";
 import { createArtist, getArtists } from "../../services/supabase/artistService";
 import { getCurrentUser } from "../../services/supabase/authService";
-import { cancelarParticipacaoAceita } from "../../services/supabase/conviteParticipacaoEventoService";
+import {
+  cancelarParticipacaoAceita,
+  eventoEhCopiaDoConvidado,
+} from "../../services/supabase/conviteParticipacaoEventoService";
 import {
   getEventById,
   getEventsByMonthWithRole,
@@ -162,8 +167,18 @@ export default function AgendaScreen() {
   const [selectedInviteFunction, setSelectedInviteFunction] = useState<
     string | null
   >(null);
+  const [selectedInviteDetails, setSelectedInviteDetails] = useState<{
+    ownerArtistId: string | null;
+    cacheValor: number | null;
+    observacao: string | null;
+    local: string | null;
+  } | null>(null);
   const [conviteIdByEventId, setConviteIdByEventId] = useState<
     Record<string, string>
+  >({});
+  /** Evento original de quem convidou. Não é a cópia do convidado. */
+  const [ownerOriginEventIds, setOwnerOriginEventIds] = useState<
+    Record<string, true>
   >({});
   const [cicloStatusByConviteId, setCicloStatusByConviteId] = useState<
     Record<string, string>
@@ -697,30 +712,62 @@ export default function AgendaScreen() {
 
       const { data } = await supabase
         .from("events")
-        .select("id, convite_participacao_id")
+        .select("id, artist_id, convite_participacao_id")
         .eq("ativo", true)
         .in("id", eventIds);
 
-      const map: Record<string, string> = {};
-      (data || []).forEach((row: any) => {
-        if (row?.id && row?.convite_participacao_id) {
-          map[row.id] = row.convite_participacao_id;
-        }
-      });
-      const missingIds = eventIds.filter((id) => !map[id]);
-      if (missingIds.length > 0) {
-        const { data: origemConvites } = await supabase
+      const rows = (data || []) as {
+        id?: string;
+        artist_id?: string | null;
+        convite_participacao_id?: string | null;
+      }[];
+      const conviteIds = Array.from(
+        new Set(
+          rows
+            .map((row) => row.convite_participacao_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      );
+      const conviteById: Record<
+        string,
+        { evento_origem_id: string; artista_que_convidou_id: string }
+      > = {};
+      if (conviteIds.length > 0) {
+        const { data: convites } = await supabase
           .from("convite_participacao_evento")
-          .select("id, evento_origem_id")
-          .eq("status", "aceito")
-          .in("evento_origem_id", missingIds);
-        (origemConvites || []).forEach((row: { id?: string; evento_origem_id?: string }) => {
-          if (row?.id && row?.evento_origem_id && !map[row.evento_origem_id]) {
-            map[row.evento_origem_id] = row.id;
-          }
-        });
+          .select("id, evento_origem_id, artista_que_convidou_id")
+          .in("id", conviteIds);
+        (convites || []).forEach(
+          (row: {
+            id?: string;
+            evento_origem_id?: string;
+            artista_que_convidou_id?: string;
+          }) => {
+            if (row?.id && row.evento_origem_id && row.artista_que_convidou_id) {
+              conviteById[row.id] = {
+                evento_origem_id: row.evento_origem_id,
+                artista_que_convidou_id: row.artista_que_convidou_id,
+              };
+            }
+          },
+        );
       }
-      if (!cancelled) setConviteIdByEventId(map);
+
+      const map: Record<string, string> = {};
+      const ownerOrigins: Record<string, true> = {};
+      rows.forEach((row) => {
+        if (!row?.id || !row.convite_participacao_id) return;
+        const convite = conviteById[row.convite_participacao_id] || null;
+        if (!eventoEhCopiaDoConvidado(row, convite)) {
+          ownerOrigins[row.id] = true;
+          return;
+        }
+        map[row.id] = row.convite_participacao_id;
+      });
+      if (!cancelled) {
+        setConviteIdByEventId(map);
+        setOwnerOriginEventIds(ownerOrigins);
+      }
     };
     void loadConviteIdsByEvent();
     return () => {
@@ -851,8 +898,8 @@ export default function AgendaScreen() {
             .filter(
               (e) =>
                 e?.artist_id === activeArtist.id &&
-                !e?.convite_participacao_id &&
-                typeof e?.id === "string",
+                typeof e?.id === "string" &&
+                (!e?.convite_participacao_id || ownerOriginEventIds[e.id]),
             )
             .map((e) => e.id as string),
         ),
@@ -988,7 +1035,7 @@ export default function AgendaScreen() {
     return () => {
       cancelled = true;
     };
-  }, [events, activeArtist?.id, conviteIdByEventId]);
+  }, [events, activeArtist?.id, conviteIdByEventId, ownerOriginEventIds]);
 
   // Escutar notificações de atualização da imagem do artista
   useEffect(() => {
@@ -1179,11 +1226,19 @@ export default function AgendaScreen() {
       }
 
       if (eventResult.event.convite_participacao_id) {
-        setSelectedInviteEventInfo(eventResult.event);
-        setInviteCancelReason("");
-        setShowInviteEventInfoModal(true);
-        isNavigatingToEventRef.current = false;
-        return;
+        const { data: conviteRow } = await supabase
+          .from("convite_participacao_evento")
+          .select("evento_origem_id, artista_que_convidou_id")
+          .eq("id", eventResult.event.convite_participacao_id)
+          .maybeSingle();
+        const copiaDoConvidado = eventoEhCopiaDoConvidado(eventResult.event, conviteRow);
+        if (copiaDoConvidado) {
+          setSelectedInviteEventInfo(eventResult.event);
+          setInviteCancelReason("");
+          setShowInviteEventInfoModal(true);
+          isNavigatingToEventRef.current = false;
+          return;
+        }
       }
 
       router.push(`/detalhes-evento?eventId=${eventId}`);
@@ -1201,8 +1256,8 @@ export default function AgendaScreen() {
     convite_participacao_id?: string | null;
   }) => {
     if (
-      event.convite_participacao_id ||
-      (event.id ? Boolean(conviteIdByEventId[event.id]) : false)
+      event.convite_participacao_id &&
+      !(event.id && ownerOriginEventIds[event.id])
     ) {
       return false;
     }
@@ -1222,7 +1277,10 @@ export default function AgendaScreen() {
     convite_participacao_id?: string | null;
     created_by?: string | null;
   }) => {
-    if (event.convite_participacao_id) {
+    if (
+      event.convite_participacao_id &&
+      !ownerOriginEventIds[event.id]
+    ) {
       Alert.alert(
         "Edição bloqueada",
         "Esta data é uma parceria. Não dá para editar. Só cancelar a participação.",
@@ -1247,7 +1305,7 @@ export default function AgendaScreen() {
     convite_participacao_id?: string | null;
   }) => {
     if (!currentUserId) return;
-    if (item.convite_participacao_id) {
+    if (item.convite_participacao_id && !ownerOriginEventIds[item.id]) {
       Alert.alert(
         "Não foi possível atualizar",
         "Este evento veio de um convite e não pode ser alterado.",
@@ -1622,6 +1680,28 @@ export default function AgendaScreen() {
         );
         return;
       }
+      const donoId = selectedInviteDetails?.ownerArtistId;
+      let chatError: string | null = null;
+      if (activeArtist?.id && donoId) {
+        const aviso = await avisarCancelamentoNoChat({
+          meuArtistaId: activeArtist.id,
+          donoArtistaId: donoId,
+          motivo,
+          evento: {
+            nome: selectedInviteEventInfo.name,
+            data: formatDisplayDate(selectedInviteEventInfo.event_date),
+            horario: hasDefinedTime(
+              selectedInviteEventInfo.start_time,
+              selectedInviteEventInfo.end_time,
+            )
+              ? `${toHHMM(selectedInviteEventInfo.start_time)} – ${toHHMM(selectedInviteEventInfo.end_time)}`
+              : null,
+            local: selectedInviteDetails?.local,
+            cache: formatChatCache(selectedInviteDetails?.cacheValor),
+          },
+        });
+        chatError = aviso.error;
+      }
       setShowInviteEventInfoModal(false);
       setSelectedInviteEventInfo(null);
       setInviteCancelReason("");
@@ -1634,8 +1714,10 @@ export default function AgendaScreen() {
         loadEvents(true);
       }
       Alert.alert(
-        "Parceria cancelada",
-        "O outro artista foi avisado. A data sai da agenda dos dois.",
+        "Participação cancelada",
+        activeArtist?.id && donoId && !chatError
+          ? "O dono do evento recebeu no chat o evento e o motivo do cancelamento."
+          : "A data saiu da sua agenda, mas a mensagem no chat do dono não foi enviada.",
       );
     } finally {
       setIsCancellingInviteParticipation(false);
@@ -1646,21 +1728,40 @@ export default function AgendaScreen() {
     let cancelled = false;
     if (!showInviteEventInfoModal) {
       setSelectedInviteFunction(null);
+      setSelectedInviteDetails(null);
       return;
     }
     const loadInviteModalFunction = async () => {
       const conviteId = selectedInviteEventInfo?.convite_participacao_id;
       if (!conviteId) {
-        if (!cancelled) setSelectedInviteFunction(null);
+        if (!cancelled) {
+          setSelectedInviteFunction(null);
+          setSelectedInviteDetails(null);
+        }
         return;
       }
       const { data: convite } = await supabase
         .from("convite_participacao_evento")
-        .select("funcao_participacao")
+        .select(
+          "funcao_participacao, cache_valor, mensagem, cidade, estado_uf, artista_que_convidou_id",
+        )
         .eq("id", conviteId)
         .maybeSingle();
       const suggestedFunction = convite?.funcao_participacao?.trim() || null;
-      if (!cancelled) setSelectedInviteFunction(suggestedFunction);
+      const local = formatEventLocationSlash({
+        city: convite?.cidade || selectedInviteEventInfo?.city,
+        state_uf: convite?.estado_uf || selectedInviteEventInfo?.state_uf,
+      });
+      const cacheNumero = Number(convite?.cache_valor);
+      if (!cancelled) {
+        setSelectedInviteFunction(suggestedFunction);
+        setSelectedInviteDetails({
+          ownerArtistId: convite?.artista_que_convidou_id || null,
+          cacheValor: Number.isFinite(cacheNumero) && cacheNumero > 0 ? cacheNumero : null,
+          observacao: convite?.mensagem?.trim() || null,
+          local: local || null,
+        });
+      }
     };
     void loadInviteModalFunction();
     return () => {
@@ -1774,6 +1875,14 @@ export default function AgendaScreen() {
     }
   };
 
+  const isGuestAgendaCopy = (item: {
+    id?: string;
+    convite_participacao_id?: string | null;
+  }) => {
+    if (!item?.id || ownerOriginEventIds[item.id]) return false;
+    return Boolean(item.convite_participacao_id || conviteIdByEventId[item.id]);
+  };
+
   const renderShow = ({ item }: { item: any }) => {
     // Proteção: não renderizar se não houver artista ativo
     if (!activeArtist) {
@@ -1786,9 +1895,7 @@ export default function AgendaScreen() {
       weekday: "short",
     });
 
-    const conviteIdForCard =
-      item.convite_participacao_id || conviteIdByEventId[item.id];
-    const isInvitedEvent = !!conviteIdForCard;
+    const isInvitedEvent = isGuestAgendaCopy(item);
     const cancelPedido = hasCancelRequest(item);
     const unpaidRemainder = getUnpaidRemainder(item.value, item.paid_amount);
     const fromParticipantMap = participantAvatarsByEventId[item.id] || [];
@@ -1946,6 +2053,7 @@ export default function AgendaScreen() {
                 </Text>
               </View>
               {canSeeEventValue(item) &&
+              !isInvitedEvent &&
               showEventValues &&
               unpaidRemainder != null ? (
                 <TouchableOpacity
@@ -1998,6 +2106,7 @@ export default function AgendaScreen() {
             >
               <View style={styles.showValueLeft}>
                 {canSeeEventValue(item) &&
+                !isInvitedEvent &&
                 hasDisplayableEventValue(item.value) ? (
                   <Text
                     style={[styles.showValue, { color: colors.primary }]}
@@ -2064,7 +2173,7 @@ export default function AgendaScreen() {
                 </View>
               </View>
             </View>
-            {canSeeEventValue(item) && showEventValues ? (
+            {canSeeEventValue(item) && showEventValues && !isInvitedEvent ? (
               <>
                 <EventPaymentProgress
                   eventValue={item.value}
@@ -2686,6 +2795,7 @@ export default function AgendaScreen() {
                           </Text>
                         ) : null}
                         {canSeeEventValue(event) &&
+                        !isGuestAgendaCopy(event) &&
                         hasDisplayableEventValue(event.value) ? (
                           <Text
                             style={[styles.dayEventValue, { color: colors.primary }]}
@@ -2764,7 +2874,7 @@ export default function AgendaScreen() {
                         {event.viewer_description}
                       </Text>
                     ) : null}
-                    {canSeeEventValue(event) ? (
+                    {canSeeEventValue(event) && !isGuestAgendaCopy(event) ? (
                       <EventPaymentProgress
                         eventValue={event.value}
                         paidAmount={event.paid_amount}
@@ -2852,7 +2962,7 @@ export default function AgendaScreen() {
                     { color: colors.text },
                   ]}
                 >
-                  Parceria na agenda
+                  Participação
                 </Text>
                 <Text
                   style={[
@@ -2860,9 +2970,8 @@ export default function AgendaScreen() {
                     { color: colors.textSecondary, marginBottom: 8 },
                   ]}
                 >
-                  Você não edita data, horário nem cachê. Só cancela a
-                  participação — o outro artista é avisado e a data some nos
-                  dois.
+                  Você não edita este evento. Dá para ver o que foi combinado no
+                  convite e cancelar a participação.
                 </Text>
                 {selectedInviteEventInfo ? (
                   <ScrollView
@@ -2870,119 +2979,59 @@ export default function AgendaScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
-                    {hasCancelRequest(selectedInviteEventInfo) ? (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 12,
-                          padding: 10,
-                          borderRadius: 10,
-                          backgroundColor: `${colors.error}14`,
-                        }}
-                      >
-                        <Ionicons
-                          name="close-circle"
-                          size={20}
-                          color={colors.error}
-                        />
-                        <Text
-                          style={{
-                            flex: 1,
-                            color: colors.error,
-                            fontWeight: "700",
-                            fontSize: 13,
-                          }}
-                        >
-                          {cicloStatusOfEvent(selectedInviteEventInfo) ===
-                          "under_review"
-                            ? "Cancelamento em análise. A data permanece na agenda."
-                            : "Há um pedido de cancelamento nesta data."}
-                        </Text>
-                      </View>
-                    ) : null}
                     <Text
                       style={[styles.inviteInfoLine, { color: colors.text }]}
                     >
-                      Evento: {selectedInviteEventInfo.name}
+                      {selectedInviteEventInfo.name}
                     </Text>
-                    <Text
-                      style={[
-                        styles.inviteInfoLine,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      Horário: {selectedInviteEventInfo.start_time?.slice(0, 5)}
-                      –{selectedInviteEventInfo.end_time?.slice(0, 5)}
-                    </Text>
-                    {selectedInviteEventInfo.city ? (
+                    {hasDefinedTime(
+                      selectedInviteEventInfo.start_time,
+                      selectedInviteEventInfo.end_time,
+                    ) ? (
                       <Text
                         style={[
                           styles.inviteInfoLine,
                           { color: colors.textSecondary },
                         ]}
                       >
-                        Local: {selectedInviteEventInfo.city}
+                        {formatDisplayDate(selectedInviteEventInfo.event_date)}
+                        {" · "}
+                        {toHHMM(selectedInviteEventInfo.start_time)}
+                        {toHHMM(selectedInviteEventInfo.end_time) &&
+                        toHHMM(selectedInviteEventInfo.end_time) !==
+                          toHHMM(selectedInviteEventInfo.start_time)
+                          ? ` – ${toHHMM(selectedInviteEventInfo.end_time)}`
+                          : ""}
                       </Text>
-                    ) : null}
-                    {selectedInviteEventInfo.value != null &&
-                    canSeeEventValue(selectedInviteEventInfo) ? (
+                    ) : (
                       <Text
                         style={[
                           styles.inviteInfoLine,
                           { color: colors.textSecondary },
                         ]}
                       >
-                        Cachê:{" "}
-                        {showEventValues
-                          ? formatEventValueBRL(selectedInviteEventInfo.value)
-                          : "R$ •••••"}
+                        {formatDisplayDate(selectedInviteEventInfo.event_date)}
+                      </Text>
+                    )}
+                    {selectedInviteDetails?.local ? (
+                      <Text
+                        style={[
+                          styles.inviteInfoLine,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Local: {selectedInviteDetails.local}
                       </Text>
                     ) : null}
-                    {selectedInviteEventInfo.contractor_phone ? (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 4,
-                          flexWrap: "wrap",
-                        }}
+                    {selectedInviteDetails?.observacao ? (
+                      <Text
+                        style={[
+                          styles.inviteInfoLine,
+                          { color: colors.textSecondary },
+                        ]}
                       >
-                        <Text
-                          style={[
-                            styles.inviteInfoLine,
-                            {
-                              color: colors.textSecondary,
-                              flex: 1,
-                              marginBottom: 0,
-                            },
-                          ]}
-                        >
-                          WhatsApp: {selectedInviteEventInfo.contractor_phone}
-                        </Text>
-                        {buildWhatsAppUrl(
-                          selectedInviteEventInfo.contractor_phone,
-                        ) ? (
-                          <TouchableOpacity
-                            onPress={() => {
-                              const url = buildWhatsAppUrl(
-                                selectedInviteEventInfo.contractor_phone,
-                              );
-                              if (url) void Linking.openURL(url);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityLabel="Abrir WhatsApp"
-                          >
-                            <Ionicons
-                              name="logo-whatsapp"
-                              size={26}
-                              color="#25D366"
-                            />
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
+                        Observação: {selectedInviteDetails.observacao}
+                      </Text>
                     ) : null}
                     {selectedInviteFunction ? (
                       <Text
@@ -2991,7 +3040,18 @@ export default function AgendaScreen() {
                           { color: colors.textSecondary },
                         ]}
                       >
-                        Função sugerida: {selectedInviteFunction}
+                        Função: {selectedInviteFunction}
+                      </Text>
+                    ) : null}
+                    {selectedInviteDetails?.cacheValor != null ? (
+                      <Text
+                        style={[
+                          styles.inviteInfoLine,
+                          { color: colors.text },
+                        ]}
+                      >
+                        Valor do convite:{" "}
+                        {formatEventValueBRL(selectedInviteDetails.cacheValor)}
                       </Text>
                     ) : null}
                     <TextInput
@@ -3045,13 +3105,7 @@ export default function AgendaScreen() {
                       },
                     ]}
                     onPress={() => {
-                      const cid =
-                        selectedInviteEventInfo?.convite_participacao_id ||
-                        conviteIdByEventId[selectedInviteEventInfo?.id || ""];
-                      setShowInviteEventInfoModal(false);
-                      if (cid) {
-                        router.push({ pathname: "/contratacao", params: { conviteId: cid } });
-                      }
+                      void handleCancelInviteParticipation();
                     }}
                     disabled={isCancellingInviteParticipation}
                   >
@@ -3063,7 +3117,7 @@ export default function AgendaScreen() {
                     >
                       {isCancellingInviteParticipation
                         ? "Cancelando..."
-                        : "Abrir contratação"}
+                        : "Cancelar participação"}
                     </Text>
                   </TouchableOpacity>
                 </View>

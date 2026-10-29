@@ -24,6 +24,7 @@ import { useActiveArtistContext } from '../contexts/ActiveArtistContext';
 import { isArtistAdminRole } from '../services/supabase/permissionsService';
 import { supabase } from '../lib/supabase';
 import { removeEventContractByUrl, uploadEventContractFile } from '../services/supabase/eventContractUploadService';
+import { eventoEhCopiaDoConvidado } from '../services/supabase/conviteParticipacaoEventoService';
 import { getEventById, updateEvent, UpdateEventData } from '../services/supabase/eventService';
 import { uploadImageToSupabase } from '../services/supabase/imageUploadService';
 import {
@@ -409,7 +410,16 @@ export default function EditarEventoScreen() {
         setHighlightDirty(false);
         setRemoteContractUrl(event.contract_url ?? null);
         setRemoteContractFileName((event as any)?.contract_file_name ?? null);
-        setIsInviteParticipationEvent(Boolean(event.convite_participacao_id));
+        let copiaDoConvidado = Boolean(event.convite_participacao_id);
+        if (event.convite_participacao_id) {
+          const { data: conviteRow } = await supabase
+            .from('convite_participacao_evento')
+            .select('evento_origem_id, artista_que_convidou_id')
+            .eq('id', event.convite_participacao_id)
+            .maybeSingle();
+          copiaDoConvidado = eventoEhCopiaDoConvidado(event, conviteRow);
+        }
+        setIsInviteParticipationEvent(copiaDoConvidado);
         setPendingContract(null);
         setRemoveContractRequested(false);
       } else {

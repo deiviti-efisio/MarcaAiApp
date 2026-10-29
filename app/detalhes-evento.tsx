@@ -34,17 +34,13 @@ import { openArtistChatInApp } from "../lib/openArtistChat";
 import { formatCalendarDate, isEventDateAlreadyPast } from "../lib/dateUtils";
 import { consumePendingEventUpdatedToast } from "../lib/pendingEventUpdatedToast";
 import { supabase } from "../lib/supabase";
-import { sharePressKitItems } from "../services/pressKitShareService";
-import {
-    listArtistPressKitItems,
-    type ArtistPressKitItem,
-} from "../services/supabase/artistPressKitService";
 import {
     AvaliacaoParticipacaoEventoRow,
     cancelarConviteParticipacao,
     cancelarParticipacaoAceita,
     listarAvaliacoesParticipacaoEvento,
     listarConvitesDoEvento,
+    eventoEhCopiaDoConvidado,
     obterConvitePorId,
     obterNomeArtista,
     removerParticipacaoAceitaPeloOrganizador,
@@ -288,7 +284,6 @@ export default function DetalhesEventoScreen() {
   const [pickedContractName, setPickedContractName] = useState<string | null>(
     null,
   );
-  const [pressKitItems, setPressKitItems] = useState<ArtistPressKitItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<EventAuditLogRow[]>([]);
   const [showAudit, setShowAudit] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
@@ -301,6 +296,7 @@ export default function DetalhesEventoScreen() {
   const [canCreateEventsPermission, setCanCreateEventsPermission] =
     useState(false);
   const [artistMemberRole, setArtistMemberRole] = useState<string | null>(null);
+  const [guestCopy, setGuestCopy] = useState(false);
   const [participationFromInviteBanner, setParticipationFromInviteBanner] =
     useState<string | null>(null);
   const [participationInviterId, setParticipationInviterId] = useState<
@@ -418,6 +414,7 @@ export default function DetalhesEventoScreen() {
     let cancelled = false;
     (async () => {
       if (!event?.convite_participacao_id) {
+        setGuestCopy(false);
         setParticipationFromInviteBanner(null);
         setParticipationInviterId(null);
         setParticipationInviteMessage(null);
@@ -427,7 +424,17 @@ export default function DetalhesEventoScreen() {
       const { convite } = await obterConvitePorId(
         event.convite_participacao_id,
       );
-      if (cancelled || !convite) return;
+      if (cancelled) return;
+      if (!eventoEhCopiaDoConvidado(event, convite)) {
+        setGuestCopy(false);
+        setParticipationFromInviteBanner(null);
+        setParticipationInviterId(null);
+        setParticipationInviteMessage(null);
+        setParticipationInviteLocationFallback(null);
+        return;
+      }
+      setGuestCopy(true);
+      if (!convite) return;
       const n = await obterNomeArtista(convite.artista_que_convidou_id);
       if (!cancelled) {
         setParticipationInviterId(convite.artista_que_convidou_id);
@@ -639,14 +646,7 @@ export default function DetalhesEventoScreen() {
       const toastMsg = consumePendingEventUpdatedToast();
       if (toastMsg) setEventUpdatedToastMessage(toastMsg);
       loadEventData(false); // Reload silencioso
-      if (activeArtist?.id) {
-        void listArtistPressKitItems(activeArtist.id).then(({ items }) =>
-          setPressKitItems(items),
-        );
-      } else {
-        setPressKitItems([]);
-      }
-    }, [eventId, activeArtist?.id]),
+    }, [eventId]),
   );
 
   const formatDate = (dateString: string) => formatCalendarDate(dateString);
@@ -869,7 +869,7 @@ export default function DetalhesEventoScreen() {
 
   const handleMarkRemainingPaid = async () => {
     if (!event || !currentUserId || event.value == null) return;
-    if (event.convite_participacao_id) {
+    if (guestCopy) {
       Alert.alert(
         "Não foi possível atualizar",
         "Este evento veio de um convite e não pode ser alterado.",
@@ -1122,7 +1122,7 @@ export default function DetalhesEventoScreen() {
       setShowPermissionModal(true);
       return;
     }
-    if (event?.convite_participacao_id) {
+    if (guestCopy) {
       Alert.alert(
         "Edição bloqueada",
         "Este evento foi criado a partir de um convite de participação e não pode ser alterado após o aceite.",
@@ -1163,7 +1163,7 @@ export default function DetalhesEventoScreen() {
     });
   };
 
-  const isInviteEvent = Boolean(event?.convite_participacao_id);
+  const isInviteEvent = guestCopy;
 
   const handleDeleteEvent = () => {
     if (!canManageOwnEvent) {
@@ -1498,26 +1498,6 @@ export default function DetalhesEventoScreen() {
     }
   };
 
-  const shareArtistPressKit = async () => {
-    if (!activeArtist?.id) return;
-    if (artistMemberRole !== "admin") {
-      Alert.alert(
-        "Press kit",
-        "Apenas o administrador do artista pode compartilhar o press kit.",
-      );
-      return;
-    }
-    if (pressKitItems.length === 0) {
-      Alert.alert(
-        "Press kit vazio",
-        "Adicione imagens e áudios em Editar perfil público → Press kit e identidade para compartilhar rápido com equipe e contratantes.",
-      );
-      return;
-    }
-    const artistLabel = (activeArtist.name || "").trim() || "Artista";
-    await sharePressKitItems(artistLabel, pressKitItems);
-  };
-
   return (
     <SafeAreaView
       style={[
@@ -1776,120 +1756,6 @@ export default function DetalhesEventoScreen() {
               </View>
             )}
 
-            {activeArtist?.id ? (
-              <View style={styles.contractSection}>
-                <View style={styles.contractRow}>
-                  <Ionicons
-                    name="color-palette-outline"
-                    size={20}
-                    color={colors.primary}
-                  />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text
-                      style={[
-                        styles.detailText,
-                        { color: colors.text, marginLeft: 0 },
-                      ]}
-                    >
-                      Press kit do artista
-                    </Text>
-                    <Text
-                      style={[
-                        styles.contractHint,
-                        { color: colors.textSecondary },
-                      ]}
-                    >
-                      {pressKitItems.length === 0
-                        ? "Nenhum material cadastrado"
-                        : `${pressKitItems.length} item(ns) — imagens e áudios para compartilhar rápido com equipe e contratantes`}
-                    </Text>
-                  </View>
-                </View>
-                {artistMemberRole === "admin" ? (
-                  <View style={styles.contractActionsRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.contractActionBtn,
-                        { borderColor: colors.border },
-                      ]}
-                      onPress={() => router.push("/press-kit-artista")}
-                    >
-                      <Ionicons
-                        name="create-outline"
-                        size={16}
-                        color={colors.text}
-                      />
-                      <Text
-                        style={[
-                          styles.contractActionText,
-                          { color: colors.text },
-                        ]}
-                      >
-                        Gerenciar
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.contractActionBtn,
-                        { borderColor: colors.border },
-                      ]}
-                      onPress={() => void shareArtistPressKit()}
-                    >
-                      <Ionicons
-                        name="share-outline"
-                        size={16}
-                        color={colors.primary}
-                      />
-                      <Text
-                        style={[
-                          styles.contractActionText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        Compartilhar
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : !isCheckingAccess ? (
-                  <View
-                    style={{
-                      marginTop: 10,
-                      marginHorizontal: 4,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <Ionicons
-                        name="lock-closed"
-                        size={18}
-                        color={colors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.contractHint,
-                          {
-                            color: colors.textSecondary,
-                            flex: 1,
-                            marginLeft: 8,
-                            marginTop: 0,
-                          },
-                        ]}
-                      >
-                        Somente o administrador do artista pode abrir o press
-                        kit para gerenciar e compartilhar os materiais.
-                      </Text>
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-
             {event.tag && (
               <View style={styles.detailRow}>
                 <Ionicons
@@ -1919,7 +1785,7 @@ export default function DetalhesEventoScreen() {
               </View>
             )}
 
-            {event.description && !event.convite_participacao_id ? (
+            {event.description && !isInviteEvent ? (
               <View style={styles.descriptionContainer}>
                 <View style={styles.detailRow}>
                   <Ionicons
@@ -1944,7 +1810,7 @@ export default function DetalhesEventoScreen() {
           </View>
         </View>
 
-        {event?.convite_participacao_id && participationFromInviteBanner ? (
+        {isInviteEvent && participationFromInviteBanner ? (
           <View
             style={[
               styles.financialCard,
@@ -2055,7 +1921,7 @@ export default function DetalhesEventoScreen() {
           </View>
         ) : null}
 
-        {event?.convite_participacao_id && participationInviteMessage ? (
+        {isInviteEvent && participationInviteMessage ? (
           <View
             style={[
               styles.financialCard,

@@ -22,17 +22,14 @@ UPDATE public.convite_participacao_evento
 SET parceria_feed = true
 WHERE grupo_disputa_id IS DISTINCT FROM evento_origem_id;
 
--- Trava o evento do interessado (rascunho que virou agenda).
+-- Destrava o evento de quem convidou, se um aceite antigo marcou como cópia do convidado.
 UPDATE public.events e
-SET convite_participacao_id = c.id,
+SET convite_participacao_id = NULL,
     updated_at = NOW()
 FROM public.convite_participacao_evento c
-WHERE c.status = 'aceito'
+WHERE e.convite_participacao_id = c.id
   AND e.id = c.evento_origem_id
-  AND e.artist_id = c.artista_que_convidou_id
-  AND c.evento_origem_id IS DISTINCT FROM c.grupo_disputa_id
-  AND e.id IS DISTINCT FROM c.evento_criado_convidado_id
-  AND e.convite_participacao_id IS NULL;
+  AND e.artist_id = c.artista_que_convidou_id;
 
 CREATE OR REPLACE FUNCTION public._notify_membros_artista(
   p_artist_id UUID,
@@ -217,11 +214,13 @@ BEGIN
       AND feed_tipo = 'disponivel'
       AND COALESCE(ativo, true) = true;
 
-    -- Interessado (rascunho da oferta) fica igual a convidado: sem editar.
+    -- Só trava a cópia de quem foi convidado. O evento de quem convidou continua editável.
     IF NEW.evento_origem_id IS DISTINCT FROM NEW.grupo_disputa_id THEN
       UPDATE public.events
       SET convite_participacao_id = NEW.id, updated_at = NOW()
       WHERE id = NEW.evento_origem_id
+        AND artist_id = NEW.artista_convidado_id
+        AND artist_id IS DISTINCT FROM NEW.artista_que_convidou_id
         AND convite_participacao_id IS NULL;
     END IF;
   END IF;

@@ -2,6 +2,7 @@ import { isAbortError } from "../../lib/abortError";
 import { isEventDateAlreadyPast, toCalendarYmd } from "../../lib/dateUtils";
 import { supabase } from "../../lib/supabase";
 import { cacheService } from "../cacheService";
+import { eventoEhCopiaDoConvidado } from "./conviteParticipacaoEventoService";
 import { getUserPermissions, hasPermission } from "./permissionsService";
 
 const SUPABASE_URL = "https://ctulmpyaikxsnjqmrzxf.supabase.co";
@@ -695,11 +696,18 @@ export const updateEvent = async (
     }
 
     if (eventResult.event.convite_participacao_id) {
-      return {
-        success: false,
-        error:
-          "Eventos vindos de convite de participação não podem ser alterados após o aceite.",
-      };
+      const { data: conviteRow } = await supabase
+        .from("convite_participacao_evento")
+        .select("evento_origem_id, artista_que_convidou_id")
+        .eq("id", eventResult.event.convite_participacao_id)
+        .maybeSingle();
+      if (eventoEhCopiaDoConvidado(eventResult.event, conviteRow)) {
+        return {
+          success: false,
+          error:
+            "Eventos vindos de convite de participação não podem ser alterados após o aceite.",
+        };
+      }
     }
 
     if (!userId) {

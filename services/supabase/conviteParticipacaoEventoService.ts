@@ -589,6 +589,31 @@ export async function listarConvitesPendentesRecebidos(
   }
 }
 
+/** Cópia na agenda de quem foi convidado. O evento original de quem convidou continua editável. */
+export function eventoEhCopiaDoConvidado(
+  event: {
+    id?: string | null;
+    artist_id?: string | null;
+    convite_participacao_id?: string | null;
+  },
+  convite: Pick<
+    ConviteParticipacaoEventoRow,
+    'evento_origem_id' | 'artista_que_convidou_id'
+  > | null,
+): boolean {
+  if (!event.convite_participacao_id) return false;
+  if (
+    convite &&
+    event.id &&
+    event.artist_id &&
+    event.id === convite.evento_origem_id &&
+    event.artist_id === convite.artista_que_convidou_id
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export async function obterConvitePorId(
   id: string
 ): Promise<{ convite: ConviteParticipacaoEventoRow | null; error: string | null }> {
