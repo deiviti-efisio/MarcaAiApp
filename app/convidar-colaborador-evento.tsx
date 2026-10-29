@@ -105,8 +105,16 @@ export default function ConvidarColaboradorEventoScreen() {
   const [selectedArtist, setSelectedArtist] = useState<{
     id: string;
     name: string;
+    imageUrl?: string | null;
     location?: string | null;
     musicalStyle?: string | null;
+  } | null>(null);
+  const [sentInvite, setSentInvite] = useState<{
+    title: string;
+    message: string;
+    name: string;
+    imageUrl: string;
+    showMoreActions: boolean;
   } | null>(null);
   const [artistLocations, setArtistLocations] = useState<Record<string, string>>({});
   const [artistStyles, setArtistStyles] = useState<Record<string, string>>({});
@@ -587,6 +595,7 @@ export default function ConvidarColaboradorEventoScreen() {
           setSelectedArtist({
             id: item.id,
             name: item.name,
+            imageUrl: item.image_url ?? item.profile_url ?? '',
             location: locDisplay,
             musicalStyle: artistStyle || null,
           });
@@ -826,6 +835,7 @@ export default function ConvidarColaboradorEventoScreen() {
           setSelectedArtist({
             id: p.id,
             name: p.name,
+            imageUrl: p.image_url ?? p.profile_url ?? '',
             location: locDisplay,
             musicalStyle: artistStyle || null,
           });
@@ -950,44 +960,13 @@ export default function ConvidarColaboradorEventoScreen() {
       return;
     }
     setInviteModalVisible(false);
-    Alert.alert(
-      'Convite enviado',
-      'Quer convidar mais alguém para a mesma rodada? Quem aceitar primeiro cancela os demais convites pendentes da mesma rodada.',
-      [
-        {
-          text: 'Sim, convidar outro',
-          onPress: () => {
-            void (async () => {
-              const { convites } = await listarConvitesDoEvento(eventData.id);
-              const blocked = new Set(
-                (convites || [])
-                  .filter((c) => c.status === 'pendente' || c.status === 'aceito')
-                  .map((c) => c.artista_convidado_id)
-              );
-              setBlockedArtists(blocked);
-            })();
-            setSelectedArtist(null);
-          },
-        },
-        {
-          text: 'Nova rodada (outra vaga)',
-          onPress: () => {
-            setInviteDisputeGroupId(newInviteDisputeGroupId());
-            void (async () => {
-              const { convites } = await listarConvitesDoEvento(eventData.id);
-              const blocked = new Set(
-                (convites || [])
-                  .filter((c) => c.status === 'pendente' || c.status === 'aceito')
-                  .map((c) => c.artista_convidado_id)
-              );
-              setBlockedArtists(blocked);
-            })();
-            setSelectedArtist(null);
-          },
-        },
-        { text: 'Concluir', style: 'cancel', onPress: () => router.back() },
-      ]
-    );
+    setSentInvite({
+      title: 'Convite enviado',
+      message: 'O artista recebe o aviso no app e pode aceitar ou recusar.',
+      name: selectedArtist.name,
+      imageUrl: selectedArtist.imageUrl || '',
+      showMoreActions: true,
+    });
   };
 
   const handleLeilaoSubmit = async () => {
@@ -1042,12 +1021,16 @@ export default function ConvidarColaboradorEventoScreen() {
     setLeilaoSelectedIds([]);
     setLeilaoArtistMeta({});
     setLeilaoMode(false);
-    Alert.alert(
-      'Leilão enviado',
-      failN > 0
-        ? `${okN} convite(s) enviado(s) com sucesso. ${failN} não puderam ser enviados (veja mensagens do servidor).`
-        : `${okN} convite(s) enviado(s) na mesma rodada. O primeiro que aceitar mantém a vaga; os demais da rodada serão cancelados automaticamente.`
-    );
+    setSentInvite({
+      title: 'Convites enviados',
+      message:
+        failN > 0
+          ? `${okN} convite(s) enviado(s). ${failN} não puderam ser enviados.`
+          : `${okN} convite(s) enviado(s) na mesma rodada. O primeiro que aceitar fica com a vaga.`,
+      name: okN === 1 ? '1 artista' : `${okN} artistas`,
+      imageUrl: '',
+      showMoreActions: false,
+    });
   };
 
   if (loading) {
@@ -2022,6 +2005,100 @@ export default function ConvidarColaboradorEventoScreen() {
         clearLabel="Todos os formatos"
         emptyLabel="Nenhum formato encontrado."
       />
+      <Modal
+        visible={sentInvite != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSentInvite(null)}
+      >
+        <View style={styles.sentOverlay}>
+          <View style={[styles.sentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.sentIconWrap, { backgroundColor: `${colors.success}18` }]}>
+              <Ionicons name="checkmark-circle" size={56} color={colors.success} />
+            </View>
+            <Text style={[styles.sentTitle, { color: colors.text }]}>{sentInvite?.title}</Text>
+            <Text style={[styles.sentMessage, { color: colors.textSecondary }]}>{sentInvite?.message}</Text>
+            {sentInvite ? (
+              <View style={[styles.sentArtistRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <OptimizedImage
+                  imageUrl={sentInvite.imageUrl}
+                  style={[styles.sentAvatar, { borderColor: colors.border }]}
+                  cacheKey={`sent_invite_${sentInvite.name}`}
+                  fallbackText={sentInvite.name || 'Artista'}
+                  fallbackIcon="person"
+                  fallbackIconSize={22}
+                  fallbackIconColor={colors.primary}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.sentArtistName, { color: colors.text }]} numberOfLines={1}>
+                    {sentInvite.name}
+                  </Text>
+                  <Text style={[styles.sentArtistHint, { color: colors.textSecondary }]} numberOfLines={1}>
+                    Aguardando resposta
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+            {sentInvite?.showMoreActions ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.sentPrimary, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    const eventoId = eventData?.id;
+                    setSentInvite(null);
+                    setSelectedArtist(null);
+                    if (!eventoId) return;
+                    void (async () => {
+                      const { convites } = await listarConvitesDoEvento(eventoId);
+                      setBlockedArtists(
+                        new Set(
+                          (convites || [])
+                            .filter((c) => c.status === 'pendente' || c.status === 'aceito')
+                            .map((c) => c.artista_convidado_id)
+                        )
+                      );
+                    })();
+                  }}
+                >
+                  <Text style={styles.sentPrimaryText}>Convidar outro artista</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sentSecondary, { borderColor: colors.border }]}
+                  onPress={() => {
+                    const eventoId = eventData?.id;
+                    setInviteDisputeGroupId(newInviteDisputeGroupId());
+                    setSentInvite(null);
+                    setSelectedArtist(null);
+                    if (!eventoId) return;
+                    void (async () => {
+                      const { convites } = await listarConvitesDoEvento(eventoId);
+                      setBlockedArtists(
+                        new Set(
+                          (convites || [])
+                            .filter((c) => c.status === 'pendente' || c.status === 'aceito')
+                            .map((c) => c.artista_convidado_id)
+                        )
+                      );
+                    })();
+                  }}
+                >
+                  <Text style={[styles.sentSecondaryText, { color: colors.text }]}>Nova rodada</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.sentTextBtn} onPress={() => router.back()}>
+                  <Text style={[styles.sentSecondaryText, { color: colors.textSecondary }]}>Concluir</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={[styles.sentPrimary, { backgroundColor: colors.primary }]}
+                onPress={() => setSentInvite(null)}
+              >
+                <Text style={styles.sentPrimaryText}>Entendi</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2560,4 +2637,93 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  sentOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  sentCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 18,
+  },
+  sentIconWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  sentTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  sentMessage: {
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  sentArtistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+  },
+  sentAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  sentArtistName: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sentArtistHint: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  sentPrimary: {
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  sentPrimaryText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sentSecondary: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  sentSecondaryText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sentTextBtn: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

@@ -276,6 +276,11 @@ export default function DetalhesEventoScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [cancelNotice, setCancelNotice] = useState<{
+    title: string;
+    message: string;
+    leave: boolean;
+  } | null>(null);
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneTargetDate, setCloneTargetDate] = useState(() => new Date());
   const [isCloning, setIsCloning] = useState(false);
@@ -1237,12 +1242,18 @@ export default function DetalhesEventoScreen() {
         currentUserId,
       );
       if (!success) {
-        Alert.alert("Erro", error || "Não foi possível cancelar o evento.");
+        setCancelNotice({
+          title: "Não foi possível cancelar",
+          message: error || "Não foi possível cancelar a participação.",
+          leave: false,
+        });
         return;
       }
-      Alert.alert("Parceria cancelada", "O outro artista foi avisado. A data sai da agenda dos dois.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      setCancelNotice({
+        title: "Participação cancelada",
+        message: "A data saiu da agenda. O dono do evento recebe o aviso no chat.",
+        leave: true,
+      });
     } finally {
       setIsDeleting(false);
     }
@@ -3141,6 +3152,49 @@ export default function DetalhesEventoScreen() {
         message="Administradores podem gerenciar todos os recursos. Vendedores podem editar e deletar apenas os eventos que criaram; despesas, contratos, participações e valores financeiros continuam restritos aos administradores."
         icon="lock-closed"
       />
+
+      <Modal
+        visible={cancelNotice != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          const leave = cancelNotice?.leave;
+          setCancelNotice(null);
+          if (leave) router.back();
+        }}
+      >
+        <View style={styles.deletedModalOverlay}>
+          <View
+            style={[
+              styles.deletedModalContent,
+              { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+            ]}
+          >
+            <Ionicons
+              name={cancelNotice?.leave ? "checkmark-circle" : "alert-circle"}
+              size={56}
+              color={cancelNotice?.leave ? colors.success : colors.warning}
+              style={{ marginBottom: 12 }}
+            />
+            <Text style={[styles.deletedModalTitle, { color: colors.text }]}>
+              {cancelNotice?.title}
+            </Text>
+            <Text style={[styles.deletedModalMessage, { color: colors.textSecondary }]}>
+              {cancelNotice?.message}
+            </Text>
+            <TouchableOpacity
+              style={[styles.deletedModalButton, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                const leave = cancelNotice?.leave;
+                setCancelNotice(null);
+                if (leave) router.back();
+              }}
+            >
+              <Text style={styles.deletedModalButtonText}>Entendi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal quando evento foi deletado */}
       <Modal visible={showDeletedModal} transparent animationType="fade">

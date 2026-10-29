@@ -144,6 +144,10 @@ BEGIN
   IF p_artista_remetente = p_artista_destinatario THEN
     RETURN;
   END IF;
+  -- O app envia a mensagem do chat com o evento e o motivo.
+  -- Esta função não grava mais um segundo texto simples.
+  RETURN;
+
   v_body := left(trim(COALESCE(p_texto, '')), 2000);
   IF v_body = '' THEN
     RETURN;

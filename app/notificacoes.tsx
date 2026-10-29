@@ -704,6 +704,111 @@ export default function NotificacoesScreen() {
     return title;
   };
 
+  const organizeNotificationText = (n: Notification) => {
+    const rawTitle = formatNotificationTitle(n.title || "", n.type).trim();
+    let body = (n.message || "").replace(/\s+/g, " ").trim();
+
+    const motivoMatch = body.match(/Motivo:\s*(.+)$/i);
+    const motivo = motivoMatch?.[1]?.replace(/\s+/g, " ").trim() || "";
+    if (motivo) {
+      body = body.replace(/\s*\.?\s*Motivo:\s*.+$/i, "").replace(/[.\s]+$/, "").trim();
+    }
+
+    const profileMatch = body.match(/Perfil convidado:\s*([^.]+)/i);
+    const profileInMessage = profileMatch?.[1]?.trim() || "";
+    if (profileInMessage) {
+      body = body
+        .replace(/\s*Perfil convidado:\s*[^.]+?\.?/i, "")
+        .replace(/\s{2,}/g, " ")
+        .replace(/\s+\./g, ".")
+        .trim();
+    }
+
+    const subject = body.match(/"([^"]+)"/)?.[1]?.trim() || "";
+    const shortcuts: [RegExp, string][] = [
+      [/convite de participação em evento/i, subject || "Novo convite"],
+      [/convite de participação recusado/i, subject || "Convite recusado"],
+      [/participação cancelada/i, subject || "Participação cancelada"],
+      [/participação removida/i, subject || "Participação removida"],
+      [/cancelou a parceria|parceria cancelada/i, subject || "Parceria cancelada"],
+      [/novo convite de artista/i, "Convite de equipe"],
+      [/adicionado como colaborador/i, "Entrou na equipe"],
+      [/removido do artista/i, "Saiu da equipe"],
+      [/^evento criado$/i, subject || "Evento criado"],
+      [/^evento atualizado$/i, subject || "Evento atualizado"],
+      [/^evento deletado$/i, subject || "Evento removido"],
+    ];
+
+    let headline = rawTitle;
+    for (const [pattern, next] of shortcuts) {
+      if (pattern.test(rawTitle)) {
+        headline = next;
+        break;
+      }
+    }
+
+    const profile =
+      profileInMessage ||
+      (shouldShowParticipationProfileHint(n)
+        ? getNotificationArtistProfileName(n)
+        : "") ||
+      "";
+
+    return { headline, body, motivo, profile };
+  };
+
+  const getNotificationKind = (n: Notification): {
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    color: string;
+  } => {
+    const title = (n.title || "").toLowerCase();
+    if (n.type === "invite") {
+      return { label: "Equipe", icon: "people", color: "#3B82F6" };
+    }
+    if (n.type === "basic") {
+      return { label: "MeuShow", icon: "megaphone-outline", color: "#667eea" };
+    }
+    if (n.type === "update" || n.type === "delete") {
+      return {
+        label: "Colaborador",
+        icon: n.type === "delete" ? "person-remove" : "person-add",
+        color: n.type === "delete" ? "#EF4444" : "#10B981",
+      };
+    }
+    if (n.type === "event") {
+      const removed =
+        title.includes("cancel") ||
+        title.includes("delet") ||
+        title.includes("remov");
+      return {
+        label: "Agenda",
+        icon: removed ? "calendar-clear-outline" : "calendar",
+        color: removed ? "#EF4444" : "#F59E0B",
+      };
+    }
+    if (n.type === "participacao_evento") {
+      if (
+        isParticipationCanceledByGuestNotification(n) ||
+        isParticipationRemovedByHostNotification(n) ||
+        title.includes("cancel")
+      ) {
+        return { label: "Cancelamento", icon: "close-circle", color: "#EF4444" };
+      }
+      if (isParticipationRejectedNotification(n)) {
+        return { label: "Recusa", icon: "close-circle-outline", color: "#F59E0B" };
+      }
+      if (title.includes("aceit")) {
+        return { label: "Aceite", icon: "checkmark-circle", color: "#10B981" };
+      }
+      if (title.includes("convite")) {
+        return { label: "Convite de show", icon: "mail", color: "#8B5CF6" };
+      }
+      return { label: "Participação", icon: "people", color: "#8B5CF6" };
+    }
+    return { label: "Aviso", icon: "notifications", color: "#6B7280" };
+  };
+
   const getNotificationColor = (type: string) => {
     switch (type) {
       case "invite":
@@ -773,6 +878,17 @@ export default function NotificacoesScreen() {
   };
 
   const dynamicStyles = createDynamicStyles(isDarkMode, colors);
+
+  const renderEmphasis = (text: string) =>
+    text.split(/(".*?")/g).map((part, index) =>
+      part.startsWith('"') && part.endsWith('"') ? (
+        <Text key={index} style={dynamicStyles.fbStrong}>
+          {part.slice(1, -1)}
+        </Text>
+      ) : (
+        <Text key={index}>{part}</Text>
+      ),
+    );
 
   if (isLoading) {
     return (
@@ -844,8 +960,10 @@ export default function NotificacoesScreen() {
               </Text>
             </View>
           ) : (
-            <View style={dynamicStyles.content}>
+            <View>
               {notifications.map((notification) => {
+                const kind = getNotificationKind(notification);
+                const copy = organizeNotificationText(notification);
                 const isInvite = notification.type === "invite";
                 // basic e demais: clicável (basic só marca como lida; outros navegam)
                 const isClickable = !isInvite;
@@ -970,7 +1088,7 @@ export default function NotificacoesScreen() {
                                 <View style={styles.userAvatarPlaceholder}>
                                   <Ionicons
                                     name="person"
-                                    size={18}
+                                    size={26}
                                     color="#667eea"
                                   />
                                   <View
@@ -997,138 +1115,97 @@ export default function NotificacoesScreen() {
                           )}
 
                         <View style={styles.notificationDetails}>
-                          <View style={styles.notificationHeader}>
-                            <Text
-                              style={[
-                                dynamicStyles.notificationTitle,
-                                !notification.read && dynamicStyles.unreadTitle,
-                              ]}
-                            >
-                              {formatNotificationTitle(
-                                notification.title,
-                                notification.type,
-                              )}
-                            </Text>
-                          </View>
-
-                          <Text style={dynamicStyles.notificationMessage}>
-                            {notification.message}
+                          <Text style={dynamicStyles.fbText}>
+                            {(() => {
+                              const actor =
+                                notification.type === "basic"
+                                  ? "MeuShow"
+                                  : notification.from_user?.name || "";
+                              const sentence = copy.body || copy.headline;
+                              const startsWithActor =
+                                !!actor &&
+                                sentence
+                                  .toLowerCase()
+                                  .startsWith(actor.toLowerCase());
+                              if (startsWithActor) {
+                                return (
+                                  <>
+                                    <Text style={dynamicStyles.fbStrong}>
+                                      {sentence.slice(0, actor.length)}
+                                    </Text>
+                                    {renderEmphasis(sentence.slice(actor.length))}
+                                  </>
+                                );
+                              }
+                              return renderEmphasis(sentence);
+                            })()}
                           </Text>
-                          {shouldShowParticipationProfileHint(notification) ? (
-                            <Text
-                              style={[
-                                dynamicStyles.notificationMessage,
-                                {
-                                  marginTop: 6,
-                                  fontSize: 13,
-                                  color: colors.textSecondary,
-                                },
-                              ]}
-                            >
-                              Perfil convidado:{" "}
-                              {getNotificationArtistProfileName(notification)}
+
+                          <Text style={dynamicStyles.fbMeta}>
+                            {formatTimeAgo(notification.created_at)}
+                            {"  ·  "}
+                            {kind.label}
+                          </Text>
+
+                          {copy.profile ? (
+                            <Text numberOfLines={1} style={dynamicStyles.fbMeta}>
+                              Perfil convidado: {copy.profile}
                             </Text>
                           ) : null}
 
-                          <View style={styles.notificationFooter}>
-                            <View style={styles.footerLeft}>
-                              <Text style={dynamicStyles.notificationTime}>
-                                {formatTimeAgo(notification.created_at)}
-                              </Text>
-                            </View>
+                          {copy.motivo ? (
+                            <Text style={dynamicStyles.fbDetail}>
+                              <Text style={dynamicStyles.fbStrong}>Motivo: </Text>
+                              {copy.motivo}
+                            </Text>
+                          ) : null}
 
-                            {notification.type === "basic" ? (
-                              <View style={styles.footerRight}>
-                                <Text
-                                  style={[
-                                    styles.userName,
-                                    { color: colors.textSecondary },
-                                  ]}
-                                >
-                                  MeuShow
-                                </Text>
-                              </View>
-                            ) : notification.from_user ? (
-                              <View style={styles.footerRight}>
-                                <Text style={styles.footerLabel}>por</Text>
-                                <Text style={styles.userName}>
-                                  {notification.from_user.name}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-
-                          {/* Botões de Aceitar/Recusar para convites (type == 'invite' e status == 'pending') */}
                           {notification.type === "invite" &&
-                            notification.artist_id && (
-                              <>
-                                {notification.status === "pending" ? (
-                                  <View style={dynamicStyles.inviteActions}>
-                                    <TouchableOpacity
-                                      style={dynamicStyles.acceptButton}
-                                      onPress={(e) => {
-                                        e.stopPropagation();
-                                        handleAcceptInviteFromNotification(
-                                          notification.artist_id!,
-                                          notification.message.split('"')[1] ||
-                                            "Artista",
-                                          notification.id,
-                                          notification.role, // ✅ Passar role da notificação
-                                        );
-                                      }}
-                                    >
-                                      <Ionicons
-                                        name="checkmark-circle"
-                                        size={16}
-                                        color="#FFFFFF"
-                                      />
-                                      <Text
-                                        style={dynamicStyles.acceptButtonText}
-                                      >
-                                        Aceitar
-                                      </Text>
-                                    </TouchableOpacity>
+                            notification.artist_id &&
+                            (notification.status === "pending" ? (
+                              <View style={dynamicStyles.inviteActions}>
+                                <TouchableOpacity
+                                  style={dynamicStyles.acceptButton}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptInviteFromNotification(
+                                      notification.artist_id!,
+                                      notification.message.split('"')[1] ||
+                                        "Artista",
+                                      notification.id,
+                                      notification.role,
+                                    );
+                                  }}
+                                >
+                                  <Text style={dynamicStyles.acceptButtonText}>
+                                    Confirmar
+                                  </Text>
+                                </TouchableOpacity>
 
-                                    <TouchableOpacity
-                                      style={dynamicStyles.declineButton}
-                                      onPress={(e) => {
-                                        e.stopPropagation();
-                                        handleDeclineInviteFromNotification(
-                                          notification.artist_id!,
-                                          notification.id,
-                                        );
-                                      }}
-                                    >
-                                      <Ionicons
-                                        name="close-circle"
-                                        size={16}
-                                        color={colors.textSecondary}
-                                      />
-                                      <Text
-                                        style={dynamicStyles.declineButtonText}
-                                      >
-                                        Recusar
-                                      </Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                ) : (
-                                  <View
-                                    style={dynamicStyles.inviteProcessedBadge}
-                                  >
-                                    <Ionicons
-                                      name="checkmark-done"
-                                      size={14}
-                                      color={colors.success}
-                                    />
-                                    <Text
-                                      style={dynamicStyles.inviteProcessedText}
-                                    >
-                                      Convite processado
-                                    </Text>
-                                  </View>
-                                )}
-                              </>
-                            )}
+                                <TouchableOpacity
+                                  style={dynamicStyles.declineButton}
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleDeclineInviteFromNotification(
+                                      notification.artist_id!,
+                                      notification.id,
+                                    );
+                                  }}
+                                >
+                                  <Text style={dynamicStyles.declineButtonText}>
+                                    Recusar
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <Text style={dynamicStyles.fbMeta}>
+                                {notification.status === "accepted"
+                                  ? "Convite confirmado"
+                                  : notification.status === "declined"
+                                    ? "Convite recusado"
+                                    : "Convite respondido"}
+                              </Text>
+                            ))}
                         </View>
                       </View>
 
@@ -1136,7 +1213,6 @@ export default function NotificacoesScreen() {
                         {!notification.read && (
                           <View style={dynamicStyles.unreadDot} />
                         )}
-                        {/* Esconder botão de deletar para convites - será deletado ao aceitar/recusar */}
                         {notification.type !== "invite" && (
                           <TouchableOpacity
                             style={styles.deleteButton}
@@ -1627,23 +1703,76 @@ const createDynamicStyles = (isDark: boolean, colors: any) =>
       flex: 1,
       paddingHorizontal: 20,
     },
+    titleMetaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      marginBottom: 8,
+    },
+    kindPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      flexShrink: 1,
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+    },
+    kindPillText: {
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    motivoLine: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.text,
+      marginTop: 6,
+    },
+    motivoLabel: {
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+    metaLine: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.textSecondary,
+      marginTop: 6,
+      fontWeight: "600",
+    },
+    fbText: {
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.text,
+      fontWeight: "400",
+    },
+    fbStrong: {
+      fontWeight: "700",
+      color: colors.text,
+    },
+    fbMeta: {
+      marginTop: 4,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+    },
+    fbDetail: {
+      marginTop: 6,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.text,
+    },
     notificationCard: {
       backgroundColor: colors.surface,
-      borderRadius: 12,
-      padding: 16,
-      marginVertical: 6,
-      shadowColor: colors.shadow,
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: Platform.OS === "android" ? 0 : isDark ? 0.3 : 0.1,
-      shadowRadius: Platform.OS === "android" ? 0 : 3.84,
-      elevation: Platform.OS === "android" ? 0 : 5,
+      borderRadius: 0,
+      padding: 0,
+      marginVertical: 0,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     unreadNotification: {
-      backgroundColor: isDark ? "#353535" : "#F9FAFB",
-      borderColor: isDark ? colors.border : "#E5E7EB",
+      backgroundColor: isDark ? "rgba(102, 126, 234, 0.16)" : "#E7F3FF",
     },
     notificationHeader: {
       flexDirection: "row",
@@ -1661,22 +1790,24 @@ const createDynamicStyles = (isDark: boolean, colors: any) =>
     },
     notificationTitle: {
       fontSize: 16,
-      fontWeight: "bold",
+      fontWeight: "700",
       color: colors.text,
-      flex: 1,
+      lineHeight: 21,
     },
     unreadTitle: {
-      fontWeight: "700",
+      fontWeight: "800",
       color: isDark ? colors.text : "#111827",
     },
     notificationTime: {
       fontSize: 12,
       color: colors.textSecondary,
+      flexShrink: 0,
     },
     notificationMessage: {
       fontSize: 14,
+      lineHeight: 20,
       color: colors.textSecondary,
-      marginBottom: 8,
+      marginTop: 4,
     },
     notificationActions: {
       flexDirection: "row",
@@ -1733,46 +1864,35 @@ const createDynamicStyles = (isDark: boolean, colors: any) =>
     },
     inviteActions: {
       flexDirection: "row",
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 16,
-      gap: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      alignItems: "center",
+      marginTop: 10,
+      gap: 8,
     },
     acceptButton: {
       flex: 1,
-      flexDirection: "row",
+      height: 36,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.success,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      gap: 6,
+      backgroundColor: colors.primary,
+      borderRadius: 6,
     },
     acceptButtonText: {
       color: "#FFFFFF",
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 15,
+      fontWeight: "700",
     },
     declineButton: {
       flex: 1,
-      flexDirection: "row",
+      height: 36,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: isDark ? colors.background : colors.secondary,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      gap: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: isDark ? "#3A3B3C" : "#E4E6EB",
+      borderRadius: 6,
     },
     declineButtonText: {
-      color: colors.textSecondary,
-      fontSize: 14,
-      fontWeight: "600",
+      color: isDark ? "#E4E6EB" : "#050505",
+      fontSize: 15,
+      fontWeight: "700",
     },
     inviteProcessedBadge: {
       flexDirection: "row",
@@ -1792,11 +1912,11 @@ const createDynamicStyles = (isDark: boolean, colors: any) =>
       fontWeight: "600",
     },
     unreadDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
       backgroundColor: colors.primary,
-      marginLeft: 8,
+      marginTop: 6,
     },
     emptyState: {
       flex: 1,
@@ -1988,7 +2108,8 @@ const styles = StyleSheet.create({
   notificationContent: {
     flexDirection: "row",
     alignItems: "flex-start",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   notificationLeft: {
     flexDirection: "row",
@@ -1997,8 +2118,8 @@ const styles = StyleSheet.create({
   },
   notificationRight: {
     alignItems: "center",
-    justifyContent: "space-between",
-    height: 40,
+    marginLeft: 8,
+    minWidth: 28,
   },
   userAvatarContainer: {
     marginRight: 12,
@@ -2007,16 +2128,16 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
   userAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
@@ -2025,9 +2146,9 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   marcaAiSystemAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
@@ -2106,9 +2227,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   deleteButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "transparent",
+    marginTop: 8,
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   unreadDot: {
     width: 8,

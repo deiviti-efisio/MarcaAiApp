@@ -159,6 +159,11 @@ export default function AgendaScreen() {
     any | null
   >(null);
   const [inviteCancelReason, setInviteCancelReason] = useState("");
+  const [cancelNotice, setCancelNotice] = useState<{
+    title: string;
+    message: string;
+    ok: boolean;
+  } | null>(null);
   const [isCancellingInviteParticipation, setIsCancellingInviteParticipation] =
     useState(false);
   const [invitePartnerByConviteId, setInvitePartnerByConviteId] = useState<
@@ -1659,10 +1664,11 @@ export default function AgendaScreen() {
     if (!selectedInviteEventInfo?.convite_participacao_id) return;
     const motivo = inviteCancelReason.trim();
     if (!motivo) {
-      Alert.alert(
-        "Motivo obrigatório",
-        "Informe o motivo para cancelar a participação.",
-      );
+      setCancelNotice({
+        title: "Motivo obrigatório",
+        message: "Informe o motivo para cancelar a participação.",
+        ok: false,
+      });
       return;
     }
     try {
@@ -1674,10 +1680,11 @@ export default function AgendaScreen() {
         user?.id ?? null,
       );
       if (!success) {
-        Alert.alert(
-          "Erro",
-          error || "Não foi possível cancelar a participação.",
-        );
+        setCancelNotice({
+          title: "Não foi possível cancelar",
+          message: error || "Não foi possível cancelar a participação.",
+          ok: false,
+        });
         return;
       }
       const donoId = selectedInviteDetails?.ownerArtistId;
@@ -1713,12 +1720,14 @@ export default function AgendaScreen() {
         );
         loadEvents(true);
       }
-      Alert.alert(
-        "Participação cancelada",
-        activeArtist?.id && donoId && !chatError
-          ? "O dono do evento recebeu no chat o evento e o motivo do cancelamento."
+      const avisou = Boolean(activeArtist?.id && donoId && !chatError);
+      setCancelNotice({
+        title: "Participação cancelada",
+        message: avisou
+          ? "O dono do evento recebeu no chat o evento e o motivo."
           : "A data saiu da sua agenda, mas a mensagem no chat do dono não foi enviada.",
-      );
+        ok: avisou,
+      });
     } finally {
       setIsCancellingInviteParticipation(false);
     }
@@ -3125,6 +3134,51 @@ export default function AgendaScreen() {
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal
+        visible={cancelNotice != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCancelNotice(null)}
+      >
+        <View style={styles.sentNoticeOverlay}>
+          <View
+            style={[
+              styles.sentNoticeCard,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[
+                styles.sentNoticeIcon,
+                {
+                  backgroundColor: cancelNotice?.ok
+                    ? `${colors.success}18`
+                    : `${colors.warning}18`,
+                },
+              ]}
+            >
+              <Ionicons
+                name={cancelNotice?.ok ? "checkmark-circle" : "alert-circle"}
+                size={56}
+                color={cancelNotice?.ok ? colors.success : colors.warning}
+              />
+            </View>
+            <Text style={[styles.sentNoticeTitle, { color: colors.text }]}>
+              {cancelNotice?.title}
+            </Text>
+            <Text style={[styles.sentNoticeMessage, { color: colors.textSecondary }]}>
+              {cancelNotice?.message}
+            </Text>
+            <TouchableOpacity
+              style={[styles.sentNoticeButton, { backgroundColor: colors.primary }]}
+              onPress={() => setCancelNotice(null)}
+            >
+              <Text style={styles.sentNoticeButtonText}>Entendi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       <Modal
@@ -4570,6 +4624,54 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
     padding: 12,
     marginTop: 10,
+  },
+  sentNoticeOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  sentNoticeCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 18,
+  },
+  sentNoticeIcon: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  sentNoticeTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  sentNoticeMessage: {
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+    marginTop: 8,
+    marginBottom: 18,
+  },
+  sentNoticeButton: {
+    borderRadius: 12,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sentNoticeButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
   inviteModalActions: {
     width: "100%",
