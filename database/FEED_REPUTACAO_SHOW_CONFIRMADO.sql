@@ -26,14 +26,17 @@ WHERE a.convite_participacao_evento_id = c.id
 -- =====================================================
 -- 2) Confirmar show + avaliar (ação única do contratante)
 -- =====================================================
+DROP FUNCTION IF EXISTS public.rpc_app_confirmar_show_e_avaliar(UUID, SMALLINT, BOOLEAN, SMALLINT, SMALLINT, SMALLINT, SMALLINT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.rpc_app_confirmar_show_e_avaliar(UUID, INTEGER, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.rpc_app_confirmar_show_e_avaliar(
   p_convite_id UUID,
-  p_nota_geral SMALLINT,
+  p_nota_geral INTEGER,
   p_confirmar_show BOOLEAN DEFAULT true,
-  p_nota_pontualidade SMALLINT DEFAULT NULL,
-  p_nota_profissionalismo SMALLINT DEFAULT NULL,
-  p_nota_qualidade_tecnica SMALLINT DEFAULT NULL,
-  p_nota_comunicacao SMALLINT DEFAULT NULL,
+  p_nota_pontualidade INTEGER DEFAULT NULL,
+  p_nota_profissionalismo INTEGER DEFAULT NULL,
+  p_nota_qualidade_tecnica INTEGER DEFAULT NULL,
+  p_nota_comunicacao INTEGER DEFAULT NULL,
   p_comentario_publico TEXT DEFAULT NULL,
   p_observacao_privada TEXT DEFAULT NULL
 )
@@ -148,8 +151,10 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.rpc_app_confirmar_show_e_avaliar(
-  UUID, SMALLINT, BOOLEAN, SMALLINT, SMALLINT, SMALLINT, SMALLINT, TEXT, TEXT
+  UUID, INTEGER, BOOLEAN, INTEGER, INTEGER, INTEGER, INTEGER, TEXT, TEXT
 ) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
 
 -- Mantém RPC antiga redirecionando para confirmação automática (retrocompat)
 CREATE OR REPLACE FUNCTION public.rpc_app_salvar_avaliacao_participacao_evento(

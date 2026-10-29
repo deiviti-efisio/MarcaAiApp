@@ -1025,7 +1025,7 @@ export async function confirmarShowEAvaliar(
   input: ConfirmarShowEAvaliarInput
 ): Promise<{ success: boolean; error: string | null; avaliacaoId?: string }> {
   try {
-    const { data, error } = await supabase.rpc('rpc_app_confirmar_show_e_avaliar', {
+    const payload = {
       p_convite_id: input.conviteId,
       p_nota_geral: Number(input.notaGeral),
       p_confirmar_show: input.confirmarShow,
@@ -1035,9 +1035,34 @@ export async function confirmarShowEAvaliar(
       p_nota_comunicacao: input.notaComunicacao != null ? Number(input.notaComunicacao) : null,
       p_comentario_publico: input.comentarioPublico?.trim() || null,
       p_observacao_privada: input.observacaoPrivada?.trim() || null,
-    });
+    };
 
-    if (error) return { success: false, error: error.message };
+    let { data, error } = await supabase.rpc('rpc_app_confirmar_show_e_avaliar', payload);
+
+    if (error && /schema cache|Could not find the function/i.test(error.message)) {
+      const legado = await supabase.rpc('rpc_app_salvar_avaliacao_participacao_evento', {
+        p_convite_id: payload.p_convite_id,
+        p_nota_geral: payload.p_nota_geral,
+        p_nota_pontualidade: payload.p_nota_pontualidade,
+        p_nota_profissionalismo: payload.p_nota_profissionalismo,
+        p_nota_qualidade_tecnica: payload.p_nota_qualidade_tecnica,
+        p_nota_comunicacao: payload.p_nota_comunicacao,
+        p_comentario_publico: payload.p_comentario_publico,
+        p_observacao_privada: payload.p_observacao_privada,
+      });
+      data = legado.data;
+      error = legado.error;
+    }
+
+    if (error) {
+      const missing = /schema cache|Could not find the function/i.test(error.message);
+      return {
+        success: false,
+        error: missing
+          ? 'A confirmação do show ainda não está no banco. Rode o script FIX_CONFIRMAR_SHOW_AVALIAR.sql no Supabase.'
+          : error.message,
+      };
+    }
     const row = pickRpcRow<{ success: boolean; error: string | null; avaliacao_id: string | null }>(data);
     if (!row) return { success: false, error: 'Resposta inválida ao confirmar show.' };
     return {

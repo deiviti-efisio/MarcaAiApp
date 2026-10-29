@@ -8,7 +8,9 @@ import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Dimensions,
     Keyboard,
+    KeyboardAvoidingView,
     Modal,
     Platform,
     ScrollView,
@@ -2512,16 +2514,10 @@ export default function DetalhesEventoScreen() {
                           {c.status === "aceito" &&
                           canCreateEventsPermission &&
                           event?.artist_id === activeArtist?.id ? (
-                            <View
-                              style={{
-                                flexDirection: "row",
-                                alignItems: "center",
-                                marginTop: 6,
-                              }}
-                            >
+                            <View style={styles.participantActionList}>
                               <TouchableOpacity
                                 onPress={() => openRemoveParticipationModal(c)}
-                                style={{ marginRight: 16 }}
+                                style={styles.participantActionBtn}
                               >
                                 <Text
                                   style={{
@@ -2536,6 +2532,7 @@ export default function DetalhesEventoScreen() {
                               {isDateConcludedD1(c.data_evento) ? (
                                 <TouchableOpacity
                                   onPress={() => openRateParticipantModal(c)}
+                                  style={styles.participantActionBtn}
                                 >
                                   <Text
                                     style={{
@@ -2551,10 +2548,13 @@ export default function DetalhesEventoScreen() {
                                 </TouchableOpacity>
                               ) : (
                                 <Text
-                                  style={{
-                                    color: colors.textSecondary,
-                                    fontSize: 12,
-                                  }}
+                                  style={[
+                                    styles.participantActionBtn,
+                                    {
+                                      color: colors.textSecondary,
+                                      fontSize: 12,
+                                    },
+                                  ]}
                                 >
                                   Avaliação disponível após a data do show
                                 </Text>
@@ -2856,15 +2856,25 @@ export default function DetalhesEventoScreen() {
           !savingParticipantRate && setShowRateParticipantModal(false)
         }
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.participationInviteModalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.rateModalAvoid}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.rateModalOverlay}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View
                 style={[
-                  styles.participationInviteModalCard,
+                  styles.rateModalCard,
                   { backgroundColor: colors.surface },
                 ]}
               >
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  style={{ maxHeight: Dimensions.get("window").height * 0.62 }}
+                  contentContainerStyle={styles.rateModalScrollContent}
+                >
                 <Text
                   style={[
                     styles.participationInviteModalTitle,
@@ -3003,6 +3013,7 @@ export default function DetalhesEventoScreen() {
                     editable={!savingParticipantRate}
                   />
                 </View>
+                </ScrollView>
 
                 <View
                   style={[
@@ -3047,7 +3058,8 @@ export default function DetalhesEventoScreen() {
               </View>
             </TouchableWithoutFeedback>
           </View>
-        </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -3759,6 +3771,32 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     padding: 20,
+  },
+  rateModalAvoid: {
+    flex: 1,
+  },
+  rateModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  rateModalCard: {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  rateModalScrollContent: {
+    paddingBottom: 8,
+  },
+  participantActionList: {
+    marginTop: 8,
+    alignItems: "flex-start",
+  },
+  participantActionBtn: {
+    paddingVertical: 4,
   },
   participationInviteModalCard: {
     borderRadius: 16,
